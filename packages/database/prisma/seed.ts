@@ -1,6 +1,6 @@
 
 import { PrismaClient } from "@prisma/client";
-import * as bcrypt from "bcrypt"; // You might need to install bcrypt in packages/database or use a simple hash for dev
+import * as bcrypt from "bcryptjs"; // You might need to install bcrypt in packages/database or use a simple hash for dev
 
 const prisma = new PrismaClient();
 
