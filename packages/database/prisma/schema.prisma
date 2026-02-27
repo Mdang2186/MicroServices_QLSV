@@ -1,0 +1,214 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id(map: "PK__User__3213E83F666B2B7E") @default(uuid()) @db.VarChar(50)
+  username     String    @unique(map: "UQ__User__F3DBC57207869DE0") @db.VarChar(100)
+  email        String    @unique(map: "UQ__User__AB6E61641C3B1081") @db.VarChar(100)
+  passwordHash String    @db.NVarChar(255)
+  role         String    @default("STUDENT", map: "DF__User__role__0B91BA14") @db.VarChar(50)
+  avatarUrl    String?
+  isActive     Boolean   @default(true, map: "DF__User__isActive__0C85DE4D")
+  lastLogin    DateTime?
+  createdAt    DateTime  @default(now(), map: "DF__User__createdAt__0D7A0286")
+  lecturer     Lecturer?
+  student      Student?
+}
+
+model Faculty {
+  id        String     @id(map: "PK__Faculty__3213E83FC1F70D8F") @default(uuid()) @db.VarChar(50)
+  code      String     @unique(map: "UQ__Faculty__357D4CF9FEA4CAFF") @db.VarChar(50)
+  name      String     @db.NVarChar(255)
+  deanName  String?    @db.NVarChar(255)
+  lecturers Lecturer[]
+  majors    Major[]
+}
+
+model Major {
+  id           String       @id(map: "PK__Major__3213E83FE169A458") @default(uuid()) @db.VarChar(50)
+  facultyId    String       @db.VarChar(50)
+  code         String       @unique(map: "UQ__Major__357D4CF97C2F4D00") @db.VarChar(50)
+  name         String       @db.NVarChar(255)
+  adminClasses AdminClass[]
+  faculty      Faculty      @relation(fields: [facultyId], references: [id], onUpdate: NoAction, map: "FK__Major__facultyId__1DB06A4F")
+  students     Student[]
+  subjects     Subject[]
+}
+
+model AdminClass {
+  id        String    @id(map: "PK__AdminCla__3213E83F09CFEC5E") @default(uuid()) @db.VarChar(50)
+  majorId   String    @db.VarChar(50)
+  code      String    @unique(map: "UQ__AdminCla__357D4CF98CEF6878") @db.VarChar(50)
+  name      String    @db.NVarChar(255)
+  cohort    String?   @db.VarChar(50)
+  advisorId String?   @db.VarChar(50)
+  advisor   Lecturer? @relation(fields: [advisorId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK__AdminClas__advis__22751F6C")
+  major     Major     @relation(fields: [majorId], references: [id], onUpdate: NoAction, map: "FK__AdminClas__major__2180FB33")
+  students  Student[]
+}
+
+model Student {
+  id            String       @id(map: "PK__Student__3213E83F071780ED") @default(uuid()) @db.VarChar(50)
+  userId        String       @unique(map: "UQ__Student__CB9A1CFE579AC08C") @db.VarChar(50)
+  adminClassId  String?      @db.VarChar(50)
+  majorId       String       @db.VarChar(50)
+  studentCode   String       @unique(map: "UQ__Student__48F7EF36B8DBB727") @db.VarChar(50)
+  fullName      String       @db.NVarChar(255)
+  dob           DateTime
+  gender        String?      @db.NVarChar(20)
+  phone         String?      @db.VarChar(20)
+  address       String?      @db.NVarChar(500)
+  citizenId     String?      @db.VarChar(50)
+  emailPersonal String?      @db.VarChar(100)
+  gpa           Float        @default(0.0, map: "DF__Student__gpa__2A164134")
+  totalCredits  Int          @default(0, map: "DF__Student__totalCr__2B0A656D")
+  status        String       @default("ACTIVE", map: "DF__Student__status__2BFE89A6") @db.VarChar(50)
+  enrollments   Enrollment[]
+  grades        Grade[]
+  adminClass    AdminClass?  @relation(fields: [adminClassId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK__Student__adminCl__282DF8C2")
+  major         Major        @relation(fields: [majorId], references: [id], onUpdate: NoAction, map: "FK__Student__majorId__29221CFB")
+  user          User         @relation(fields: [userId], references: [id], onUpdate: NoAction, map: "FK__Student__userId__2739D489")
+  tuitionFees   TuitionFee[]
+}
+
+model Lecturer {
+  id           String        @id(map: "PK__Lecturer__3213E83FDA889E1D") @default(uuid()) @db.VarChar(50)
+  userId       String        @unique(map: "UQ__Lecturer__CB9A1CFEDB41DF8D") @db.VarChar(50)
+  facultyId    String?       @db.VarChar(50)
+  lectureCode  String        @unique(map: "UQ__Lecturer__76F9F92DC12FA4DE") @db.VarChar(50)
+  fullName     String        @db.NVarChar(255)
+  degree       String?       @db.NVarChar(100)
+  phone        String?       @db.VarChar(20)
+  adminClasses AdminClass[]
+  classes      CourseClass[]
+  faculty      Faculty?      @relation(fields: [facultyId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK__Lecturer__facult__19DFD96B")
+  user         User          @relation(fields: [userId], references: [id], onUpdate: NoAction, map: "FK__Lecturer__userId__18EBB532")
+}
+
+model Semester {
+  id            String        @id(map: "PK__Semester__3213E83F56E7ED37") @default(uuid()) @db.VarChar(50)
+  code          String        @unique(map: "UQ__Semester__357D4CF92ECC94F7") @db.VarChar(50)
+  name          String        @db.NVarChar(255)
+  startDate     DateTime
+  endDate       DateTime
+  isRegistering Boolean       @default(false, map: "DF__Semester__isRegi__114A936A")
+  classes       CourseClass[]
+  tuitionFees   TuitionFee[]
+}
+
+model Subject {
+  id            String         @id(map: "PK__Subject__3213E83FEA083E95") @default(uuid()) @db.VarChar(50)
+  majorId       String         @db.VarChar(50)
+  code          String         @unique(map: "UQ__Subject__357D4CF90265BFBE") @db.VarChar(50)
+  name          String         @db.NVarChar(255)
+  credits       Int
+  theoryHours   Int            @default(30, map: "DF__Subject__theoryH__30C33EC3")
+  practiceHours Int            @default(15, map: "DF__Subject__practic__31B762FC")
+  description   String?        @db.NVarChar(Max)
+  classes       CourseClass[]
+  grades        Grade[]
+  requiredFor   Prerequisite[] @relation("PrerequisiteFor")
+  prerequisites Prerequisite[] @relation("SubjectPrerequisites")
+  major         Major          @relation(fields: [majorId], references: [id], onUpdate: NoAction, map: "FK__Subject__majorId__2FCF1A8A")
+}
+
+model Prerequisite {
+  id             String  @id(map: "PK__Prerequi__3213E83F83E99FA9") @default(uuid()) @db.VarChar(50)
+  subjectId      String  @db.VarChar(50)
+  prerequisiteId String  @db.VarChar(50)
+  type           String  @db.VarChar(50)
+  prerequisite   Subject @relation("PrerequisiteFor", fields: [prerequisiteId], references: [id], onUpdate: NoAction, map: "FK__Prerequis__prere__367C1819")
+  subject        Subject @relation("SubjectPrerequisites", fields: [subjectId], references: [id], onUpdate: NoAction, map: "FK__Prerequis__subje__3587F3E0")
+
+  @@unique([subjectId, prerequisiteId])
+}
+
+model CourseClass {
+  id           String          @id(map: "PK__CourseCl__3213E83FF72F1F37") @default(uuid()) @db.VarChar(50)
+  subjectId    String          @db.VarChar(50)
+  semesterId   String          @db.VarChar(50)
+  lecturerId   String?         @db.VarChar(50)
+  code         String          @unique(map: "UQ__CourseCl__357D4CF9A161B491") @db.VarChar(50)
+  name         String          @db.NVarChar(255)
+  maxSlots     Int             @default(60, map: "DF__CourseCla__maxSl__3D2915A8")
+  currentSlots Int             @default(0, map: "DF__CourseCla__curre__3E1D39E1")
+  status       String          @default("OPEN", map: "DF__CourseCla__statu__3F115E1A") @db.VarChar(50)
+  schedules    ClassSchedule[]
+  lecturer     Lecturer?       @relation(fields: [lecturerId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK__CourseCla__lectu__3C34F16F")
+  semester     Semester        @relation(fields: [semesterId], references: [id], onUpdate: NoAction, map: "FK__CourseCla__semes__3B40CD36")
+  subject      Subject         @relation(fields: [subjectId], references: [id], onUpdate: NoAction, map: "FK__CourseCla__subje__3A4CA8FD")
+  enrollments  Enrollment[]
+  grades       Grade[]
+}
+
+model ClassSchedule {
+  id            String      @id(map: "PK__ClassSch__3213E83F950175E9") @default(uuid()) @db.VarChar(50)
+  courseClassId String      @db.VarChar(50)
+  dayOfWeek     Int
+  startShift    Int
+  endShift      Int
+  room          String      @db.NVarChar(100)
+  type          String      @db.VarChar(50)
+  courseClass   CourseClass @relation(fields: [courseClassId], references: [id], onDelete: Cascade, map: "FK__ClassSche__cours__41EDCAC5")
+}
+
+model Enrollment {
+  id            String      @id(map: "PK__Enrollme__3213E83FACDA778F") @default(uuid()) @db.VarChar(50)
+  studentId     String      @db.VarChar(50)
+  courseClassId String      @db.VarChar(50)
+  status        String      @default("PENDING", map: "DF__Enrollmen__statu__47A6A41B") @db.VarChar(50)
+  registeredAt  DateTime    @default(now(), map: "DF__Enrollmen__regis__489AC854")
+  tuitionFee    Decimal     @db.Decimal(10, 2)
+  courseClass   CourseClass @relation(fields: [courseClassId], references: [id], onUpdate: NoAction, map: "FK__Enrollmen__cours__46B27FE2")
+  student       Student     @relation(fields: [studentId], references: [id], onUpdate: NoAction, map: "FK__Enrollmen__stude__45BE5BA9")
+
+  @@unique([studentId, courseClassId])
+}
+
+model Grade {
+  id              String      @id(map: "PK__Grade__3213E83FE8EA8187") @default(uuid()) @db.VarChar(50)
+  studentId       String      @db.VarChar(50)
+  courseClassId   String      @db.VarChar(50)
+  subjectId       String      @db.VarChar(50)
+  attendanceScore Float?
+  midtermScore    Float?
+  finalScore      Float?
+  totalScore10    Float?
+  totalScore4     Float?
+  letterGrade     String?     @db.VarChar(10)
+  isPassed        Boolean     @default(false, map: "DF__Grade__isPassed__4F47C5E3")
+  courseClass     CourseClass @relation(fields: [courseClassId], references: [id], onUpdate: NoAction, map: "FK__Grade__courseCla__4D5F7D71")
+  student         Student     @relation(fields: [studentId], references: [id], onUpdate: NoAction, map: "FK__Grade__studentId__4C6B5938")
+  subject         Subject     @relation(fields: [subjectId], references: [id], onUpdate: NoAction, map: "FK__Grade__subjectId__4E53A1AA")
+
+  @@unique([studentId, subjectId, courseClassId])
+}
+
+model TuitionFee {
+  id           String               @id(map: "PK__TuitionF__3213E83F2521B34E") @default(uuid()) @db.VarChar(50)
+  studentId    String               @db.VarChar(50)
+  semesterId   String               @db.VarChar(50)
+  totalAmount  Decimal              @db.Decimal(12, 2)
+  paidAmount   Decimal              @default(0, map: "DF__TuitionFe__paidA__540C7B00") @db.Decimal(12, 2)
+  isCompleted  Boolean              @default(false, map: "DF__TuitionFe__isCom__55009F39")
+  deadline     DateTime?
+  semester     Semester             @relation(fields: [semesterId], references: [id], onUpdate: NoAction, map: "FK__TuitionFe__semes__531856C7")
+  student      Student              @relation(fields: [studentId], references: [id], onUpdate: NoAction, map: "FK__TuitionFe__stude__5224328E")
+  transactions TuitionTransaction[]
+}
+
+model TuitionTransaction {
+  id              String     @id(map: "PK__TuitionT__3213E83F2766FE9C") @default(uuid()) @db.VarChar(50)
+  tuitionFeeId    String     @db.VarChar(50)
+  amount          Decimal    @db.Decimal(12, 2)
+  paymentMethod   String     @db.VarChar(50)
+  transactionDate DateTime   @default(now(), map: "DF__TuitionTr__trans__58D1301D")
+  transactionCode String?    @db.VarChar(100)
+  tuitionFee      TuitionFee @relation(fields: [tuitionFeeId], references: [id], onUpdate: NoAction, map: "FK__TuitionTr__tuiti__57DD0BE4")
+}

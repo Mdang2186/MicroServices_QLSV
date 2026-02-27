@@ -1,0 +1,68 @@
+# ===== Dependencies =====
+node_modules/
+.pnp
+.pnp.js
+
+# ===== Build outputs =====
+dist/
+build/
+out/
+.output/
+
+# ===== Next.js =====
+.next/
+next-env.d.ts
+
+# ===== NestJS =====
+*.js.map
+
+# ===== Turborepo =====
+.turbo/
+
+# ===== Environment variables =====
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+# Keep example files
+!.env.example
+
+# ===== Logs =====
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+install.log
+install_full.log
+install_pnpm.log
+
+# ===== OS files =====
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== Editor =====
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ===== TypeScript =====
+*.tsbuildinfo
+
+# ===== Testing =====
+/coverage
+.nyc_output
+
+# ===== Misc =====
+*.local
+verify-*.js
+check-ports.js
