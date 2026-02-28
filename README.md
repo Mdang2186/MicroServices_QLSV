@@ -10,14 +10,14 @@ Dự án ra đời nhằm giải quyết triệt để bài toán "nút thắt c
 
 Hệ thống được thiết kế với 2 phân quyền độc lập, giao tiếp thông qua API Gateway:
 
-### 🛡️ 1. Cổng Quản trị (Admin Portal)
+### 🛡️ 1. Cổng Quản trị (Admin Portal) https://admin-qlsv-microservices.vercel.app/
 
 - **Quản trị Danh mục**: Quản lý cấu trúc Khoa, Ngành học, Chương trình đào tạo.
 - **Tổ chức Đào tạo**: Thiết lập danh sách Môn học, điều kiện Môn tiên quyết.
 - **Xếp lịch thông minh (Scheduling)**: Khởi tạo Lớp học phần, phân bổ Giảng viên và Phòng học. Hệ thống tự động phát hiện và cảnh báo trùng lịch, trùng phòng.
 - **Quản lý Học vụ**: Công cụ nhập điểm hàng loạt (Bulk grading), tự động tổng kết và quy đổi điểm hệ 4 / điểm chữ.
 
-### 👨‍🎓 2. Cổng Sinh viên (Student Portal)
+### 👨‍🎓 2. Cổng Sinh viên (Student Portal) https://qlsv-microservices.vercel.app/
 
 - **Bảng điều khiển cá nhân**: Theo dõi tiến độ học tập, tổng tín chỉ, CPA/GPA.
 - **Đăng ký Tín chỉ (Core)**: Trải nghiệm đăng ký môn học mượt mà, realtime cập nhật số lượng chỗ trống (slots). Chống quá tải bằng Redis Lock.
