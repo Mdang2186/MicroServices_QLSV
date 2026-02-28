@@ -28,7 +28,7 @@ export class AppModule {
     consumer
       .apply(
         createProxyMiddleware({
-          target: "http://127.0.0.1:3001", // Auth Service
+          target: process.env.AUTH_SERVICE_URL || "http://127.0.0.1:3001", // Auth Service
           changeOrigin: true,
           pathRewrite: {
             "^/api/auth": "/auth",
@@ -41,7 +41,7 @@ export class AppModule {
     consumer
       .apply(
         createProxyMiddleware({
-          target: "http://127.0.0.1:3002", // Student Service
+          target: process.env.STUDENT_SERVICE_URL || "http://127.0.0.1:3002", // Student Service
           changeOrigin: true,
           pathRewrite: {
             "^/api/students": "/students",
@@ -54,7 +54,7 @@ export class AppModule {
     consumer
       .apply(
         createProxyMiddleware({
-          target: "http://127.0.0.1:3004", // Enrollment Service
+          target: process.env.ENROLLMENT_SERVICE_URL || "http://127.0.0.1:3004", // Enrollment Service
           changeOrigin: true,
           pathRewrite: {
             "^/api/enrollments": "/enrollments",
@@ -67,7 +67,7 @@ export class AppModule {
     consumer
       .apply(
         createProxyMiddleware({
-          target: "http://127.0.0.1:3003", // Course Service
+          target: process.env.COURSE_SERVICE_URL || "http://127.0.0.1:3003", // Course Service
           changeOrigin: true,
           pathRewrite: {
             "^/api/courses": "/courses",
@@ -86,7 +86,7 @@ export class AppModule {
     consumer
       .apply(
         createProxyMiddleware({
-          target: "http://127.0.0.1:3005", // Grade Service
+          target: process.env.GRADE_SERVICE_URL || "http://127.0.0.1:3005", // Grade Service
           changeOrigin: true,
           pathRewrite: {
             "^/api/grades": "/grades",
