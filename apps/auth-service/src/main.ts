@@ -4,6 +4,7 @@ import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.enableCors();
   // Also enable Microservice for gRPC or TCP if needed, but for MVP we might just use HTTP or hybrid
   // defined in Transport. For now, let's expose HTTP for debugging and inter-service via HTTP
   // or setup Microservice listener
