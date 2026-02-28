@@ -16,7 +16,8 @@ export default function EnrollPage() {
             return;
         }
 
-        axios.get("http://localhost:3000/api/enrollments/classes")
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+        axios.get(`${apiUrl}/api/enrollments/classes`)
             .then(res => {
                 setClasses(res.data);
                 setLoading(false);
@@ -54,8 +55,9 @@ export default function EnrollPage() {
         // But for now, let's just try to send the ID we have.
         const user = JSON.parse(localStorage.getItem("user") || "{}");
 
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
         try {
-            await axios.post("http://localhost:3000/api/enrollments", {
+            await axios.post(`${apiUrl}/api/enrollments`, {
                 studentId: user.student?.id || user.id, // Try to find student ID
                 classId: classId
             }, {
@@ -107,8 +109,8 @@ export default function EnrollPage() {
                                 onClick={() => handleEnroll(c.id)}
                                 disabled={c.currentSlot >= c.maxSlots}
                                 className={`w-full rounded-lg py-2.5 font-semibold text-white transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${c.currentSlot >= c.maxSlots
-                                        ? "bg-gray-400 cursor-not-allowed"
-                                        : "bg-blue-600 hover:bg-blue-700 focus:ring-blue-500"
+                                    ? "bg-gray-400 cursor-not-allowed"
+                                    : "bg-blue-600 hover:bg-blue-700 focus:ring-blue-500"
                                     }`}
                             >
                                 {c.currentSlot >= c.maxSlots ? "Class Full" : "Enroll Now"}

@@ -12,7 +12,8 @@ export default function MajorManagementPage() {
 
     const fetchMajors = async () => {
         try {
-            const res = await fetch("http://localhost:3000/api/majors");
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+            const res = await fetch(`${apiUrl}/api/majors`);
             if (res.ok) {
                 const data = await res.json();
                 setMajors(data);

@@ -23,7 +23,8 @@ export default function DashboardPage() {
                 router.push('/');
                 return;
             }
-            const res = await axios.get('http://localhost:3000/api/students', {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+            const res = await axios.get(`${apiUrl}/api/students`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             setStudents(res.data);
@@ -38,7 +39,8 @@ export default function DashboardPage() {
         e.preventDefault();
         try {
             const token = localStorage.getItem('accessToken');
-            await axios.post('http://localhost:3000/api/students', newStudent, {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+            await axios.post(`${apiUrl}/api/students`, newStudent, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             setNewStudent({ code: '', fullName: '', email: '', dob: '' });

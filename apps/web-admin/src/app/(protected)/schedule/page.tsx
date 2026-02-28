@@ -51,7 +51,8 @@ export default function AdminSchedulePage() {
         const fetchSchedule = async () => {
             try {
                 // Fetch direct to api-gateway port 3000
-                const res = await fetch('http://localhost:3000/api/enrollments/admin/classes/schedule');
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+                const res = await fetch(`${apiUrl}/api/enrollments/admin/classes/schedule`);
                 if (res.ok) {
                     const data = await res.json();
                     setClasses(data || []);
@@ -69,7 +70,8 @@ export default function AdminSchedulePage() {
     const fetchClassDetails = async (classId: string) => {
         setLoadingStudents(true);
         try {
-            const res = await fetch(`http://localhost:3000/api/enrollments/admin/classes/${classId}/enrollments`);
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+            const res = await fetch(`${apiUrl}/api/enrollments/admin/classes/${classId}/enrollments`);
             if (res.ok) {
                 const data = await res.json();
                 setStudentList(data || []);

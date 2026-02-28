@@ -23,7 +23,8 @@ export default function Dashboard() {
         }
 
         // Fetch Real Data from API Setup
-        fetch("http://localhost:3000/api/students/dashboard/stats")
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+        fetch(`${apiUrl}/api/students/dashboard/stats`)
             .then(res => {
                 if (!res.ok) throw new Error("Failed to load dashboard data");
                 return res.json();

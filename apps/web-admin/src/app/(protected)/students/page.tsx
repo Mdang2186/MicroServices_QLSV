@@ -15,7 +15,8 @@ export default function StudentManagementPage() {
 
     const fetchStudents = async () => {
         try {
-            const res = await fetch("http://localhost:3000/api/students");
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+            const res = await fetch(`${apiUrl}/api/students`);
             if (res.ok) {
                 const data = await res.json();
                 setStudents(data);
