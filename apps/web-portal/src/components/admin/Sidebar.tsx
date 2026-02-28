@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, Users, BookOpen, GraduationCap, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, BookOpen, GraduationCap, Settings, LogOut, Calendar } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 const navItems = [
     { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
+    { label: "Schedule", href: "/admin/schedule", icon: Calendar },
     { label: "Students", href: "/admin/students", icon: Users },
     { label: "Courses", href: "/admin/courses", icon: BookOpen },
     { label: "Grades", href: "/admin/grades", icon: GraduationCap },

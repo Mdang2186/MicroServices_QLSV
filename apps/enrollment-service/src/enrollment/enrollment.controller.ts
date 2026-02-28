@@ -19,4 +19,15 @@ export class EnrollmentController {
     getStudentEnrollments(@Param('studentId') studentId: string) {
         return this.enrollmentService.getStudentEnrollments(studentId);
     }
+
+    // ===== ADMIN ENDPOINTS =====
+    @Get('admin/classes/schedule')
+    getAllClassesSchedule() {
+        return this.enrollmentService.getAllClassesSchedule();
+    }
+
+    @Get('admin/classes/:classId/enrollments')
+    getClassEnrollments(@Param('classId') classId: string) {
+        return this.enrollmentService.getClassEnrollments(classId);
+    }
 }

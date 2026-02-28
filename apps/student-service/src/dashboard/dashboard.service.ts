@@ -17,10 +17,17 @@ export class DashboardService {
             recentEnrollmentsRaw,
             attendanceGradesRaw,
             coursePopularityRaw,
-            enrollmentsRaw
+            enrollmentsRaw,
+
+            // New UNETI stats
+            totalFaculties,
+            totalMajors,
+            totalAdminClasses,
+            totalLecturers,
+            gpaDistributionRaw
         ] = await Promise.all([
             this.prisma.student.count(),
-            this.prisma.courseClass.count({ where: { status: 'OPEN' } }),
+            this.prisma.courseClass.count(),
             this.prisma.enrollment.aggregate({
                 _sum: { tuitionFee: true }
             }),
@@ -52,6 +59,17 @@ export class DashboardService {
             // For Enrollment Trends we'll fetch all with registeredAt and group in memory (Sql-server Prisma grouped-date is tricky)
             this.prisma.enrollment.findMany({
                 select: { registeredAt: true }
+            }),
+
+            // Execute System Stats (UNETI)
+            this.prisma.faculty.count(),
+            this.prisma.major.count(),
+            this.prisma.adminClass.count(),
+            this.prisma.lecturer.count(),
+
+            // GPA Distribution
+            this.prisma.student.findMany({
+                select: { gpa: true }
             })
         ]);
 
@@ -77,6 +95,24 @@ export class DashboardService {
             else if (score >= 7) attendanceDistribution[1].value++;
             else if (score >= 5) attendanceDistribution[2].value++;
             else attendanceDistribution[3].value++;
+        });
+
+        // Process GPA Distribution Buckets (UNETI 4.0 Scale)
+        const gpaDistribution = [
+            { name: "Xuất sắc (3.6 - 4.0)", value: 0, color: "#8b5cf6" }, // purple-500
+            { name: "Giỏi (3.2 - 3.59)", value: 0, color: "#3b82f6" },    // blue-500
+            { name: "Khá (2.5 - 3.19)", value: 0, color: "#06b6d4" },     // cyan-500
+            { name: "Trung bình (2.0 - 2.49)", value: 0, color: "#eab308" }, // yellow-500
+            { name: "Yếu (< 2.0)", value: 0, color: "#ef4444" }           // red-500
+        ];
+
+        gpaDistributionRaw.forEach(s => {
+            const gpa = s.gpa;
+            if (gpa >= 3.6) gpaDistribution[0].value++;
+            else if (gpa >= 3.2) gpaDistribution[1].value++;
+            else if (gpa >= 2.5) gpaDistribution[2].value++;
+            else if (gpa >= 2.0) gpaDistribution[3].value++;
+            else gpaDistribution[4].value++;
         });
 
         // Process Course Popularity
@@ -124,6 +160,12 @@ export class DashboardService {
             enrollments
         }));
 
+        // Calculate dynamic credits data based on GPA assuming fixed formulas or rough estimates 
+        // In real system we'd sum this from Debt but for Dashboard overview we can approximate based on seeded credits
+        const totalCreditsAssigned = await this.prisma.student.aggregate({
+            _sum: { totalCredits: true }
+        });
+
         return {
             totalStudents,
             activeCourses,
@@ -133,7 +175,17 @@ export class DashboardService {
             recentEnrollments,
             attendanceDistribution,
             coursePopularity,
-            enrollmentTrends
+            enrollmentTrends,
+
+            // Export UNETI new fields
+            systemStats: {
+                totalFaculties,
+                totalMajors,
+                totalAdminClasses,
+                totalLecturers
+            },
+            gpaDistribution,
+            totalCreditsAssigned: totalCreditsAssigned._sum.totalCredits || 0
         };
     }
 }
