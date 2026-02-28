@@ -65,10 +65,37 @@ export class EnrollmentService {
                     include: {
                         subject: true,
                         lecturer: true,
+                        schedules: true,
                     }
                 }
             },
             orderBy: { registeredAt: 'desc' }
+        });
+    }
+
+    async getAllClassesSchedule() {
+        return this.prisma.courseClass.findMany({
+            include: {
+                subject: true,
+                lecturer: true,
+                schedules: true,
+                _count: {
+                    select: { enrollments: true }
+                }
+            },
+            orderBy: { code: 'asc' }
+        });
+    }
+
+    async getClassEnrollments(classId: string) {
+        return this.prisma.enrollment.findMany({
+            where: { courseClassId: classId },
+            include: {
+                student: {
+                    include: { user: true, adminClass: true }
+                }
+            },
+            orderBy: { student: { studentCode: 'asc' } }
         });
     }
 }
