@@ -96,12 +96,12 @@ function LoginForm() {
 
                 <form onSubmit={handleLogin} className="space-y-6">
                     <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Email Address or Student ID</label>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Mã sinh viên hoặc Email</label>
                         <input
                             type="text"
                             required
                             className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="you@example.com or SV001"
+                            placeholder="Mã SV (VD: 22103100001) hoặc email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                         />

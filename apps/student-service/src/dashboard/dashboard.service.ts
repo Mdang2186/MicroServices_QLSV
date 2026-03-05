@@ -163,7 +163,7 @@ export class DashboardService {
         // Calculate dynamic credits data based on GPA assuming fixed formulas or rough estimates 
         // In real system we'd sum this from Debt but for Dashboard overview we can approximate based on seeded credits
         const totalCreditsAssigned = await this.prisma.student.aggregate({
-            _sum: { totalCredits: true }
+            _sum: { totalEarnedCredits: true }
         });
 
         return {
@@ -185,7 +185,7 @@ export class DashboardService {
                 totalLecturers
             },
             gpaDistribution,
-            totalCreditsAssigned: totalCreditsAssigned._sum.totalCredits || 0
+            totalCreditsAssigned: totalCreditsAssigned._sum.totalEarnedCredits || 0
         };
     }
 }

@@ -68,7 +68,7 @@ Copy file `.env.example` thành file `.env` tại thư mục gốc của dự á
 Cấu hình các thông số cơ bản (Mặc định thường đã được set sẵn để chạy local):
 
 ```env
-DATABASE_URL="postgresql://postgres:password@localhost:5432/university_db?schema=public"
+DATABASE_URL="sqlserver://localhost;database=student_db;integratedSecurity=true;trustServerCertificate=true;"
 REDIS_URL="redis://localhost:6379"
 JWT_SECRET="super-secret-jwt-key-for-development"
 ```

@@ -38,17 +38,15 @@ export function middleware(request: NextRequest) {
     // Redirect /admin paths to the Web Admin App if user has role
     // This avoids confusion between web-portal admin pages and the real web-admin app
     if (pathname.startsWith('/admin')) {
-        if (role === 'ADMIN_STAFF' || role === 'SUPER_ADMIN' || role === 'ADMIN') {
+        if (role === 'ACADEMIC_STAFF' || role === 'SUPER_ADMIN') {
             return NextResponse.redirect("http://localhost:4005/dashboard");
         } else {
-            // If not admin, go to dashboard
             return NextResponse.redirect(new URL('/portal/dashboard', request.url));
         }
     }
 
     if (pathname.startsWith('/portal') && role !== 'STUDENT') {
-        // If admin tries to go to student portal, redirect to Admin App
-        if (role === 'ADMIN_STAFF' || role === 'SUPER_ADMIN' || role === 'ADMIN') {
+        if (role === 'ACADEMIC_STAFF' || role === 'SUPER_ADMIN' || role === 'LECTURER') {
             return NextResponse.redirect("http://localhost:4005/dashboard");
         }
     }

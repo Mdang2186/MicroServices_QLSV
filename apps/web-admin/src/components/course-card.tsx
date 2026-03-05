@@ -34,8 +34,8 @@ export const CourseCard: React.FC<CourseCardProps> = ({
                 </div>
                 <div className="flex items-center gap-2">
                     <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${status === "Active" ? "bg-green-100 text-green-700" :
-                            status === "Upcoming" ? "bg-blue-100 text-blue-700" :
-                                "bg-gray-100 text-gray-700"
+                        status === "Upcoming" ? "bg-blue-100 text-blue-700" :
+                            "bg-gray-100 text-gray-700"
                         }`}>
                         {status}
                     </span>
