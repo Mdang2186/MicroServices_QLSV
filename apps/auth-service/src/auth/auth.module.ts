@@ -7,6 +7,8 @@ import { PassportModule } from "@nestjs/passport";
 import { JwtStrategy } from "./jwt.strategy";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 
+import { MailerModule } from "@nestjs-modules/mailer";
+
 @Module({
   imports: [
     PassportModule,
@@ -18,10 +20,28 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
       }),
       inject: [ConfigService],
     }),
+    MailerModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        transport: {
+          host: configService.get<string>("SMTP_HOST"),
+          port: Number(configService.get("SMTP_PORT") || 587),
+          secure: false, // true for 465, false for other ports
+          auth: {
+            user: configService.get<string>("SMTP_USER"),
+            pass: configService.get<string>("SMTP_PASS"),
+          },
+        },
+        defaults: {
+          from: `"No Reply" <${configService.get<string>("MAIL_FROM")}>`,
+        },
+      }),
+      inject: [ConfigService],
+    }),
     ConfigModule,
   ],
   providers: [AuthService, PrismaService, JwtStrategy],
   controllers: [AuthController],
   exports: [AuthService],
 })
-export class AuthModule {}
+export class AuthModule { }

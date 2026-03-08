@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Cookies from "js-cookie";
 import { EnrollmentChart, GpaPieChart } from "@/components/charts";
-import { Building2, BookOpen, Users, CircleDollarSign, Fingerprint, CalendarDays, TrendingUp } from "lucide-react";
+import { Building2, BookOpen, Users, CircleDollarSign, Fingerprint, CalendarDays, TrendingUp, ShieldCheck } from "lucide-react";
 
 export default function AdminDashboard() {
     const [user, setUser] = useState<any>(null);
@@ -44,95 +44,95 @@ export default function AdminDashboard() {
             </div>
 
             {/* Welcome Banner */}
-            <div className="relative bg-gradient-to-br from-[#f0f5ff] to-[#f4f7fe] rounded-[20px] sm:rounded-[24px] p-6 sm:p-8 md:p-10 flex flex-col lg:flex-row items-start lg:items-center justify-between border border-white shadow-sm overflow-hidden gap-6">
-                <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-br from-blue-100/50 to-indigo-100/50 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
+            <div className="relative bg-white rounded-3xl p-6 sm:p-8 flex flex-col lg:flex-row items-start lg:items-center justify-between border border-slate-100 shadow-sm overflow-hidden gap-6">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-uneti-blue-light/50 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none"></div>
 
-                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 relative z-10 w-full lg:w-auto">
-                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-200 shrink-0">
-                        <span className="text-2xl sm:text-3xl font-bold">{user?.username?.charAt(0).toUpperCase() || "A"}</span>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-5 relative z-10 w-full lg:w-auto">
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-uneti-blue text-white flex items-center justify-center shadow-lg shadow-uneti-blue/20 shrink-0">
+                        <span className="text-xl sm:text-2xl font-black">{user?.username?.charAt(0).toUpperCase() || "A"}</span>
                     </div>
                     <div className="flex-1">
-                        <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-slate-800 tracking-tight leading-tight">
-                            Hệ thống, <span className="text-blue-600">{user?.username || "Admin"}</span>
-                        </h1>
-                        <p className="text-slate-500 font-medium mt-1 text-xs sm:text-sm flex items-center gap-2">
-                            <Fingerprint size={16} className="text-blue-400" />
+                        <div className="flex items-center gap-2">
+                            <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight leading-tight">
+                                Hệ thống, <span className="text-uneti-blue">{user?.username || "Admin"}</span>
+                            </h1>
+                        </div>
+                        <p className="text-slate-400 font-semibold mt-0.5 text-[10px] sm:text-xs flex items-center gap-2 uppercase tracking-wider">
+                            <ShieldCheck size={14} className="text-uneti-blue" />
                             Quản trị viên cấp cao • UNETI
                         </p>
                     </div>
                 </div>
 
-                <div className="flex w-full lg:w-auto items-center gap-3 sm:gap-6 relative z-10 overflow-x-auto pb-2 lg:pb-0 scrollbar-hide">
-                    <div className="flex flex-col items-center bg-white px-4 sm:px-5 py-2 sm:py-3 rounded-2xl border border-slate-100 shadow-sm min-w-[80px] sm:min-w-[100px] shrink-0">
-                        <span className="text-xl sm:text-2xl font-black text-blue-600">{stats?.systemStats?.totalFaculties || 0}</span>
-                        <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Khoa</span>
-                    </div>
-                    <div className="flex flex-col items-center bg-white px-4 sm:px-5 py-2 sm:py-3 rounded-2xl border border-slate-100 shadow-sm min-w-[80px] sm:min-w-[100px] shrink-0">
-                        <span className="text-xl sm:text-2xl font-black text-blue-600">{stats?.systemStats?.totalMajors || 0}</span>
-                        <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Ngành</span>
-                    </div>
-                    <div className="flex flex-col items-center bg-white px-4 sm:px-5 py-2 sm:py-3 rounded-2xl border border-slate-100 shadow-sm min-w-[100px] sm:min-w-[120px] shrink-0">
-                        <span className="text-xl sm:text-2xl font-black text-blue-600">{stats?.systemStats?.totalLecturers || 0}</span>
-                        <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Đội ngũ GV</span>
-                    </div>
+                <div className="flex w-full lg:w-auto items-center gap-3 sm:gap-4 relative z-10 overflow-x-auto pb-1 lg:pb-0 scrollbar-hide">
+                    {[
+                        { label: "Khoa", value: stats?.systemStats?.totalFaculties || 0 },
+                        { label: "Ngành", value: stats?.systemStats?.totalMajors || 0 },
+                        { label: "Đội ngũ GV", value: stats?.systemStats?.totalLecturers || 0 },
+                    ].map((s, idx) => (
+                        <div key={idx} className="flex flex-col items-center bg-slate-50 px-4 py-2 rounded-xl border border-slate-100 min-w-[80px] shrink-0">
+                            <span className="text-lg sm:text-xl font-black text-uneti-blue">{s.value}</span>
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{s.label}</span>
+                        </div>
+                    ))}
                 </div>
             </div>
 
             {/* Quick Stats Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-                <div className="bg-white rounded-[20px] p-5 sm:p-6 shadow-sm border border-slate-100 relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-3 sm:p-4">
-                        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:-rotate-3 transition-transform">
-                            <Users size={20} className="sm:w-6 sm:h-6" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
+                <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-4">
+                        <div className="w-10 h-10 bg-uneti-blue-light text-uneti-blue rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform">
+                            <Users size={18} />
                         </div>
                     </div>
                     <div>
-                        <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 mb-1 tracking-widest uppercase">Tổng Sinh Viên</p>
-                        <h3 className="text-3xl sm:text-4xl font-extrabold text-slate-800">{stats?.totalStudents?.toLocaleString("vi-VN") || "0"}</h3>
-                        <p className="text-[11px] sm:text-xs font-semibold text-emerald-500 flex items-center gap-1 mt-2">
-                            <TrendingUp size={12} /> Số liệu toàn trường
+                        <p className="text-[9px] font-bold text-slate-400 mb-1 tracking-widest uppercase">Tổng Sinh Viên</p>
+                        <h3 className="text-2xl font-black text-slate-800">{stats?.totalStudents?.toLocaleString("vi-VN") || "0"}</h3>
+                        <p className="text-[10px] font-bold text-emerald-500 flex items-center gap-1 mt-2 uppercase tracking-wide">
+                            <TrendingUp size={10} /> Toàn trường
                         </p>
                     </div>
                 </div>
 
-                <div className="bg-white rounded-[20px] p-5 sm:p-6 shadow-sm border border-slate-100 relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-3 sm:p-4">
-                        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-50 text-indigo-500 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:-rotate-3 transition-transform">
-                            <BookOpen size={20} className="sm:w-6 sm:h-6" />
+                <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-4">
+                        <div className="w-10 h-10 bg-indigo-50 text-indigo-500 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform">
+                            <BookOpen size={18} />
                         </div>
                     </div>
                     <div>
-                        <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 mb-1 tracking-widest uppercase">Lớp Học Phần</p>
-                        <h3 className="text-3xl sm:text-4xl font-extrabold text-slate-800">{stats?.activeCourses || "0"}</h3>
-                        <p className="text-[11px] sm:text-xs font-semibold text-slate-400 mt-2">Đang mở học kỳ này</p>
+                        <p className="text-[9px] font-bold text-slate-400 mb-1 tracking-widest uppercase">Lớp Học Phần</p>
+                        <h3 className="text-2xl font-black text-slate-800">{stats?.activeCourses || "0"}</h3>
+                        <p className="text-[10px] font-semibold text-slate-400 mt-2 uppercase tracking-wide">Đang mở học kỳ</p>
                     </div>
                 </div>
 
-                <div className="bg-white rounded-[20px] p-5 sm:p-6 shadow-sm border border-slate-100 relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-3 sm:p-4">
-                        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-purple-50 text-purple-500 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:-rotate-3 transition-transform">
-                            <CircleDollarSign size={20} className="sm:w-6 sm:h-6" />
+                <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-4">
+                        <div className="w-10 h-10 bg-fuchsia-50 text-fuchsia-500 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform">
+                            <CircleDollarSign size={18} />
                         </div>
                     </div>
                     <div>
-                        <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 mb-1 tracking-widest uppercase">Doanh thu dự kiến</p>
-                        <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-800 tracking-tight">
-                            {((stats?.totalRevenue || 0) / 1e9).toFixed(1)} <span className="text-base sm:text-lg text-slate-400">Tỷ</span>
+                        <p className="text-[9px] font-bold text-slate-400 mb-1 tracking-widest uppercase">Doanh thu dự kiến</p>
+                        <h3 className="text-2xl font-black text-slate-800 tracking-tight">
+                            {((stats?.totalRevenue || 0) / 1e9).toFixed(1)} <span className="text-sm text-slate-400">Tỷ</span>
                         </h3>
-                        <p className="text-[11px] sm:text-xs font-semibold text-slate-400 mt-2">Tổng thu học phí</p>
+                        <p className="text-[10px] font-semibold text-slate-400 mt-2 uppercase tracking-wide">Học phí tổng</p>
                     </div>
                 </div>
 
-                <div className="bg-white rounded-[20px] p-5 sm:p-6 shadow-sm border border-slate-100 relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-3 sm:p-4">
-                        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-cyan-50 text-cyan-500 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:-rotate-3 transition-transform">
-                            <Building2 size={20} className="sm:w-6 sm:h-6" />
+                <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-4">
+                        <div className="w-10 h-10 bg-cyan-50 text-cyan-500 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform">
+                            <Building2 size={18} />
                         </div>
                     </div>
                     <div>
-                        <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 mb-1 tracking-widest uppercase">Lớp Hành Chính</p>
-                        <h3 className="text-3xl sm:text-4xl font-extrabold text-slate-800">{stats?.systemStats?.totalAdminClasses || "0"}</h3>
-                        <p className="text-[11px] sm:text-xs font-semibold text-slate-400 mt-2">Tổng lớp sinh hoạt</p>
+                        <p className="text-[9px] font-bold text-slate-400 mb-1 tracking-widest uppercase">Lớp Hành Chính</p>
+                        <h3 className="text-2xl font-black text-slate-800">{stats?.systemStats?.totalAdminClasses || "0"}</h3>
+                        <p className="text-[10px] font-semibold text-slate-400 mt-2 uppercase tracking-wide">Lớp sinh hoạt</p>
                     </div>
                 </div>
             </div>
@@ -141,46 +141,44 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
                 {/* Left: GPA Chart */}
-                <div className="bg-white rounded-[20px] sm:rounded-[24px] p-5 sm:p-6 shadow-sm border border-slate-100 flex flex-col">
-                    <h3 className="text-base sm:text-lg font-bold text-slate-800 mb-1">Phổ điểm GPA</h3>
-                    <p className="text-[11px] sm:text-xs text-slate-400 mb-6">Thống kê xếp loại hệ 4.0 toàn khối sinh viên</p>
-                    <div className="flex-1 flex items-center justify-center min-h-[250px]">
+                <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex flex-col">
+                    <h3 className="text-sm sm:text-base font-bold text-slate-800 uppercase tracking-tight">Phổ điểm GPA</h3>
+                    <p className="text-[10px] font-semibold text-slate-400 mt-0.5 uppercase tracking-wide">Xếp loại hệ 4.0</p>
+                    <div className="flex-1 flex items-center justify-center min-h-[200px] mt-4">
                         {stats?.gpaDistribution ? (
                             <GpaPieChart distribution={stats.gpaDistribution} />
                         ) : (
-                            <div className="text-slate-300 text-sm">Chưa đủ dữ liệu</div>
+                            <div className="text-slate-300 text-xs">Chưa đủ dữ liệu</div>
                         )}
                     </div>
                 </div>
 
                 {/* Right: Enrollment Trend */}
-                <div className="bg-white rounded-[20px] sm:rounded-[24px] p-5 sm:p-6 shadow-sm border border-slate-100 lg:col-span-2 flex flex-col">
-                    <h3 className="text-base sm:text-lg font-bold text-slate-800 mb-1">Xu hướng Ghi danh</h3>
-                    <p className="text-[11px] sm:text-xs text-slate-400 mb-6">Số lượng Sinh viên đăng ký tín chỉ 6 tháng gần nhất</p>
-                    <div className="flex-1 min-h-[250px] w-full overflow-x-auto scrollbar-hide">
-                        <div className="min-w-[400px] h-full">
-                            {stats?.enrollmentTrends ? (
-                                <EnrollmentChart trends={stats.enrollmentTrends} />
-                            ) : (
-                                <div className="flex items-center justify-center h-full text-slate-300 text-sm">Chưa đủ phản hồi từ DB</div>
-                            )}
-                        </div>
+                <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 lg:col-span-2 flex flex-col">
+                    <h3 className="text-sm sm:text-base font-bold text-slate-800 uppercase tracking-tight">Xu hướng Ghi danh</h3>
+                    <p className="text-[10px] font-semibold text-slate-400 mt-0.5 uppercase tracking-wide">6 tháng gần nhất</p>
+                    <div className="flex-1 min-h-[200px] w-full mt-4 overflow-hidden">
+                        {stats?.enrollmentTrends ? (
+                            <EnrollmentChart trends={stats.enrollmentTrends} />
+                        ) : (
+                            <div className="flex items-center justify-center h-full text-slate-300 text-xs">Đang tải dữ liệu...</div>
+                        )}
                     </div>
                 </div>
             </div>
 
             {/* Recent Table */}
-            <div className="bg-white rounded-[20px] sm:rounded-[24px] p-5 sm:p-6 shadow-sm border border-slate-100">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
                     <div>
-                        <h3 className="text-base sm:text-lg font-bold text-slate-800">Hoạt động đăng ký mới nhất</h3>
-                        <p className="text-[11px] sm:text-xs text-slate-400 mt-1">Real-time luồng quá trình nộp học phí và đăng ký</p>
+                        <h3 className="text-sm sm:text-base font-bold text-slate-800 uppercase tracking-tight">Hoạt động đăng ký</h3>
+                        <p className="text-[10px] font-semibold text-slate-400 mt-0.5 uppercase tracking-wide">Real-time luồng dữ liệu</p>
                     </div>
                     <div className="flex shrink-0">
-                        <span className="flex items-center gap-2 text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full">
-                            <span className="relative flex h-2 w-2">
+                        <span className="flex items-center gap-2 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full uppercase tracking-wider border border-emerald-100">
+                            <span className="relative flex h-1.5 w-1.5">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
                             </span>
                             Live Trực Tuyến
                         </span>
@@ -188,31 +186,31 @@ export default function AdminDashboard() {
                 </div>
 
                 {stats?.recentEnrollments?.length > 0 ? (
-                    <div className="overflow-x-auto -mx-5 sm:mx-0 px-5 sm:px-0">
-                        <table className="w-full text-left text-sm border-collapse min-w-[500px]">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
                             <thead>
-                                <tr className="border-b border-slate-100">
-                                    <th className="pb-3 text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">Học sinh</th>
-                                    <th className="pb-3 text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">Học phần</th>
-                                    <th className="pb-3 text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Thời gian</th>
+                                <tr className="border-b border-slate-50">
+                                    <th className="pb-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">Học sinh</th>
+                                    <th className="pb-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">Học phần</th>
+                                    <th className="pb-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Thời gian</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50">
                                 {stats.recentEnrollments.slice(0, 5).map((item: any, i: number) => (
-                                    <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                                        <td className="py-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs shrink-0">
-                                                    {item.img || "SV"}
+                                    <tr key={i} className="hover:bg-slate-50/50 transition-colors group">
+                                        <td className="py-3.5">
+                                            <div className="flex items-center gap-2.5">
+                                                <div className="w-7 h-7 rounded-full bg-uneti-blue-light text-uneti-blue flex items-center justify-center font-black text-[10px] shrink-0 border border-uneti-blue/10">
+                                                    {item.name?.charAt(0) || "SV"}
                                                 </div>
-                                                <span className="font-semibold text-slate-700 text-xs sm:text-sm">{item.name}</span>
+                                                <span className="font-bold text-slate-700 text-xs">{item.name}</span>
                                             </div>
                                         </td>
-                                        <td className="py-4 font-medium text-blue-600 text-xs sm:text-sm">
+                                        <td className="py-3.5 font-bold text-uneti-blue text-xs lowercase tracking-tight">
                                             {item.course}
                                         </td>
-                                        <td className="py-4 text-right text-[10px] sm:text-xs text-slate-400 font-medium whitespace-nowrap">
-                                            {new Date(item.time).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" })}
+                                        <td className="py-3.5 text-right text-[10px] text-slate-400 font-bold uppercase tracking-tight">
+                                            {new Date(item.time).toLocaleTimeString("vi-VN", { hour: '2-digit', minute: '2-digit' })} • {new Date(item.time).toLocaleDateString("vi-VN")}
                                         </td>
                                     </tr>
                                 ))}

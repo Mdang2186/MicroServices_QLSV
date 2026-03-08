@@ -86,13 +86,37 @@ export class StudentService {
   }
 
   async update(id: string, dto: UpdateStudentDto): Promise<StudentResponse> {
-    const { dob, ...rest } = dto;
+    const student = await this.prisma.student.findUnique({ where: { id }, include: { user: true } });
+    if (!student) throw new Error("Student not found");
+
+    const { dob, email, studentCode, ...rest } = dto;
+
+    // Update linked user if email changed
+    if (email && email !== student.user.email) {
+      await this.prisma.user.update({
+        where: { id: student.userId },
+        data: {
+          email: email,
+          username: studentCode || student.user.username
+        }
+      });
+    }
+
     return this.prisma.student.update({
       where: { id },
       data: {
         ...rest,
+        studentCode,
         dob: dob ? new Date(dob) : undefined,
       },
+      include: { user: true }
     }) as unknown as StudentResponse;
+  }
+
+  async remove(id: string) {
+    const student = await this.prisma.student.findUnique({ where: { id } });
+    if (!student) return null;
+    // Delete the user record, which will cascade delete the student profile
+    return this.prisma.user.delete({ where: { id: student.userId } });
   }
 }

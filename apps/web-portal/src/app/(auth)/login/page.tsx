@@ -36,9 +36,9 @@ function LoginForm() {
             const { accessToken, role, ...userData } = response.data;
 
             // Save token and user in Cookies (for Middleware)
-            Cookies.set("student_accessToken", accessToken, { expires: 1 }); // 1 day
-            Cookies.set("student_role", role, { expires: 1 });
-            Cookies.set("student_user", JSON.stringify({ role, ...userData }), { expires: 1 });
+            Cookies.set("student_accessToken", accessToken, { expires: 1, path: "/" }); // 1 day
+            Cookies.set("student_role", role, { expires: 1, path: "/" });
+            Cookies.set("student_user", JSON.stringify({ role, ...userData }), { expires: 1, path: "/" });
 
             // Legacy support
             localStorage.setItem("student_accessToken", accessToken);
@@ -117,6 +117,11 @@ function LoginForm() {
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                         />
+                        <div className="mt-2 text-right">
+                            <Link href="/forgot-password" title="Forgot Password" className="text-sm font-medium text-blue-600 hover:text-blue-500">
+                                Forgot password?
+                            </Link>
+                        </div>
                     </div>
 
                     <button
@@ -129,12 +134,6 @@ function LoginForm() {
                     </button>
                 </form>
 
-                <div className="mt-6 text-center text-sm text-gray-600">
-                    Don't have an account?{" "}
-                    <Link href="/register" className="font-medium text-blue-600 hover:text-blue-500">
-                        Sign up
-                    </Link>
-                </div>
             </div>
         </div>
     );

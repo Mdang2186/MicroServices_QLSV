@@ -4,37 +4,38 @@ import * as bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 // ============================================================================
-// 1. BỘ TỪ ĐIỂN TẠO DỮ LIỆU MẪU (DETERMINISTIC DATA - KHÔNG DÙNG RANDOM)
+// 1. BỘ TỪ ĐIỂN TẠO DỮ LIỆU MẪU (DETERMINISTIC DATA)
 // ============================================================================
-const lastNames = ["Nguyễn", "Trần", "Lê", "Phạm", "Hoàng", "Huỳnh", "Phan", "Vũ", "Võ", "Đặng", "Bùi", "Đỗ", "Hồ", "Ngô", "Dương", "Lý"];
-const middleNamesMale = ["Văn", "Hữu", "Đức", "Công", "Quang", "Minh", "Hoàng", "Thế", "Đình", "Xuân", "Mạnh", "Tuấn", "Trọng", "Phú"];
-const middleNamesFemale = ["Thị", "Ngọc", "Thu", "Phương", "Mai", "Thanh", "Bích", "Hồng", "Kim", "Lan", "Diễm", "Kiều", "Thúy"];
-const firstNamesMale = ["Anh", "Bảo", "Cường", "Dũng", "Dương", "Đạt", "Hải", "Hiếu", "Huy", "Khang", "Khoa", "Kiên", "Lâm", "Long", "Nam", "Nghĩa", "Phát", "Phúc", "Quân", "Thắng", "Thành", "Thiên", "Thịnh", "Trung", "Tuấn", "Việt"];
-const firstNamesFemale = ["An", "Anh", "Châu", "Chi", "Diệp", "Hà", "Hân", "Hoa", "Huyền", "Linh", "Ly", "Mai", "Ngân", "Nhi", "Nhung", "Oanh", "Quyên", "Quỳnh", "Trâm", "Trang", "Tú", "Uyên", "Vy", "Yến"];
-const provinces = ["Hà Nội", "Hà Nam", "Nam Định", "Thái Bình", "Ninh Bình", "Hưng Yên", "Hải Dương", "Hải Phòng", "Quảng Ninh", "Bắc Ninh", "Bắc Giang", "Phú Thọ", "Vĩnh Phúc", "Thái Nguyên", "Thanh Hóa", "Nghệ An", "Hà Tĩnh"];
+const lastNames = ["Nguyễn", "Trần", "Lê", "Phạm", "Hoàng", "Huỳnh", "Phan", "Vũ", "Võ", "Đặng", "Bùi", "Đỗ", "Hồ", "Ngô", "Dương", "Lý", "Mã", "Quách", "Tạ", "Lục"];
+const middleNamesMale = ["Văn", "Hữu", "Đức", "Công", "Quang", "Minh", "Hoàng", "Thế", "Đình", "Xuân", "Mạnh", "Tuấn", "Trọng", "Phú", "Khả", "Gia", "Bảo", "Lạc"];
+const middleNamesFemale = ["Thị", "Ngọc", "Thu", "Phương", "Mai", "Thanh", "Bích", "Hồng", "Kim", "Lan", "Diễm", "Kiều", "Thúy", "Mỹ", "Diệu", "Tâm", "Khánh"];
+const firstNamesMale = ["Anh", "Bảo", "Cường", "Dũng", "Dương", "Đạt", "Hải", "Hiếu", "Huy", "Khang", "Khoa", "Kiên", "Lâm", "Long", "Nam", "Nghĩa", "Phát", "Phúc", "Quân", "Thắng", "Thành", "Thiên", "Thịnh", "Trung", "Tuấn", "Việt", "Đông", "Phong", "Sơn", "Tùng"];
+const firstNamesFemale = ["An", "Anh", "Châu", "Chi", "Diệp", "Hà", "Hân", "Hoa", "Huyền", "Linh", "Ly", "Mai", "Ngân", "Nhi", "Nhung", "Oanh", "Quyên", "Quỳnh", "Trâm", "Trang", "Tú", "Uyên", "Vy", "Yến", "Thảo", "Tươi", "Nguyệt"];
+const provinces = ["Hà Nội", "Hà Nam", "Nam Định", "Thái Bình", "Ninh Bình", "Hưng Yên", "Hải Dương", "Hải Phòng", "Quảng Ninh", "Bắc Ninh", "Bắc Giang", "Phú Thọ", "Vĩnh Phúc", "Thái Nguyên", "Thanh Hóa", "Nghệ An", "Hà Tĩnh", "Quảng Bình", "Huế", "Đà Nẵng"];
 
-// --- Hàm tiện ích lấy dữ liệu theo quy luật (Deterministic) ---
 const getEl = (arr: any[], index: number) => arr[index % arr.length];
 const removeAccents = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D");
 
 // ============================================================================
-// 2. KỊCH BẢN SEED CHÍNH (Ghi đè thủ công UUID bằng String có nghĩa)
+// 2. KỊCH BẢN SEED CHÍNH
 // ============================================================================
 async function main() {
-    console.log("🚀 Bắt đầu dọn dẹp Database cũ (Clean up)...");
+    console.log("🚀 Starting database cleanup...");
 
-    // Xóa theo thứ tự Ràng buộc Khóa ngoại (Foreign Key)
-    await prisma.tuitionTransaction.deleteMany();
-    await prisma.tuitionFee.deleteMany();
+    // Delete in reverse order of foreign key constraints
+    await prisma.feeTransaction.deleteMany();
+    await prisma.studentFee.deleteMany();
+    await prisma.familyMember.deleteMany();
+    await prisma.trainingScore.deleteMany();
     await prisma.attendance.deleteMany();
     await prisma.grade.deleteMany();
     await prisma.enrollment.deleteMany();
+    await prisma.student.deleteMany();
     await prisma.classSchedule.deleteMany();
     await prisma.room.deleteMany();
     await prisma.courseClass.deleteMany();
-    await prisma.prerequisite.deleteMany();
+    await prisma.curriculum.deleteMany();
     await prisma.subject.deleteMany();
-    await prisma.student.deleteMany();
     await prisma.adminClass.deleteMany();
     await prisma.lecturer.deleteMany();
     await prisma.major.deleteMany();
@@ -42,14 +43,12 @@ async function main() {
     await prisma.semester.deleteMany();
     await prisma.user.deleteMany();
 
-    console.log("🌱 Database đã sạch. Bắt đầu gieo hạt dữ liệu mô hình UNETI (Quy tắc ID 11 số tuyệt đối, bao gồm ID Primary Key)...");
+    console.log("🌱 Database cleaned. Seeding new data for 2026...");
 
     const defaultPassword = await bcrypt.hash("123456", 10);
 
-    // --- 1. TẠO TÀI KHOẢN ADMIN & PHÒNG ĐÀO TẠO (MÃ 11 SỐ) ---
-    console.log("➤ Khởi tạo hệ thống Admin & Nhân viên Phòng Đào tạo...");
-
-    const adminCode = "90000000001";
+    // --- 1. IAM (Admin & Staff) ---
+    const adminCode = "admin";
     await prisma.user.create({
         data: {
             id: `USR_${adminCode}`,
@@ -59,361 +58,488 @@ async function main() {
             role: "SUPER_ADMIN",
             avatarUrl: "https://ui-avatars.com/api/?name=Admin+Uneti&background=0D8ABC&color=fff",
             isActive: true,
-            lastLogin: new Date(),
         },
     });
 
-    const staffCodes = ["80000000001", "80000000002"];
-    await prisma.user.createMany({
-        data: [
-            {
-                id: `USR_${staffCodes[0]}`,
-                username: staffCodes[0],
-                email: "daotao1@uneti.edu.vn",
+    const staffNames = ["staff1", "staff2", "staff3"];
+    for (const name of staffNames) {
+        await prisma.user.create({
+            data: {
+                id: `USR_${name}`,
+                username: name,
+                email: `${name}@uneti.edu.vn`,
                 passwordHash: defaultPassword,
                 role: "ACADEMIC_STAFF",
-                avatarUrl: "https://ui-avatars.com/api/?name=Phong+Dao+Tao+1&background=28B463&color=fff",
+                avatarUrl: `https://ui-avatars.com/api/?name=Staff+${name}&background=28B463&color=fff`,
                 isActive: true,
             },
-            {
-                id: `USR_${staffCodes[1]}`,
-                username: staffCodes[1],
-                email: "daotao2@uneti.edu.vn",
-                passwordHash: defaultPassword,
-                role: "ACADEMIC_STAFF",
-                avatarUrl: "https://ui-avatars.com/api/?name=Phong+Dao+Tao+2&background=28B463&color=fff",
-                isActive: true,
-            }
-        ]
+        });
+    }
+
+    // --- 2. Semesters & Rooms ---
+    console.log("➤ Creating Semesters & Rooms...");
+    const semSummer = await prisma.semester.create({
+        data: {
+            id: "SEM_HKH_2526",
+            code: "HKH_2025_2026",
+            name: "Học kỳ Hè Năm học 2025-2026",
+            year: 2026,
+            startDate: new Date("2026-06-01"),
+            endDate: new Date("2026-08-31"),
+            isCurrent: false,
+        },
     });
 
-    // --- 2. TẠO HỌC KỲ VÀ PHÒNG HỌC ---
-    console.log("➤ Khởi tạo Học kỳ và Phòng học...");
-    const semCode = "HK1_2025_2026";
-    const semester = await prisma.semester.create({
+    const sem1 = await prisma.semester.create({
         data: {
-            id: `SEM_${semCode}`,
-            code: semCode,
-            name: "Học kỳ 1 Năm học 2025-2026",
-            year: 2025,
-            startDate: new Date("2025-09-05"),
-            endDate: new Date("2026-01-15"),
+            id: "SEM_HK1_2627",
+            code: "HK1_2026_2027",
+            name: "Học kỳ 1 Năm học 2026-2027",
+            year: 2026,
+            startDate: new Date("2026-09-05"),
+            endDate: new Date("2027-01-15"),
             isCurrent: true,
-            registerStartDate: new Date("2025-08-15"),
-            registerEndDate: new Date("2025-08-30"),
+            registerStartDate: new Date("2026-08-01"),
+            registerEndDate: new Date("2026-08-20"),
+        },
+    });
+
+    const sem2 = await prisma.semester.create({
+        data: {
+            id: "SEM_HK2_2627",
+            code: "HK2_2026_2027",
+            name: "Học kỳ 2 Năm học 2026-2027",
+            year: 2027,
+            startDate: new Date("2027-02-15"),
+            endDate: new Date("2027-06-30"),
+            isCurrent: false,
+            registerStartDate: new Date("2027-01-01"),
+            registerEndDate: new Date("2027-01-15"),
         },
     });
 
     const rooms = [];
-    for (let i = 1; i <= 6; i++) {
-        rooms.push(await prisma.room.create({ data: { id: `ROOM_P30${i}`, name: `P.${300 + i}`, building: "HA8", capacity: 45, type: "THEORY" } }));
-        rooms.push(await prisma.room.create({ data: { id: `ROOM_L40${i}`, name: `Lab.${400 + i}`, building: "HA9", capacity: 40, type: "PRACTICE" } }));
+    for (let i = 1; i <= 10; i++) {
+        rooms.push(await prisma.room.create({ data: { id: `ROOM_P${100 + i}`, name: `P.${100 + i}`, building: "HA8", capacity: 60, type: "THEORY" } }));
+        rooms.push(await prisma.room.create({ data: { id: `ROOM_L${200 + i}`, name: `Lab.${200 + i}`, building: "HA9", capacity: 40, type: "PRACTICE" } }));
     }
 
-    // --- 3. TẠO KHOA & NGÀNH ---
-    console.log("➤ Khởi tạo Khoa & Ngành đào tạo...");
-    const facultyIT = await prisma.faculty.create({
-        data: {
-            id: "FAC_CNTT", code: "CNTT", name: "Khoa Công nghệ Thông tin", deanName: "PGS.TS Nguyễn Văn IT",
-            majors: {
-                create: [
-                    { id: "MAJ_KTPM", code: "KTPM", name: "Kỹ thuật phần mềm", totalCreditsRequired: 150 },
-                    { id: "MAJ_MMT", code: "MMT", name: "Mạng máy tính & TT", totalCreditsRequired: 150 }
-                ]
-            },
-        }, include: { majors: true },
-    });
-
-    const facultyEco = await prisma.faculty.create({
-        data: {
-            id: "FAC_KT", code: "KT", name: "Khoa Kinh tế", deanName: "TS. Trần Thị Kinh Tế",
-            majors: {
-                create: [
-                    { id: "MAJ_QTKD", code: "QTKD", name: "Quản trị kinh doanh", totalCreditsRequired: 135 },
-                    { id: "MAJ_KTK", code: "KTK", name: "Kế toán", totalCreditsRequired: 135 }
-                ]
-            },
-        }, include: { majors: true },
-    });
-
-    const itMajorId = "MAJ_KTPM";
-    const ecoMajorId = "MAJ_QTKD";
-
-    // --- 4. TẠO MÔN HỌC & ĐIỀU KIỆN TIÊN QUYẾT ---
-    const subjects = [
-        await prisma.subject.create({ data: { id: "SUB_IT01", code: "IT01", name: "Lập trình C/C++", credits: 3, majorId: itMajorId, theoryCredits: 2, practiceCredits: 1, department: "Bộ môn Cơ sở", isMandatory: true } }),
-        await prisma.subject.create({ data: { id: "SUB_IT02", code: "IT02", name: "Cấu trúc dữ liệu và giải thuật", credits: 4, majorId: itMajorId, theoryCredits: 3, practiceCredits: 1, department: "Bộ môn Hệ thống", isMandatory: true } }),
-        await prisma.subject.create({ data: { id: "SUB_IT03", code: "IT03", name: "Toán rời rạc", credits: 2, majorId: itMajorId, theoryCredits: 2, practiceCredits: 0, department: "Bộ môn Cơ sở", isMandatory: true } }),
-        await prisma.subject.create({ data: { id: "SUB_ECO01", code: "ECO01", name: "Kinh tế vi mô", credits: 3, majorId: ecoMajorId, theoryCredits: 3, practiceCredits: 0, department: "Bộ môn Kinh tế", isMandatory: true } }),
-        await prisma.subject.create({ data: { id: "SUB_ECO02", code: "ECO02", name: "Marketing căn bản", credits: 3, majorId: ecoMajorId, theoryCredits: 3, practiceCredits: 0, department: "Bộ môn QTKD", isMandatory: true } }),
+    // --- 3. Faculties & Majors ---
+    console.log("➤ Creating Faculties & Majors...");
+    const faculties = [
+        { id: "FAC_CNTT", code: "CNTT", name: "Khoa Công nghệ Thông tin", dean: "PGS.TS Nguyễn Văn IT" },
+        { id: "FAC_KT", code: "KT", name: "Khoa Kinh tế", dean: "TS. Trần Thị Kinh Tế" },
+        { id: "FAC_NN", code: "NN", name: "Khoa Ngoại ngữ", dean: "ThS. Lê Văn Anh" },
     ];
 
-    await prisma.prerequisite.create({
-        data: { id: "PRE_IT02_IT01", subjectId: "SUB_IT02", prerequisiteId: "SUB_IT01", type: "BẮT BUỘC" }
-    });
+    for (const f of faculties) {
+        await prisma.faculty.create({
+            data: { id: f.id, code: f.code, name: f.name, deanName: f.dean }
+        });
+    }
 
-    // --- 5. TẠO GIẢNG VIÊN (MÃ 11 SỐ) ---
-    console.log("➤ Khởi tạo Đội ngũ Giảng viên...");
+    const majors = [
+        { id: "MAJ_KTPM", facultyId: "FAC_CNTT", code: "KTPM", name: "Kỹ thuật phần mềm", credits: 150, mCode: "103" },
+        { id: "MAJ_KHMT", facultyId: "FAC_CNTT", code: "KHMT", name: "Khoa học máy tính", credits: 150, mCode: "101" },
+        { id: "MAJ_QTKD", facultyId: "FAC_KT", code: "QTKD", name: "Quản trị kinh doanh", credits: 135, mCode: "205" },
+        { id: "MAJ_KETOAN", facultyId: "FAC_KT", code: "KTK", name: "Kế toán", credits: 135, mCode: "201" },
+        { id: "MAJ_NNA", facultyId: "FAC_NN", code: "NNA", name: "Ngôn ngữ Anh", credits: 130, mCode: "301" },
+        { id: "MAJ_NNT", facultyId: "FAC_NN", code: "NNT", name: "Ngôn ngữ Trung", credits: 130, mCode: "302" },
+    ];
+
+    for (const m of majors) {
+        await prisma.major.create({
+            data: { id: m.id, facultyId: m.facultyId, code: m.code, name: m.name, totalCreditsRequired: m.credits }
+        });
+    }
+
+    // --- 4. Subjects ---
+    console.log("➤ Creating Subjects...");
+    const subjectData = [
+        { id: "SUB_CS01", majorId: "MAJ_KTPM", code: "CS01", name: "Cơ sở dữ liệu", credits: 3 },
+        { id: "SUB_CS02", majorId: "MAJ_KTPM", code: "CS02", name: "Lập trình Web", credits: 3 },
+        { id: "SUB_CS03", majorId: "MAJ_KHMT", code: "CS03", name: "Trí tuệ nhân tạo", credits: 3 },
+        { id: "SUB_CS04", majorId: "MAJ_KHMT", code: "CS04", name: "Học máy", credits: 4 },
+        { id: "SUB_BM01", majorId: "MAJ_QTKD", code: "BM01", name: "Quản trị học", credits: 3 },
+        { id: "SUB_BM02", majorId: "MAJ_QTKD", code: "BM02", name: "Marketing căn bản", credits: 3 },
+        { id: "SUB_BM03", majorId: "MAJ_KETOAN", code: "BM03", name: "Nguyên lý kế toán", credits: 3 },
+        { id: "SUB_BM04", majorId: "MAJ_KETOAN", code: "BM04", name: "Kế toán tài chính", credits: 4 },
+        { id: "SUB_EN01", majorId: "MAJ_NNA", code: "EN01", name: "Tiếng Anh chuyên ngành 1", credits: 3 },
+        { id: "SUB_EN02", majorId: "MAJ_NNA", code: "EN02", name: "Kỹ năng nghe nói 1", credits: 3 },
+        { id: "SUB_ZH01", majorId: "MAJ_NNT", code: "ZH01", name: "Hán ngữ cơ sở 1", credits: 4 },
+        { id: "SUB_ZH02", majorId: "MAJ_NNT", code: "ZH02", name: "Hán ngữ nâng cao", credits: 3 },
+    ];
+
+    for (const s of subjectData) {
+        await prisma.subject.create({
+            data: {
+                id: s.id,
+                majorId: s.majorId,
+                code: s.code,
+                name: s.name,
+                credits: s.credits,
+                theoryHours: s.credits * 15,
+                practiceHours: 0,
+                department: "Bộ môn Chuyên ngành",
+                description: `Mô tả môn học ${s.name}`
+            }
+        });
+    }
+
+    // --- 5. Lecturers ---
+    console.log("➤ Creating 10 Lecturers...");
     const lecturers = [];
-    for (let i = 1; i <= 6; i++) {
-        const isIT = i <= 3;
-        const code = `3000000000${i}`; // Giảng viên bắt đầu bằng số 3
-        const fullName = `${getEl(lastNames, i)} ${getEl(middleNamesMale, i)} ${getEl(firstNamesMale, i)}`;
+    for (let i = 1; i <= 10; i++) {
+        const code = `300000000${i.toString().padStart(2, '0')}`;
+        const isMale = i % 2 !== 0;
+        const fullName = `${getEl(lastNames, i)} ${isMale ? getEl(middleNamesMale, i) : getEl(middleNamesFemale, i)} ${isMale ? getEl(firstNamesMale, i) : getEl(firstNamesFemale, i)}`;
+        const facultyId = i <= 4 ? "FAC_CNTT" : i <= 7 ? "FAC_KT" : "FAC_NN";
 
         const user = await prisma.user.create({
             data: {
-                id: `USR_${code}`, username: code, email: `gv${code}@uneti.edu.vn`, passwordHash: defaultPassword, role: "LECTURER",
-                avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=random`
-            },
+                id: `USR_${code}`, username: code, email: `gv${i}@uneti.edu.vn`, passwordHash: defaultPassword, role: "LECTURER",
+                avatarUrl: `https://i.pravatar.cc/150?u=${code}`
+            }
         });
 
         const lect = await prisma.lecturer.create({
             data: {
-                id: `LEC_${code}`, userId: user.id, facultyId: isIT ? facultyIT.id : facultyEco.id, lectureCode: code,
-                fullName: fullName, degree: getEl(["Thạc sĩ", "Tiến sĩ", "PGS.TS"], i),
-                phone: `098${i.toString().padStart(7, '0')}` // SĐT quy tắc
-            },
+                id: `LEC_${code}`, userId: user.id, facultyId, lectureCode: code, fullName, degree: getEl(["Thạc sĩ", "Tiến sĩ", "PGS.TS"], i), phone: `098711${code.slice(-5)}`
+            }
         });
         lecturers.push(lect);
     }
 
-    // --- 6. TẠO LỚP HÀNH CHÍNH & 100 SINH VIÊN (MÃ 11 SỐ QUY TẮC) ---
-    console.log("➤ Khởi tạo Lớp danh nghĩa & Hồ sơ Sinh viên...");
-
-    const classConfigs = [
-        { code: "DHTI15A1", majorId: itMajorId, cohort: "K15", year: 21, majorCode: "103" },
-        { code: "DHTI16A4", majorId: itMajorId, cohort: "K16", year: 22, majorCode: "103" }, // Lớp A4, Khóa 16 CNTT
-        { code: "DHTI17A7", majorId: itMajorId, cohort: "K17", year: 23, majorCode: "103" }, // Lớp A7, Khóa 17 CNTT
-        { code: "DHKQ15A2", majorId: ecoMajorId, cohort: "K15", year: 21, majorCode: "205" },
-        { code: "DHKQ16A1", majorId: ecoMajorId, cohort: "K16", year: 22, majorCode: "205" },
-    ];
-
-    const allStudents = [];
-    const studentSeqMap: Record<string, number> = {};
-
-    for (let classIndex = 0; classIndex < classConfigs.length; classIndex++) {
-        const config = classConfigs[classIndex];
-        const adminClassId = `ACLASS_${config.code}`;
+    // --- 6. Admin Classes & 150 Students ---
+    console.log("➤ Creating 150 Students across 6 Admin Classes...");
+    const adminClasses = [];
+    for (const m of majors) {
+        const classCode = `${m.code}15A${majors.indexOf(m) + 1}`;
         const adminClass = await prisma.adminClass.create({
-            data: { id: adminClassId, code: config.code, name: `Lớp ${config.code}`, majorId: config.majorId, cohort: config.cohort, advisorId: lecturers[classIndex % 6].id },
+            data: { id: `ACLASS_${classCode}`, code: classCode, name: `Lớp ${classCode}`, majorId: m.id, cohort: "K15", advisorId: lecturers[majors.indexOf(m) % lecturers.length].id }
         });
-
-        for (let i = 1; i <= 20; i++) {
-            // Quy tắc sinh ID 11 số của SV: [Năm 2 số] + [Mã Ngành 3 số] + [Hệ ĐH 1] + [Số thứ tự 5 số]
-            // VD: 22103100001
-            const prefix = `${config.year}${config.majorCode}1`;
-            const currentSeq = studentSeqMap[prefix] || 1;
-            studentSeqMap[prefix] = currentSeq + 1;
-
-            const svCode = `${prefix}${currentSeq.toString().padStart(5, '0')}`;
-
-            const isMale = currentSeq % 2 !== 0; // Quy tắc xen kẽ Nam/Nữ
-            const firstName = isMale ? getEl(firstNamesMale, currentSeq) : getEl(firstNamesFemale, currentSeq);
-            const middleName = isMale ? getEl(middleNamesMale, currentSeq) : getEl(middleNamesFemale, currentSeq);
-            const lastName = getEl(lastNames, currentSeq);
-            const fullName = `${lastName} ${middleName} ${firstName}`;
-            const birthYear = parseInt(`20${config.year}`, 10) - 18; // Tính năm sinh
-
-            // Quy tắc sinh mã CCCD (Mã Tỉnh 001 + Giới Tính + Năm Sinh + Sequence)
-            const cccd = `001${isMale ? '2' : '3'}${config.year}${currentSeq.toString().padStart(6, '0')}`;
-            // Quy tắc sinh SĐT (09 + Mã Ngành + Sequence)
-            const phone = `09${config.majorCode}${currentSeq.toString().padStart(5, '0')}`;
-
-            const user = await prisma.user.create({
-                data: {
-                    id: `USR_${svCode}`, username: svCode, email: `${svCode}@uneti.edu.vn`, passwordHash: defaultPassword, role: "STUDENT",
-                    avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(firstName)}&background=random`, lastLogin: new Date()
-                },
-            });
-
-            const student = await prisma.student.create({
-                data: {
-                    id: `STD_${svCode}`, userId: user.id, studentCode: svCode, fullName: fullName, dob: new Date(birthYear, 8, 5), // Sinh ngày 5/9 cố định
-                    gender: isMale ? "Nam" : "Nữ", phone: phone, address: `Thành phố ${getEl(provinces, currentSeq)}, Việt Nam`,
-                    citizenId: cccd, emailPersonal: `${removeAccents(firstName).toLowerCase()}${svCode}@gmail.com`,
-                    majorId: config.majorId, adminClassId: adminClass.id, status: "ACTIVE",
-                    gpa: 0.0, cpa: 0.0, totalEarnedCredits: 0
-                },
-            });
-            // Gắn thuộc tính `seq` để làm quy tắc điểm số phía dưới
-            allStudents.push({ ...student, adminClassCode: config.code, seq: currentSeq });
-        }
+        adminClasses.push({ ...adminClass, mCode: m.mCode });
     }
 
-    // --- 7. MỞ LỚP, XẾP LỊCH, GHI DANH & QUẢN LÝ TÀI CHÍNH ---
-    console.log("➤ Tự động Xếp lịch, Ghi danh, Điểm danh, Tính điểm & Xuất hóa đơn học phí...");
+    const students = [];
 
-    const tuitionPricePerCredit = 350000;
-
-    for (let i = 0; i < classConfigs.length; i++) {
-        const aCode = classConfigs[i].code;
-        const isITClass = aCode.includes("DHTI");
-        const studentsInClass = allStudents.filter(s => s.adminClassCode === aCode);
-        const classSubjects = isITClass ? subjects.filter(s => s.code.startsWith("IT")) : subjects.filter(s => s.code.startsWith("ECO"));
-
-        const totalCreditsThisSem = classSubjects.reduce((sum, sub) => sum + sub.credits, 0);
-        const totalTuitionFee = totalCreditsThisSem * tuitionPricePerCredit;
-
-        // Xử lý Học phí & Giao dịch
-        for (const sv of studentsInClass) {
-            const currentSeq = (sv as any).seq;
-            // QUY TẮC: Cứ bạn nào có sequence chia hết cho 10 thì sẽ NỢ HỌC PHÍ (Tức là 1 lớp 20 người sẽ có 2 người nợ)
-            const hasPaid = currentSeq % 10 !== 0;
-            const feeId = `FEE_${sv.studentCode}_${semester.code}`;
-
-            const fee = await prisma.tuitionFee.create({
-                data: {
-                    id: feeId, studentId: sv.id, semesterId: semester.id, totalAmount: totalTuitionFee,
-                    paidAmount: hasPaid ? totalTuitionFee : 0, status: hasPaid ? "PAID" : "DEBT", dueDate: new Date("2025-10-15")
-                }
-            });
-
-            if (hasPaid) {
-                // QUY TẮC TẠO MÃ GIAO DỊCH: TXN_[Mã Học Kỳ]_[Mã Sinh Viên]
-                const txnCode = `TXN_${semester.code}_${sv.studentCode}`;
-                await prisma.tuitionTransaction.create({
-                    data: {
-                        id: txnCode, tuitionFeeId: fee.id, amount: totalTuitionFee, paymentMethod: getEl(["BANKING", "MOMO", "VNPAY", "CASH"], currentSeq),
-                        transactionDate: new Date("2025-09-10"), transactionCode: txnCode
-                    }
-                });
-            }
-            (sv as any).isBannedDueToFinance = !hasPaid;
+    // Create one fixed student for easy login
+    const fixedSvCode = "22103100001";
+    const fixedUser = await prisma.user.create({
+        data: {
+            id: `USR_${fixedSvCode}`, username: fixedSvCode, email: `student@uneti.edu.vn`, passwordHash: defaultPassword, role: "STUDENT",
+            avatarUrl: `https://i.pravatar.cc/150?u=${fixedSvCode}`
         }
+    });
+    const fixedStudent = await prisma.student.create({
+        data: {
+            id: `STD_${fixedSvCode}`,
+            userId: fixedUser.id,
+            adminClassId: adminClasses[0].id,
+            majorId: adminClasses[0].majorId,
+            studentCode: "22103100001",
+            fullName: "Nguyễn Văn Sinh Viên",
+            dob: new Date(2004, 0, 1),
+            gender: "Nam",
+            phone: "0312345678",
+            address: "Số 1, Đường Giải Phóng, Hà Nội",
+            status: "STUDYING",
+            citizenId: "001204000001",
+            emailPersonal: "sinhvien@gmail.com",
+            admissionDate: new Date("2022-09-01"),
+            campus: "Hà Nội",
+            educationLevel: "Đại học",
+            educationType: "Chính quy",
+            intake: "K16",
+            ethnicity: "Kinh",
+            religion: "Không",
+            nationality: "Việt Nam",
+            region: "Khu vực 1",
+            idIssueDate: new Date("2020-01-01"),
+            idIssuePlace: "Cục Cảnh sát QLHC về TTXH",
+            policyBeneficiary: "Không",
+            youthUnionDate: new Date("2019-03-26"),
+            partyDate: new Date("2025-05-19"),
+            birthPlace: "Hà Nội",
+            permanentAddress: "Hà Nội",
+            bankName: "VietinBank",
+            bankBranch: "Hai Bà Trưng",
+            bankAccountName: "NGUYEN VAN SINH VIEN",
+            bankAccountNumber: "100872000001",
+            gpa: 3.5,
+            cpa: 3.4,
+            totalEarnedCredits: 60
+        }
+    });
+    students.push(fixedStudent);
 
-        // Xếp Lịch, Điểm Danh & Nhập Điểm
-        for (let j = 0; j < classSubjects.length; j++) {
-            const subject = classSubjects[j];
-            const lecturerIndex = isITClass ? (i % 3) : (3 + (i % 3));
-            const courseCode = `${subject.code}_${aCode}`;
+    for (let i = 1; i <= 49; i++) {
+        const clsIndex = i % adminClasses.length;
+        const cls = adminClasses[clsIndex];
+        const mCode = cls.mCode;
+        const svCode = `22${mCode}1${i.toString().padStart(5, '0')}`;
+        const isMale = i % 2 === 0;
+        const firstName = isMale ? getEl(firstNamesMale, i) : getEl(firstNamesFemale, i);
+        const middleName = isMale ? getEl(middleNamesMale, i) : getEl(middleNamesFemale, i);
+        const lastName = getEl(lastNames, i);
+        const fullName = `${lastName} ${middleName} ${firstName}`;
+
+        const cccd = `001${isMale ? '2' : '3'}04${i.toString().padStart(6, '0')}`;
+        const emailPersonal = `${removeAccents(firstName).toLowerCase()}${svCode}@gmail.com`;
+
+        const user = await prisma.user.create({
+            data: {
+                id: `USR_${svCode}`, username: svCode, email: `${svCode}@uneti.edu.vn`, passwordHash: defaultPassword, role: "STUDENT",
+                avatarUrl: `https://i.pravatar.cc/150?u=${svCode}`
+            }
+        });
+
+        const student = await prisma.student.create({
+            data: {
+                id: `STD_${svCode}`,
+                userId: user.id,
+                adminClassId: cls.id,
+                majorId: cls.majorId,
+                studentCode: svCode,
+                fullName,
+                dob: new Date(2004, i % 12, (i % 28) + 1),
+                gender: isMale ? "Nam" : "Nữ",
+                phone: `03${i.toString().padStart(8, '0')}`,
+                address: `Số ${i}, Đường Giải Phóng, ${getEl(provinces, i)}`,
+                status: "STUDYING",
+                citizenId: cccd,
+                emailPersonal: emailPersonal,
+                admissionDate: new Date("2022-09-01"),
+                campus: i % 2 === 0 ? "Hà Nội" : "Nam Định",
+                educationLevel: "Đại học",
+                educationType: "Chính quy",
+                intake: "K16",
+                ethnicity: "Kinh",
+                religion: "Không",
+                nationality: "Việt Nam",
+                region: "Khu vực 1",
+                idIssueDate: new Date("2020-01-01"),
+                idIssuePlace: "Cục Cảnh sát QLHC về TTXH",
+                policyBeneficiary: "Không",
+                youthUnionDate: new Date("2019-03-26"),
+                partyDate: new Date("2025-05-19"),
+                birthPlace: getEl(provinces, i),
+                permanentAddress: `Xóm ${i}, Xã ${getEl(provinces, i + 1)}, Tỉnh ${getEl(provinces, i + 1)}`,
+                bankName: "VietinBank",
+                bankBranch: "Hai Bà Trưng",
+                bankAccountName: fullName.toUpperCase(),
+                bankAccountNumber: `100872${i.toString().padStart(6, '0')}`,
+                gpa: 3.2,
+                cpa: 3.1,
+                totalEarnedCredits: 60
+            }
+        });
+
+        // Family Members
+        await prisma.familyMember.createMany({
+            data: [
+                {
+                    studentId: student.id,
+                    relationship: "Cha",
+                    fullName: `${lastName} ${getEl(middleNamesMale, i + 2)} ${getEl(firstNamesMale, i + 3)}`,
+                    birthYear: 1975,
+                    job: "Kỹ sư",
+                    phone: `0913${i.toString().padStart(6, '0')}`,
+                    ethnicity: "Kinh",
+                    religion: "Không",
+                    nationality: "Việt Nam",
+                    workplace: "Công ty ABC",
+                    position: "Trưởng phòng",
+                    address: student.address
+                },
+                {
+                    studentId: student.id,
+                    relationship: "Mẹ",
+                    fullName: `${getEl(lastNames, i + 1)} ${getEl(middleNamesFemale, i + 1)} ${getEl(firstNamesFemale, i + 1)}`,
+                    birthYear: 1978,
+                    job: "Giáo viên",
+                    phone: `0914${i.toString().padStart(6, '0')}`,
+                    ethnicity: "Kinh",
+                    religion: "Không",
+                    nationality: "Việt Nam",
+                    workplace: "Trường THPT XYZ",
+                    position: "Giáo viên",
+                    address: student.address
+                }
+            ]
+        });
+
+        students.push(student);
+    }
+
+    // --- 7. Courses, Schedules, Enrollments (HK1 & HK2) ---
+    console.log("➤ Generating Courses, Schedules, and Academic Records...");
+    const tuitionRate = 450000;
+
+    const semesters = [semSummer, sem1, sem2];
+    for (let sIdx = 0; sIdx < semesters.length; sIdx++) {
+        const sem = semesters[sIdx];
+        const studentCreditsThisSem = new Map<string, number>();
+
+        for (let j = 0; j < subjectData.length; j++) {
+            const sub = subjectData[j];
+            const courseCode = `${sub.code}_${sem.code.slice(0, 3)}_${j}`;
+            const lecturer = lecturers[j % lecturers.length];
 
             const courseClass = await prisma.courseClass.create({
                 data: {
-                    id: `CCLASS_${courseCode}`, code: courseCode, name: `${subject.name} - ${aCode}`, subjectId: subject.id,
-                    semesterId: semester.id, lecturerId: lecturers[lecturerIndex].id, maxSlots: 40, currentSlots: studentsInClass.length, status: "LOCKED",
-                    tuitionMultiplier: 1.0, adminClassCode: aCode
+                    id: `CCLASS_${courseCode}`,
+                    subjectId: sub.id,
+                    semesterId: sem.id,
+                    lecturerId: lecturer.id,
+                    code: courseCode,
+                    name: `${sub.name} [${sem.code}]`,
+                    maxSlots: 80,
+                    currentSlots: 0,
+                    status: "LOCKED"
                 }
             });
 
+            // Schedule: Ensure uniqueness by factoring in semester index
             await prisma.classSchedule.create({
                 data: {
-                    id: `SCH_${courseCode}`, courseClassId: courseClass.id, roomId: rooms[(i + j) % rooms.length].id,
-                    dayOfWeek: (j % 6) + 2, shift: (i % 3) * 2 + 1, type: "THEORY" // Xếp theo quy tắc để không trùng
+                    id: `SCH_${courseCode}`,
+                    courseClassId: courseClass.id,
+                    roomId: rooms[j % rooms.length].id,
+                    dayOfWeek: ((j + sIdx) % 6) + 2,
+                    startShift: ((j + sIdx * 2) % 4) * 3 + 1,
+                    endShift: (((j + sIdx * 2) % 4) * 3 + 1) + 2,
+                    type: "THEORY"
                 }
             });
 
-            for (const sv of studentsInClass) {
-                const enrId = `ENR_${sv.studentCode}_${courseCode}`;
+            // Enroll all students from the relevant major
+            const relevantStudents = students.filter(s => s.majorId === sub.majorId);
+            for (const sv of relevantStudents) {
                 const enrollment = await prisma.enrollment.create({
-                    data: { id: enrId, studentId: sv.id, courseClassId: courseClass.id, status: "SUCCESS", tuitionFee: subject.credits * tuitionPricePerCredit, isEligibleForExam: true }
+                    data: {
+                        studentId: sv.id,
+                        courseClassId: courseClass.id,
+                        status: "SUCCESS",
+                        tuitionFee: sub.credits * tuitionRate
+                    }
                 });
 
-                const currentSeq = (sv as any).seq;
+                // Track credits for single fee
+                studentCreditsThisSem.set(sv.id, (studentCreditsThisSem.get(sv.id) || 0) + sub.credits);
 
-                // QUY TẮC ĐIỂM DANH: Số buổi vắng là chuỗi lặp 0, 1, 2, 3, 4 (chia lấy dư cho 5)
-                const absentCount = currentSeq % 5;
-
-                for (let session = 1; session <= 15; session++) {
-                    const isAbsent = session <= absentCount; // Những buổi đầu sẽ là buổi vắng nếu absentCount > 0
-                    await prisma.attendance.create({
-                        data: { id: `ATT_${enrId}_S${session.toString().padStart(2, '0')}`, enrollmentId: enrollment.id, date: new Date(2025, 8, 5 + session * 7), status: isAbsent ? "ABSENT" : "PRESENT" }
-                    });
+                // Attendance & Grades
+                for (let week = 1; week <= 15; week++) {
+                    const attDate = new Date(sem.startDate.getTime() + week * 7 * 24 * 60 * 60 * 1000);
+                    if (attDate <= sem.endDate) {
+                        await prisma.attendance.create({
+                            data: {
+                                enrollmentId: enrollment.id,
+                                date: attDate,
+                                status: "PRESENT",
+                                note: "Sinh viên đi học đầy đủ"
+                            }
+                        });
+                    }
                 }
-
-                // Xét điều kiện cấm thi
-                let isBanned = false;
-                let banReason = "";
-                if ((sv as any).isBannedDueToFinance) { isBanned = true; banReason += "Nợ học phí. "; }
-                if (absentCount > 3) { isBanned = true; banReason += "Vắng quá 20% số buổi. "; }
-
-                if (isBanned) {
-                    await prisma.enrollment.update({
-                        where: { id: enrollment.id },
-                        data: { isEligibleForExam: false, banReason: banReason.trim() }
-                    });
-                }
-
-                // QUY TẮC TÍNH ĐIỂM: Không random, tính toán dựa vào sequence
-                const attScore = isBanned ? (currentSeq % 5) : (10 - absentCount);
-                const midScore = isBanned ? 0 : 5 + (currentSeq % 5); // Cột điểm từ 5 đến 9
-                const finScore = isBanned ? 0 : 5 + (currentSeq % 5) + 0.5; // Cột điểm từ 5.5 đến 9.5
-
-                const total10 = parseFloat((attScore * 0.1 + midScore * 0.3 + finScore * 0.6).toFixed(1));
-
-                let total4 = 0, letter = 'F', isPassed = false;
-                if (total10 >= 8.5) { total4 = 4.0; letter = 'A'; isPassed = true; }
-                else if (total10 >= 8.0) { total4 = 3.5; letter = 'B+'; isPassed = true; }
-                else if (total10 >= 7.0) { total4 = 3.0; letter = 'B'; isPassed = true; }
-                else if (total10 >= 6.5) { total4 = 2.5; letter = 'C+'; isPassed = true; }
-                else if (total10 >= 5.5) { total4 = 2.0; letter = 'C'; isPassed = true; }
-                else if (total10 >= 5.0) { total4 = 1.5; letter = 'D+'; isPassed = true; }
-                else if (total10 >= 4.0) { total4 = 1.0; letter = 'D'; isPassed = true; }
-
-                // Tính điểm hệ 4 và hệ chữ
 
                 await prisma.grade.create({
                     data: {
-                        id: `GRD_${sv.studentCode}_${courseCode}`, studentId: sv.id, courseClassId: courseClass.id, subjectId: subject.id,
-                        attendanceScore: attScore, midtermScore: midScore, finalScore: finScore,
-                        totalScore10: total10, totalScore4: total4, letterGrade: letter, isPassed: isPassed
+                        studentId: sv.id,
+                        courseClassId: courseClass.id,
+                        subjectId: sub.id,
+                        attendanceScore: 10,
+                        regularScore1: 8 + (j % 3),
+                        regularScore2: 9,
+                        practiceScore: 0,
+                        midtermScore: 8.5,
+                        finalScore: 8.0,
+                        totalScore10: 8.3,
+                        totalScore4: 3.5,
+                        letterGrade: "B+",
+                        isPassed: true
+                    }
+                });
+            }
+        }
+
+        // Create consolidated fees per student per semester
+        for (const [studentId, totalCredits] of studentCreditsThisSem.entries()) {
+            const studentFee = await prisma.studentFee.create({
+                data: {
+                    studentId,
+                    semesterId: sem.id,
+                    feeType: "TUITION",
+                    name: `Học phí ${sem.name}`,
+                    totalAmount: totalCredits * tuitionRate,
+                    finalAmount: totalCredits * tuitionRate,
+                    paidAmount: totalCredits * tuitionRate,
+                    status: "PAID",
+                    dueDate: new Date(sem.startDate.getTime() + 30 * 24 * 60 * 60 * 1000)
+                }
+            });
+
+            await prisma.feeTransaction.create({
+                data: {
+                    studentFeeId: studentFee.id,
+                    amount: studentFee.finalAmount,
+                    paymentMethod: "BANKING",
+                    transactionDate: new Date(sem.startDate.getTime() + 5 * 24 * 60 * 60 * 1000),
+                    transactionCode: `TX_${studentFee.id.slice(-8)}`
+                }
+            });
+
+            // Add health insurance fee once per year
+            if (sem.id === sem1.id) {
+                const insFee = await prisma.studentFee.create({
+                    data: {
+                        studentId,
+                        semesterId: sem.id,
+                        feeType: "INSURANCE",
+                        name: `Bảo hiểm y tế Năm học 2026-2027`,
+                        totalAmount: 702000,
+                        finalAmount: 702000,
+                        paidAmount: 702000,
+                        status: "PAID",
+                        dueDate: new Date(sem.startDate.getTime() + 15 * 24 * 60 * 60 * 1000)
+                    }
+                });
+
+                await prisma.feeTransaction.create({
+                    data: {
+                        studentFeeId: insFee.id,
+                        amount: 702000,
+                        paymentMethod: "BANKING",
+                        transactionDate: new Date(sem.startDate.getTime() + 2 * 24 * 60 * 60 * 1000),
+                        transactionCode: `TX_INS_${insFee.id.slice(-8)}`
                     }
                 });
             }
         }
     }
 
-    // --- 8. TÍNH TOÁN LẠI GPA VÀ CPA CHUẨN XÁC ---
-    console.log("➤ Đang cập nhật GPA (Học kỳ), CPA (Tích lũy) và Tổng tín chỉ cho sinh viên...");
-
-    for (const student of allStudents) {
-        const allGrades = await prisma.grade.findMany({
-            where: { studentId: student.id },
-            include: { subject: true, courseClass: true }
-        });
-
-        // Tính GPA học kỳ này
-        let semCreditsAttempted = 0;
-        let semTotalPoints = 0;
-        const currentSemesterGrades = allGrades.filter(g => g.courseClass.semesterId === semester.id);
-
-        for (const grade of currentSemesterGrades) {
-            semCreditsAttempted += grade.subject.credits;
-            semTotalPoints += (grade.totalScore4! * grade.subject.credits);
-        }
-        const calculatedGPA = semCreditsAttempted > 0 ? parseFloat((semTotalPoints / semCreditsAttempted).toFixed(2)) : 0;
-
-        // Tính CPA toàn khóa
-        let totalEarnedCredits = 0;
-        let totalCreditsAttempted = 0;
+    // --- 8. Final calculations (GPA/CPA) ---
+    console.log("➤ Finalizing Student Stats...");
+    for (const sv of students) {
+        const grades = await prisma.grade.findMany({ where: { studentId: sv.id }, include: { subject: true } });
         let totalPoints = 0;
-
-        for (const grade of allGrades) {
-            totalCreditsAttempted += grade.subject.credits;
-            totalPoints += (grade.totalScore4! * grade.subject.credits);
-            if (grade.isPassed) totalEarnedCredits += grade.subject.credits;
+        let totalCredits = 0;
+        let earnedCredits = 0;
+        for (const g of grades) {
+            totalPoints += g.totalScore4! * g.subject.credits;
+            totalCredits += g.subject.credits;
+            if (g.isPassed) earnedCredits += g.subject.credits;
         }
-
-        const calculatedCPA = totalCreditsAttempted > 0 ? parseFloat((totalPoints / totalCreditsAttempted).toFixed(2)) : 0;
-
-        await prisma.student.update({
-            where: { id: student.id },
-            data: { gpa: calculatedGPA, cpa: calculatedCPA, totalEarnedCredits: totalEarnedCredits }
-        });
+        const cpa = totalCredits > 0 ? parseFloat((totalPoints / totalCredits).toFixed(2)) : 0;
+        await prisma.student.update({ where: { id: sv.id }, data: { gpa: cpa, cpa, totalEarnedCredits: earnedCredits } });
     }
 
-    console.log("==========================================================");
-    console.log("🎉 SEEDING HOÀN TẤT! Dữ liệu 11 số & Các mã số đều tuyệt đối tuân thủ quy tắc nghiệp vụ. All manual IDs!");
-    console.log("🔐 Tài khoản Test Hệ Thống:");
-    console.log(`   - Admin Hệ Thống    : ${adminCode} / 123456 (hoặc Admin ID: USR_${adminCode})`);
-    console.log(`   - Phòng Đào Tạo     : ${staffCodes[0]} / 123456 (hoặc Admin ID: USR_${staffCodes[0]})`);
-    console.log(`   - Giảng viên 1      : ${lecturers[0].lectureCode} / 123456`);
-    console.log(`   - Sinh viên (K16)   : ${allStudents.find(s => s.adminClassCode === 'DHTI16A4')?.studentCode} / 123456`);
-    console.log("==========================================================");
+    console.log("✅ Seeding completed successfully!");
 }
 
 main()
     .catch((e) => {
-        console.error("❌ Lỗi khi seeding:", e);
+        console.error("❌ Seed error:", e);
         process.exit(1);
     })
     .finally(async () => {

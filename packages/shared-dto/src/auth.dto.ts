@@ -18,4 +18,19 @@ export interface UserResponse {
     email: string;
     role: string;
     accessToken?: string;
+    profileId?: string;
+}
+
+export interface ChangePasswordDto {
+    oldPassword: string;
+    newPassword: string;
+}
+
+export interface ForgotPasswordDto {
+    email: string;
+}
+
+export interface ResetPasswordDto {
+    token: string;
+    newPassword: string;
 }

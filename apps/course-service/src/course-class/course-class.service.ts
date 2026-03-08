@@ -20,6 +20,25 @@ export class CourseClassService {
         });
     }
 
+    async findByLecturerId(lecturerId: string) {
+        return this.prisma.courseClass.findMany({
+            where: { lecturerId },
+            include: {
+                lecturer: true,
+                subject: true,
+                semester: true,
+                schedules: {
+                    include: {
+                        room: true
+                    }
+                },
+                _count: {
+                    select: { enrollments: true }
+                }
+            }
+        });
+    }
+
     async create(data: any) {
         return this.prisma.courseClass.create({
             data

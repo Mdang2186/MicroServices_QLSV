@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import Cookies from "js-cookie";
 
 export default function LoginPage() {
@@ -49,9 +50,9 @@ export default function LoginPage() {
                 throw new Error("Tài khoản không có quyền truy cập hệ thống Admin & Giảng viên.");
             }
 
-            Cookies.set("admin_accessToken", accessToken, { expires: 1 });
-            Cookies.set("admin_role", role, { expires: 1 });
-            Cookies.set("admin_user", JSON.stringify({ role, ...userData }), { expires: 1 });
+            Cookies.set("admin_accessToken", accessToken, { expires: 1, path: "/" });
+            Cookies.set("admin_role", role, { expires: 1, path: "/" });
+            Cookies.set("admin_user", JSON.stringify({ role, ...userData }), { expires: 1, path: "/" });
 
             router.push(getDashboardPath(role));
         } catch (err: any) {
@@ -121,6 +122,11 @@ export default function LoginPage() {
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                             />
+                            <div className="mt-2 text-right">
+                                <Link href="/forgot-password" title="Quên mật khẩu" className="text-xs font-medium text-blue-400/60 hover:text-blue-400 underline decoration-blue-400/20 underline-offset-4">
+                                    Quên mật khẩu?
+                                </Link>
+                            </div>
                         </div>
 
                         <button

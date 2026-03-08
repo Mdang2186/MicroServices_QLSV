@@ -1,0 +1,444 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Cookies from "js-cookie";
+import {
+    UserCog,
+    Search,
+    Plus,
+    Edit2,
+    Trash2,
+    ShieldCheck,
+    Mail,
+    Download,
+    AlertTriangle,
+    Check,
+    UserCheck,
+    Calendar
+} from "lucide-react";
+import Modal from "@/components/modal";
+
+export default function AdminStaffPage() {
+    const [staff, setStaff] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [searchQuery, setSearchQuery] = useState("");
+
+    // Modal states
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [selectedStaff, setSelectedStaff] = useState<any>(null);
+    const [formLoading, setFormLoading] = useState(false);
+
+    // Form states
+    const [formData, setFormData] = useState({
+        username: "",
+        email: "",
+        password: "",
+        role: "ACADEMIC_STAFF",
+    });
+
+    const TOKEN = Cookies.get("admin_accessToken");
+
+    useEffect(() => {
+        fetchStaff();
+    }, []);
+
+    const fetchStaff = async () => {
+        setLoading(true);
+        try {
+            const res = await fetch("http://localhost:3000/api/auth/users", {
+                headers: { Authorization: `Bearer ${TOKEN}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                const filtered = data.filter((u: any) => u.role === 'ADMIN' || u.role === 'ACADEMIC_STAFF');
+                setStaff(filtered);
+            }
+        } catch (error) {
+            console.error("Failed to fetch staff", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleAddStaff = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setFormLoading(true);
+        try {
+            const res = await fetch("http://localhost:3000/api/auth/register", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            });
+            if (res.ok) {
+                await fetchStaff();
+                setIsAddModalOpen(false);
+                setFormData({ username: "", email: "", password: "", role: "ACADEMIC_STAFF" });
+            }
+        } catch (error) {
+            alert("Lỗi khi tạo tài khoản");
+        } finally {
+            setFormLoading(false);
+        }
+    };
+
+    const handleEditStaff = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setFormLoading(true);
+        try {
+            const res = await fetch(`http://localhost:3000/api/auth/users/${selectedStaff.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${TOKEN}`
+                },
+                body: JSON.stringify({
+                    username: formData.username,
+                    email: formData.email,
+                    role: formData.role
+                })
+            });
+            if (res.ok) {
+                await fetchStaff();
+                setIsEditModalOpen(false);
+            }
+        } catch (error) {
+            alert("Lỗi khi cập nhật");
+        } finally {
+            setFormLoading(false);
+        }
+    };
+
+    const confirmDelete = async () => {
+        setFormLoading(true);
+        try {
+            const res = await fetch(`http://localhost:3000/api/auth/users/${selectedStaff.id}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${TOKEN}` }
+            });
+            if (res.ok) {
+                setStaff(staff.filter(s => s.id !== selectedStaff.id));
+                setIsDeleteModalOpen(false);
+            }
+        } catch (error) {
+            alert("Lỗi khi xóa");
+        } finally {
+            setFormLoading(false);
+        }
+    };
+
+    const openEditModal = (s: any) => {
+        setSelectedStaff(s);
+        setFormData({
+            username: s.username || "",
+            email: s.email || "",
+            password: "", // Don't show password
+            role: s.role || "ACADEMIC_STAFF",
+        });
+        setIsEditModalOpen(true);
+    };
+
+    const openDeleteModal = (s: any) => {
+        setSelectedStaff(s);
+        setIsDeleteModalOpen(true);
+    };
+
+    const stats = {
+        total: staff.length,
+        admins: staff.filter(s => s.role === 'ADMIN').length,
+        academic: staff.filter(s => s.role === 'ACADEMIC_STAFF').length,
+    };
+
+    const filteredStaff = staff.filter(s =>
+        s.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.email?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    if (loading) {
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-[#f4f7fe]">
+                <div className="w-12 h-12 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-500">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-black text-slate-800 tracking-tight">Quản lý Nhân viên</h1>
+                    <p className="text-sm font-medium text-slate-500">Danh sách quản trị viên và nhân viên phòng đào tạo</p>
+                </div>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => setIsAddModalOpen(true)}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
+                    >
+                        <Plus size={18} />
+                        Thêm nhân viên
+                    </button>
+                </div>
+            </div>
+
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {[
+                    { label: "Admin Hệ thống", value: stats.admins, icon: ShieldCheck, color: "blue" },
+                    { label: "Nhân viên Đào tạo", value: stats.academic, icon: UserCog, color: "emerald" },
+                ].map((s, i) => (
+                    <div key={i} className="bg-white p-6 rounded-[24px] border border-slate-100 shadow-sm flex items-center justify-between">
+                        <div>
+                            <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1">{s.label}</p>
+                            <p className="text-2xl font-black text-slate-800">{s.value}</p>
+                        </div>
+                        <div className={`w-12 h-12 rounded-2xl bg-${s.color}-50 flex items-center justify-center text-${s.color}-600`}>
+                            <s.icon size={24} />
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            {/* Table Section */}
+            <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden flex flex-col">
+                <div className="p-5 border-b border-slate-50 bg-white/50 backdrop-blur-sm sticky top-0 z-10">
+                    <div className="relative w-full sm:w-96">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                        <input
+                            type="text"
+                            placeholder="Tìm kiếm nhân viên..."
+                            className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-100 transition-all outline-none"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                    </div>
+                </div>
+
+                {/* SCROLLABLE TABLE CONTAINER */}
+                <div className="overflow-x-auto max-h-[60vh] scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+                    <table className="w-full border-collapse">
+                        <thead className="sticky top-0 z-20 bg-slate-50/80 backdrop-blur-md">
+                            <tr>
+                                <th className="py-4 px-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Nhân viên</th>
+                                <th className="py-4 px-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Email</th>
+                                <th className="py-4 px-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Vai trò</th>
+                                <th className="py-4 px-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Ngày tạo</th>
+                                <th className="py-4 px-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                            {filteredStaff.map((s) => (
+                                <tr key={s.id} className="hover:bg-[#fafcff] transition-colors group">
+                                    <td className="py-5 px-6">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs shadow-sm ${s.role === 'ADMIN' ? 'bg-blue-50 text-blue-600' : 'bg-emerald-50 text-emerald-600'
+                                                }`}>
+                                                {s.username?.charAt(0).toUpperCase()}
+                                            </div>
+                                            <span className="text-sm font-bold text-slate-800">{s.username}</span>
+                                        </div>
+                                    </td>
+                                    <td className="py-5 px-6">
+                                        <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
+                                            <Mail size={14} className="text-slate-300" />
+                                            {s.email}
+                                        </div>
+                                    </td>
+                                    <td className="py-5 px-6">
+                                        <span className={`px-3 py-1.5 rounded-xl text-[10px] font-black tracking-widest uppercase shadow-sm ${s.role === 'ADMIN' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'
+                                            }`}>
+                                            {s.role === 'ADMIN' ? 'Admin' : 'Đào tạo'}
+                                        </span>
+                                    </td>
+                                    <td className="py-5 px-6">
+                                        <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
+                                            <Calendar size={12} />
+                                            {new Date(s.createdAt).toLocaleDateString('vi-VN')}
+                                        </div>
+                                    </td>
+                                    <td className="py-5 px-6 text-right">
+                                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button
+                                                onClick={() => openEditModal(s)}
+                                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                                            >
+                                                <Edit2 size={16} />
+                                            </button>
+                                            <button
+                                                onClick={() => openDeleteModal(s)}
+                                                className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* ADDD MODAL */}
+            <Modal
+                isOpen={isAddModalOpen}
+                onClose={() => setIsAddModalOpen(false)}
+                title="Tạo tài khoản nhân viên"
+                footer={
+                    <>
+                        <button
+                            onClick={() => setIsAddModalOpen(false)}
+                            className="px-5 py-2 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-all"
+                        >
+                            Hủy
+                        </button>
+                        <button
+                            onClick={handleAddStaff}
+                            disabled={formLoading}
+                            className="px-6 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-all flex items-center gap-2"
+                        >
+                            {formLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <Check size={18} />}
+                            Tạo tài khoản
+                        </button>
+                    </>
+                }
+            >
+                <form className="space-y-4">
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tên đăng nhập</label>
+                        <input
+                            type="text"
+                            className="w-full px-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-100 transition-all outline-none"
+                            value={formData.username}
+                            onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email</label>
+                        <input
+                            type="email"
+                            className="w-full px-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-100 transition-all outline-none"
+                            value={formData.email}
+                            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Mật khẩu ban đầu</label>
+                        <input
+                            type="password"
+                            className="w-full px-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-100 transition-all outline-none"
+                            value={formData.password}
+                            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Vai trò</label>
+                        <select
+                            className="w-full px-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-100 transition-all outline-none"
+                            value={formData.role}
+                            onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                        >
+                            <option value="ACADEMIC_STAFF">Nhân viên Đào tạo</option>
+                            <option value="ADMIN">Quản trị viên (Admin)</option>
+                        </select>
+                    </div>
+                </form>
+            </Modal>
+
+            {/* EDIT MODAL */}
+            <Modal
+                isOpen={isEditModalOpen}
+                onClose={() => setIsEditModalOpen(false)}
+                title="Cập nhật tài khoản"
+                footer={
+                    <>
+                        <button
+                            onClick={() => setIsEditModalOpen(false)}
+                            className="px-5 py-2 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-all"
+                        >
+                            Hủy
+                        </button>
+                        <button
+                            onClick={handleEditStaff}
+                            disabled={formLoading}
+                            className="px-6 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-all flex items-center gap-2"
+                        >
+                            {formLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <Check size={18} />}
+                            Lưu thay đổi
+                        </button>
+                    </>
+                }
+            >
+                <form className="space-y-4">
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tên đăng nhập</label>
+                        <input
+                            type="text"
+                            className="w-full px-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-100 transition-all outline-none"
+                            value={formData.username}
+                            onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email</label>
+                        <input
+                            type="email"
+                            className="w-full px-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-100 transition-all outline-none"
+                            value={formData.email}
+                            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Vai trò</label>
+                        <select
+                            className="w-full px-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-100 transition-all outline-none"
+                            value={formData.role}
+                            onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                        >
+                            <option value="ACADEMIC_STAFF">Nhân viên Đào tạo</option>
+                            <option value="ADMIN">Quản trị viên (Admin)</option>
+                        </select>
+                    </div>
+                </form>
+            </Modal>
+
+            {/* DELETE MODAL */}
+            <Modal
+                isOpen={isDeleteModalOpen}
+                onClose={() => setIsDeleteModalOpen(false)}
+                title="Xác nhận gỡ tài khoản"
+                footer={
+                    <>
+                        <button
+                            onClick={() => setIsDeleteModalOpen(false)}
+                            className="px-5 py-2 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-all"
+                        >
+                            Hủy
+                        </button>
+                        <button
+                            onClick={confirmDelete}
+                            disabled={formLoading}
+                            className="px-6 py-2 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-700 transition-all flex items-center gap-2 shadow-lg shadow-rose-100"
+                        >
+                            {formLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <Trash2 size={18} />}
+                            Xóa tài khoản
+                        </button>
+                    </>
+                }
+            >
+                <div className="flex flex-col items-center text-center space-y-4 py-4">
+                    <div className="w-16 h-16 rounded-3xl bg-rose-50 flex items-center justify-center text-rose-600">
+                        <AlertTriangle size={36} />
+                    </div>
+                    <div>
+                        <p className="text-lg font-bold text-slate-800">Xác nhận xóa nhân viên?</p>
+                        <p className="text-sm text-slate-500 mt-1 max-w-[300px]">
+                            Tài khoản <span className="font-bold text-slate-700">{selectedStaff?.username}</span> sẽ bị gỡ khỏi hệ thống.
+                        </p>
+                    </div>
+                </div>
+            </Modal>
+        </div>
+    );
+}

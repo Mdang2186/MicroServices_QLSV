@@ -20,6 +20,16 @@ export class EnrollmentController {
         return this.enrollmentService.getStudentEnrollments(studentId);
     }
 
+    @Get('registration-status/:studentId')
+    getRegistrationStatus(@Param('studentId') studentId: string) {
+        return this.enrollmentService.getRegistrationStatus(studentId);
+    }
+
+    @Get('subject/:subjectId/classes')
+    getClassesBySubject(@Param('subjectId') subjectId: string) {
+        return this.enrollmentService.getClassesBySubject(subjectId);
+    }
+
     // ===== ADMIN ENDPOINTS =====
     @Get('admin/classes/schedule')
     getAllClassesSchedule() {
@@ -29,5 +39,13 @@ export class EnrollmentController {
     @Get('admin/classes/:classId/enrollments')
     getClassEnrollments(@Param('classId') classId: string) {
         return this.enrollmentService.getClassEnrollments(classId);
+    }
+
+    @Post('attendance/bulk')
+    bulkMarkAttendance(@Body() body: {
+        date: string;
+        attendances: { enrollmentId: string; status: string; note?: string }[]
+    }) {
+        return this.enrollmentService.bulkMarkAttendance(body.date, body.attendances);
     }
 }

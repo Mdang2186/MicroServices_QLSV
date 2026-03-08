@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Param } from '@nestjs/common';
 import { CourseClassService } from '../course-class.service';
 
 @Controller('courses')
@@ -24,6 +24,23 @@ export class CourseClassController {
             // @ts-ignore
             rawSchedules: c.schedules,
             duration: '15 weeks', // Hardcoded or calculated from semester
+            status: c.status === 'OPEN' ? 'Active' : c.status
+        }));
+    }
+
+    @Get('lecturer/:id')
+    async findByLecturer(@Param('id') id: string) {
+        const classes = await this.courseClassService.findByLecturerId(id);
+        return (classes as any[]).map(c => ({
+            id: c.id,
+            title: c.subject.name,
+            code: c.code,
+            instructor: c.lecturer?.fullName || 'TBD',
+            enrolled: c._count.enrollments,
+            capacity: c.maxSlots,
+            schedules: c.schedules,
+            semester: c.semester,
+            subject: c.subject,
             status: c.status === 'OPEN' ? 'Active' : c.status
         }));
     }
