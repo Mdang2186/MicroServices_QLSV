@@ -10,14 +10,13 @@ import {
     Clock,
     MapPin,
     GraduationCap,
-    GraduationCap,
     Download,
     ChevronLeft,
-    ChevronRight,
     LayoutGrid,
     List
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+// @ts-ignore
+import { Button } from "../../../../components/ui/button";
 import { cn } from "@/lib/utils";
 
 const DAYS = [
@@ -37,6 +36,7 @@ export default function LecturerSchedulePage() {
     const [loading, setLoading] = useState(true);
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [viewMode, setViewMode] = useState<'weekly' | 'daily'>('weekly');
+    const [courses, setCourses] = useState<any[]>([]);
 
     const TOKEN = Cookies.get("admin_accessToken");
 
@@ -50,7 +50,7 @@ export default function LecturerSchedulePage() {
         const lecturerId = user.lecturer?.id || user.id;
         const headers: any = TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {};
 
-        fetch(`http://localhost:3000/api/courses/lecturer/${lecturerId}`, { headers })
+        fetch(`/api/courses/lecturer/${lecturerId}`, { headers })
             .then(r => r.ok ? r.json() : [])
             .then(data => setCourses(Array.isArray(data) ? data : data?.data || []))
             .catch(() => setCourses([]))

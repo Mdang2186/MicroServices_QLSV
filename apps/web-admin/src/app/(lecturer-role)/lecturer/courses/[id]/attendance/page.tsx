@@ -34,7 +34,7 @@ export default function LecturerAttendancePage() {
     useEffect(() => {
         if (!classId || !TOKEN) return;
 
-        fetch(`http://localhost:3000/api/enrollments/admin/classes/${classId}/enrollments`, {
+        fetch(`/api/enrollments/admin/classes/${classId}/enrollments`, {
             headers: { Authorization: `Bearer ${TOKEN}` }
         })
             .then(r => r.ok ? r.json() : [])
@@ -73,7 +73,7 @@ export default function LecturerAttendancePage() {
                 }))
             };
 
-            const res = await fetch(`http://localhost:3000/api/enrollments/attendance/bulk`, {
+            const res = await fetch(`/api/enrollments/attendance/bulk`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

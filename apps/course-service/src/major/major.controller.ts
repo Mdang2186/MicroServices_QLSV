@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Body } from "@nestjs/common";
+import { ApiBody } from "@nestjs/swagger";
 import { MajorService } from "./major.service";
 
 @Controller("majors")
@@ -11,6 +12,15 @@ export class MajorController {
     }
 
     @Post()
+    @ApiBody({
+        schema: {
+            type: "object",
+            properties: {
+                name: { type: "string", example: "Công nghệ thông tin" },
+                code: { type: "string", example: "IT101" }
+            }
+        }
+    })
     create(@Body() data: any) {
         return this.majorService.create(data);
     }

@@ -16,7 +16,7 @@ export default function EnrollPage() {
             return;
         }
 
-        axios.get("http://localhost:3000/api/enrollments/classes")
+        axios.get("/api/enrollments/classes")
             .then(res => {
                 setClasses(res.data);
                 setLoading(false);
@@ -55,7 +55,7 @@ export default function EnrollPage() {
         const user = JSON.parse(localStorage.getItem("user") || "{}");
 
         try {
-            await axios.post("http://localhost:3000/api/enrollments", {
+            await axios.post("/api/enrollments", {
                 studentId: user.student?.id || user.id, // Try to find student ID
                 classId: classId
             }, {

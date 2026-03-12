@@ -18,5 +18,20 @@ export const StudentService = {
     getGrades: async (studentId: string) => {
         const response = await api.get(`/api/grades/student/${studentId}`);
         return response.data;
+    },
+
+    getTrainingResults: async (studentId: string) => {
+        const response = await api.get(`/api/training-results/student/${studentId}`);
+        return response.data;
+    },
+
+    getStudentFees: async (studentId: string) => {
+        const response = await api.get(`/api/student-fees/student/${studentId}`);
+        return response.data;
+    },
+
+    getFeeTransactions: async (studentId: string) => {
+        const response = await api.get(`/api/fee-transactions/student/${studentId}`);
+        return response.data;
     }
 };

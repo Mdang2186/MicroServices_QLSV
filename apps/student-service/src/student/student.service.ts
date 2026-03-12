@@ -14,13 +14,30 @@ export class StudentService {
 
   async create(dto: CreateStudentDto): Promise<StudentResponse> {
     const { email, ...studentData } = dto;
-    if (!studentData.userId) {
-      throw new Error("UserId is required to create a Student");
+    let finalUserId = studentData.userId;
+    
+    // Auto-create a linked user account if not provided via Gateway/Auth
+    if (!finalUserId) {
+      const crypto = require('crypto');
+      const mockPassword = crypto.randomBytes(8).toString('hex');
+      const bcrypt = require('bcryptjs');
+      const passwordHash = await bcrypt.hash(mockPassword, 10);
+      
+      const newUser = await this.prisma.user.create({
+        data: {
+          username: studentData.studentCode || email.split('@')[0],
+          email: email,
+          passwordHash: passwordHash,
+          role: 'STUDENT'
+        }
+      });
+      finalUserId = newUser.id;
     }
+
     return this.prisma.student.create({
       data: {
         ...studentData,
-        userId: studentData.userId,
+        userId: finalUserId,
         dob: new Date(dto.dob),
       },
       include: { user: true }

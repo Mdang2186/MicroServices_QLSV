@@ -31,7 +31,7 @@ export default function LecturerGradeSelectionPage() {
         if (!user?.id) return;
         const headers: any = TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {};
 
-        fetch("http://localhost:3000/api/courses/my-classes", { headers })
+        fetch("/api/courses/my-classes", { headers })
             .then(r => r.ok ? r.json() : [])
             .then(data => {
                 const fetched = Array.isArray(data) ? data : data?.data || [];

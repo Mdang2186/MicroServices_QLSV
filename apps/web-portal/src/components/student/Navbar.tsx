@@ -5,7 +5,7 @@ import Cookies from "js-cookie";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Book, Calendar, GraduationCap, Home, LogOut, User, Settings, ChevronDown, GraduationCap as AcademicIcon, ClipboardCheck, Award } from "lucide-react";
+import { Book, Calendar, GraduationCap, Home, LogOut, User, Settings, ChevronDown, GraduationCap as AcademicIcon, ClipboardCheck, Award, CreditCard } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
@@ -24,6 +24,7 @@ const navItems = [
     },
     { label: "Đăng ký học", href: "/portal/enroll", icon: Book },
     { label: "Lịch học", href: "/portal/schedule", icon: Calendar },
+    { label: "Học phí", href: "/portal/tuition", icon: CreditCard },
     { label: "Đổi mật khẩu", href: "/portal/change-password", icon: Settings },
 ];
 

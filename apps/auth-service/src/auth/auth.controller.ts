@@ -1,4 +1,5 @@
 import { Controller, Post, Body, UseGuards, Req, Get, Put, Delete, Param } from "@nestjs/common";
+import { ApiBody } from "@nestjs/swagger";
 import { AuthService } from "./auth.service";
 import { LoginDto, RegisterDto, ChangePasswordDto, ForgotPasswordDto, ResetPasswordDto } from "@repo/shared-dto";
 import { AuthGuard } from "@nestjs/passport";
@@ -40,6 +41,16 @@ export class AuthController {
   }
 
   @Put("users/:id")
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        email: { type: "string", example: "admin@uneti.edu.vn" },
+        password: { type: "string", example: "newpassword123" },
+        role: { type: "string", example: "ADMIN" },
+      }
+    }
+  })
   async updateUser(@Param("id") id: string, @Body() data: any) {
     return this.authService.updateUser(id, data);
   }
@@ -56,11 +67,37 @@ export class AuthController {
   }
 
   @Post("lecturers")
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        lectureCode: { type: "string", example: "GV001" },
+        fullName: { type: "string", example: "Nguyễn Văn Giảng Viên" },
+        email: { type: "string", example: "gv@uneti.edu.vn" },
+        facultyId: { type: "string", example: "Khoa CNTT" },
+        degree: { type: "string", example: "Thạc sĩ" },
+        phone: { type: "string", example: "0123456789" }
+      }
+    }
+  })
   async createLecturer(@Body() data: any) {
     return this.authService.createLecturer(data);
   }
 
   @Put("lecturers/:id")
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        lectureCode: { type: "string", example: "GV001" },
+        fullName: { type: "string", example: "Nguyễn Văn Giảng Viên Edit" },
+        email: { type: "string", example: "gvsms@uneti.edu.vn" },
+        facultyId: { type: "string", example: "Khoa CNTT" },
+        degree: { type: "string", example: "Tiến sĩ" },
+        phone: { type: "string", example: "0987654321" }
+      }
+    }
+  })
   async updateLecturer(@Param("id") id: string, @Body() data: any) {
     return this.authService.updateLecturer(id, data);
   }
@@ -72,6 +109,17 @@ export class AuthController {
 
   // --- Admin Student Management ---
   @Post("students")
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", example: "Nguyễn Văn Sinh Viên" },
+        email: { type: "string", example: "sv@uneti.edu.vn" },
+        major: { type: "string", example: "Công nghệ thông tin" },
+        dob: { type: "string", example: "2000-01-01" }
+      }
+    }
+  })
   async createStudent(@Body() data: any) {
     return this.authService.createStudent(data);
   }

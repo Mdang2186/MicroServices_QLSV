@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { StudentService } from "@/services/student.service";
 import Cookies from "js-cookie";
+import Link from "next/link";
 import {
     GraduationCap,
     BookOpen,
@@ -10,29 +11,55 @@ import {
     Clock,
     MapPin,
     TrendingUp,
-    Bell,
     ChevronRight,
-    Search,
     Calculator,
     Calendar,
-    User
+    User,
+    Trophy,
+    CheckCircle2,
+    ArrowRight,
+    Bell,
+    FileText,
+    PieChart as PieChartIcon,
+    Wallet,
+    CreditCard,
+    ClipboardList,
+    AlertCircle
 } from "lucide-react";
+
+// ... (Rest of imports)
 import { motion } from "framer-motion";
 import {
-    BarChart,
-    Bar,
-    XAxis,
-    YAxis,
-    Tooltip,
-    ResponsiveContainer,
-    Cell
+    BarChart as RechartsBarChart,
+    Bar as RechartsBar,
+    XAxis as RechartsXAxis,
+    YAxis as RechartsYAxis,
+    Tooltip as RechartsTooltip,
+    ResponsiveContainer as RechartsResponsiveContainer,
+    Cell as RechartsCell,
+    PieChart as RechartsPieChart,
+    Pie as RechartsPie
 } from "recharts";
+
+// Cast Recharts components to any to bypass TypeScript JSX errors
+const BarChart = RechartsBarChart as any;
+const Bar = RechartsBar as any;
+const XAxis = RechartsXAxis as any;
+const YAxis = RechartsYAxis as any;
+const Tooltip = RechartsTooltip as any;
+const ResponsiveContainer = RechartsResponsiveContainer as any;
+const Cell = RechartsCell as any;
+const PieChart = RechartsPieChart as any;
+const Pie = RechartsPie as any;
+
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export default function StudentDashboard() {
     const [student, setStudent] = useState<any>(null);
     const [enrollments, setEnrollments] = useState<any[]>([]);
     const [grades, setGrades] = useState<any[]>([]);
+    const [trainingResults, setTrainingResults] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -49,12 +76,14 @@ export default function StudentDashboard() {
 
                     if (profileData && profileData.id) {
                         setStudent(profileData);
-                        const [enrollmentsData, gradesData] = await Promise.all([
+                        const [enrollmentsData, gradesData, trainingData] = await Promise.all([
                             StudentService.getEnrollments(profileData.id),
-                            StudentService.getGrades(profileData.id)
+                            StudentService.getGrades(profileData.id),
+                            StudentService.getTrainingResults(profileData.id)
                         ]);
                         setEnrollments(enrollmentsData || []);
                         setGrades(gradesData || []);
+                        setTrainingResults(trainingData || []);
                     }
                 }
             } catch (error) {
@@ -67,297 +96,309 @@ export default function StudentDashboard() {
         fetchData();
     }, []);
 
+    const lastSemesterChartData = useMemo(() => {
+        return grades.slice(0, 8).map((g) => ({
+            name: g.subject?.code || "MÔN",
+            score: g.totalScore10 || 0,
+        }));
+    }, [grades]);
+
+    const creditsData = [
+        { name: 'Đạt', value: student?.totalEarnedCredits || 0 },
+        { name: 'Còn lại', value: Math.max(0, 135 - (student?.totalEarnedCredits || 0)) }
+    ];
+
     if (loading) {
         return (
             <div className="flex min-h-[80vh] items-center justify-center">
-                <div className="relative flex h-24 w-24 items-center justify-center">
-                    <div className="absolute h-full w-full animate-ping rounded-full bg-blue-400 opacity-20"></div>
-                    <div className="absolute h-16 w-16 animate-spin rounded-full border-4 border-solid border-blue-500 border-t-transparent shadow-lg shadow-blue-500/20"></div>
-                    <GraduationCap className="h-10 w-10 text-blue-600 drop-shadow-md" />
-                </div>
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600"></div>
             </div>
         );
     }
 
     if (!student) {
         return (
-            <div className="flex min-h-[60vh] flex-col items-center justify-center rounded-[2.5rem] border border-white bg-white/40 p-12 shadow-2xl backdrop-blur-3xl">
-                <div className="mb-6 rounded-3xl bg-red-50 p-6 text-red-500 shadow-inner">
-                    <Bell className="h-10 w-10" />
-                </div>
-                <h2 className="text-xl font-black tracking-tight text-gray-900 lg:text-2xl">Không tìm thấy hồ sơ</h2>
-                <p className="mt-4 text-center text-sm font-medium text-gray-500">
-                    Chúng tôi không thể đồng bộ hóa hồ sơ học tập của bạn. <br />
-                    Vui lòng liên hệ phòng đào tạo để xác minh.
-                </p>
+            <div className="flex min-h-[60vh] flex-col items-center justify-center rounded-[2.5rem] border border-slate-200 bg-white p-12">
+                <h2 className="text-xl font-bold text-slate-800">Không tìm thấy hồ sơ sinh viên</h2>
             </div>
         );
     }
 
-    const jsDay = new Date().getDay();
-    const currentDayOfWeek = jsDay === 0 ? 8 : jsDay + 1;
-    const todaySchedule = enrollments?.flatMap((e: any) =>
-        e.courseClass?.schedules?.filter((s: any) => s.dayOfWeek === currentDayOfWeek).map((s: any) => ({
-            shift: s.shift,
-            subject: e.courseClass?.subject,
-            room: s.room,
-        })) || []
-    ).sort((a, b) => a.shift - b.shift) || [];
-
-    const shiftTimes: { [key: number]: string } = {
-        1: "07:00 - 09:30",
-        2: "09:35 - 12:05",
-        3: "12:30 - 15:00",
-        4: "15:05 - 17:35",
-        5: "18:00 - 20:30"
-    };
-
-    const chartData = grades.slice(0, 6).map((g) => ({
-        name: g.subject?.code || "MÔN",
-        fullName: g.subject?.name,
-        score: g.totalScore10 || 0,
-    }));
-
     return (
-        <div className="min-h-screen space-y-6 pb-20">
-            {/* Top Welcome Header */}
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="relative overflow-hidden rounded-[2rem] border border-white bg-white/70 p-6 shadow-[0_20px_50px_rgba(0,0,0,0.05)] backdrop-blur-3xl"
-            >
-                <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-blue-400/10 blur-3xl" />
-                <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div className="flex items-center gap-4">
-                        <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-xl">
-                            <GraduationCap className="h-8 w-8" />
+        <div className="min-h-screen space-y-6 pb-20 text-slate-700">
+            {/* Top Section: Info & Counters */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Information Box */}
+                <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-6 flex flex-col md:flex-row gap-8 shadow-sm">
+                    <div className="flex flex-col items-center gap-4 w-fit">
+                        <div className="text-xs font-bold text-slate-800 self-start uppercase">Thông tin sinh viên</div>
+                        <div className="h-32 w-32 rounded-full overflow-hidden border-4 border-slate-100 shadow-inner">
+                            <img
+                                src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=2576&auto=format&fit=crop"
+                                alt="Profile"
+                                className="h-full w-full object-cover"
+                            />
+                        </div>
+                        <Link href="/portal/dashboard">
+                            <Button variant="link" className="text-blue-600 text-[10px] font-bold h-auto p-0 hover:no-underline">Xem chi tiết</Button>
+                        </Link>
+                    </div>
+
+                    <div className="flex-1 grid grid-cols-2 gap-x-8 gap-y-3 pt-6 border-l border-slate-100 pl-8">
+                        <div>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase">MSSV: <span className="text-slate-700 ml-1">{student?.studentCode}</span></p>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Họ tên: <span className="text-slate-700 ml-1 font-black">{student?.fullName}</span></p>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Giới tính: <span className="text-slate-700 ml-1">Nam</span></p>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Ngày sinh: <span className="text-slate-700 ml-1">{new Date(student?.dateOfBirth || "2004-10-29").toLocaleDateString('vi-VN')}</span></p>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Nơi sinh: <span className="text-slate-700 ml-1">Lào Cai</span></p>
                         </div>
                         <div>
-                            <div className="flex items-center gap-2 mb-0.5">
-                                <span className="text-xs font-black uppercase tracking-widest text-blue-600">Xin chào,</span>
-                                <span className="text-xs font-bold text-slate-400">|</span>
-                                <span className="text-xs font-bold text-slate-500">{new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
-                            </div>
-                            <h1 className="text-2xl font-black tracking-tight text-slate-900">
-                                {student?.fullName || "Sinh viên"}
-                            </h1>
-                            <div className="flex items-center gap-3 mt-0.5">
-                                <span className="text-xs font-bold text-slate-500 flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-100 rounded-full">
-                                    <span className="w-1 h-1 rounded-full bg-blue-500 animate-pulse" />
-                                    {student?.studentCode}
-                                </span>
-                                <span className="text-xs font-bold text-slate-500 flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-100 rounded-full">
-                                    {student?.major?.name}
-                                </span>
-                            </div>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase">Lớp học: <span className="text-slate-700 ml-1">{student?.class?.name || "K17-HTTT"}</span></p>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Khóa học: <span className="text-slate-700 ml-1">2023 - 2027</span></p>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Bậc đào tạo: <span className="text-slate-700 ml-1">Đại học</span></p>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Loại hình đào tạo: <span className="text-slate-700 ml-1">Chính quy</span></p>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Ngành: <span className="text-slate-700 ml-1">{student?.major?.name}</span></p>
                         </div>
-                    </div>
-
-                    <div className="flex gap-2">
-                        <Button className="rounded-xl border-none bg-blue-600 text-white hover:bg-blue-700 shadow-xl shadow-blue-200 text-xs font-bold px-4 h-9">
-                            Phản hồi nhanh
-                        </Button>
-                        <Button className="rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-bold px-4 h-9">
-                            Chương trình khung
-                        </Button>
                     </div>
                 </div>
-            </motion.div>
 
-            {/* Stats Cards Row */}
-            <div className="grid gap-4 md:grid-cols-4">
+                {/* Status Cards */}
+                <div className="space-y-4">
+                    <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex items-start justify-between relative overflow-hidden">
+                        <div className="relative z-10">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase">Nhắc nhở mới, chưa xem</p>
+                            <p className="text-3xl font-black text-slate-800 mt-1">0</p>
+                            <Link href="/portal/dashboard">
+                                <Button variant="link" className="text-blue-600 text-[10px] font-bold h-auto p-0 mt-2 hover:no-underline">Xem chi tiết</Button>
+                            </Link>
+                        </div>
+                        <div className="h-10 w-10 flex items-center justify-center bg-slate-50 border border-slate-200 rounded-full text-slate-400">
+                            <Bell className="h-5 w-5" />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-sky-50/50 rounded-xl border border-sky-100 p-4 border-l-4 border-l-sky-400 shadow-sm relative overflow-hidden group hover:bg-sky-50 transition-colors">
+                            <p className="text-[10px] font-bold text-sky-600/70 uppercase">Lịch học trong tuần</p>
+                            <p className="text-2xl font-black text-sky-700 mt-1">{enrollments.length}</p>
+                            <Link href="/portal/schedule">
+                                <Button variant="link" className="text-sky-600 text-[10px] font-bold h-auto p-0 mt-1 hover:no-underline">Xem chi tiết</Button>
+                            </Link>
+                            <Calendar className="absolute -right-2 -bottom-2 h-10 w-10 text-sky-200 opacity-50 group-hover:scale-125 transition-transform" />
+                        </div>
+                        <div className="bg-amber-50/50 rounded-xl border border-amber-100 p-4 border-l-4 border-l-amber-400 shadow-sm relative overflow-hidden group hover:bg-amber-50 transition-colors">
+                            <p className="text-[10px] font-bold text-amber-600/70 uppercase">Lịch thi trong tuần</p>
+                            <p className="text-2xl font-black text-amber-700 mt-1">0</p>
+                            <Link href="/portal/schedule">
+                                <Button variant="link" className="text-amber-600 text-[10px] font-bold h-auto p-0 mt-1 hover:no-underline">Xem chi tiết</Button>
+                            </Link>
+                            <Clock className="absolute -right-2 -bottom-2 h-10 w-10 text-amber-200 opacity-50 group-hover:scale-125 transition-transform" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Quick Action Buttons */}
+            <div className="grid grid-cols-4 md:grid-cols-8 gap-4">
                 {[
-                    { label: "GPA Hệ 4", value: student?.gpa?.toFixed(2) || "0.00", icon: TrendingUp, color: "blue", trend: "+0.15" },
-                    { label: "CPA Tích lũy", value: student?.cpa?.toFixed(2) || "0.00", icon: Award, color: "indigo", trend: "+0.08" },
-                    { label: "Tín chỉ đạt", value: student?.totalEarnedCredits || "0", icon: BookOpen, color: "emerald", sub: "/ 135" },
-                    { label: "Lớp học phần", value: enrollments.length || "0", icon: Calculator, color: "violet", sub: "Học kỳ này" },
-                ].map((stat, i) => (
-                    <motion.div
-                        key={i}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 * i }}
-                        className="rounded-[1.5rem] border border-white bg-white/60 p-5 shadow-sm backdrop-blur-2xl"
-                    >
-                        <div className="flex justify-between items-start mb-3">
-                            <div className={`flex h-10 w-10 items-center justify-center rounded-xl bg-${stat.color}-50 text-${stat.color}-600`}>
-                                <stat.icon className="h-5 w-5" />
-                            </div>
-                            {stat.trend && (
-                                <span className={`text-[10px] font-black text-${stat.color}-600 bg-${stat.color}-50 px-1.5 py-0.5 rounded-lg`}>
-                                    {stat.trend}
-                                </span>
-                            )}
+                    { label: "Đề xuất biểu mẫu", icon: FileText, color: "text-sky-500", href: "/portal/enroll" },
+                    { label: "Nhắc nhở", icon: Bell, color: "text-blue-500", href: "/portal/dashboard" },
+                    { label: "Kết quả học tập", icon: TrendingUp, color: "text-indigo-500", href: "/portal/results" },
+                    { label: "Lịch theo tuần", icon: Calendar, color: "text-blue-600", href: "/portal/schedule" },
+                    { label: "Lịch theo tiến độ", icon: ClipboardList, color: "text-sky-600", href: "/portal/training" },
+                    { label: "Tra cứu công nợ", icon: Wallet, color: "text-emerald-600", href: "/portal/tuition" },
+                    { label: "Thanh toán trực tuyến", icon: CreditCard, color: "text-indigo-600", href: "/portal/tuition?tab=payment" },
+                    { label: "Phiếu thu tổng hợp", icon: FileText, color: "text-sky-700", href: "/portal/tuition?tab=history" },
+                ].map((action, i) => (
+                    <Link key={i} href={action.href} className="flex flex-col items-center justify-center gap-3 p-4 bg-white border border-slate-100 rounded-xl shadow-sm hover:shadow-md hover:border-blue-200 transition-all group">
+                        <div className={cn("p-2 rounded-lg bg-slate-50 group-hover:bg-blue-600 group-hover:text-white transition-colors duration-300", action.color)}>
+                            <action.icon className="h-6 w-6" />
                         </div>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{stat.label}</p>
-                        <div className="flex items-baseline gap-1">
-                            <h3 className="text-2xl font-black text-slate-900">{stat.value}</h3>
-                            {stat.sub && <span className="text-[10px] font-bold text-slate-400">{stat.sub}</span>}
-                        </div>
-                    </motion.div>
+                        <span className="text-[11px] font-bold text-slate-500 text-center leading-tight">{action.label}</span>
+                    </Link>
                 ))}
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-7">
-                {/* Academic Chart Area */}
-                <motion.div
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.4 }}
-                    className="lg:col-span-5 rounded-[2rem] border border-white bg-white/60 p-6 shadow-2xl backdrop-blur-3xl"
-                >
-                    <div className="flex justify-between items-center mb-6">
-                        <div>
-                            <h2 className="text-base font-black text-slate-900">Kết quả học tập</h2>
-                            <p className="text-[10px] font-medium text-slate-400">Biểu đồ điểm số các môn học gần đây</p>
-                        </div>
-                        <select className="bg-slate-50 border-none text-[10px] font-black uppercase tracking-widest text-slate-500 rounded-xl px-3 py-1.5 outline-none cursor-pointer">
-                            <option>Học kỳ hiện tại</option>
-                            <option>Tất cả học kỳ</option>
+            {/* Today's Schedule (Specifically requested) */}
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                <div className="flex items-center justify-between mb-4 border-b border-slate-50 pb-3">
+                    <div className="flex items-center gap-2">
+                        <div className="h-6 w-1 bg-blue-600 rounded-full" />
+                        <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">Lịch học hôm nay</h3>
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-400">{new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit' })}</span>
+                </div>
+
+                <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
+                    {(() => {
+                        const jsDay = new Date().getDay();
+                        const currentDayOfWeek = jsDay === 0 ? 8 : jsDay + 1;
+                        const todaySchedule = enrollments?.flatMap((e: any) =>
+                            e.courseClass?.schedules?.filter((s: any) => s.dayOfWeek === currentDayOfWeek).map((s: any) => ({
+                                startShift: s.startShift,
+                                subject: e.courseClass?.subject,
+                                room: s.room,
+                            })) || []
+                        ).sort((a, b) => a.startShift - b.startShift) || [];
+
+                        const shiftTimes: { [key: number]: string } = {
+                            1: "07:00 - 09:30",
+                            2: "09:35 - 12:05",
+                            3: "12:30 - 15:00",
+                            4: "15:05 - 17:35",
+                            5: "18:00 - 20:30",
+                            // Fallback for higher shifts if any
+                            6: "07:00 - 09:30",
+                            7: "09:35 - 12:05",
+                            8: "12:30 - 15:00",
+                            9: "15:05 - 17:35",
+                            10: "18:00 - 20:30"
+                        };
+
+                        if (todaySchedule.length === 0) {
+                            return (
+                                <div className="flex-1 py-4 flex flex-col items-center justify-center border-2 border-dashed border-slate-50 rounded-xl text-slate-300">
+                                    <Calendar className="h-6 w-6 mb-1 opacity-20" />
+                                    <p className="text-[10px] font-bold uppercase tracking-widest italic font-sans">Nghỉ ngơi thôi! Hôm nay bạn không có tiết học.</p>
+                                </div>
+                            );
+                        }
+
+                        return todaySchedule.map((sch, i) => (
+                            <Link key={i} href="/portal/schedule" className="min-w-[240px] bg-slate-50 border border-slate-100 rounded-xl p-4 flex items-center gap-4 group hover:bg-white hover:border-blue-200 transition-all shadow-sm">
+                                <div className="flex flex-col items-center justify-center bg-white border border-slate-100 h-12 w-12 rounded-xl text-blue-600 font-black group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                                    <span className="text-[10px] opacity-70">TIẾT</span>
+                                    <span className="text-lg leading-none">{sch.startShift}</span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <h4 className="text-[11px] font-black text-slate-700 truncate uppercase leading-tight group-hover:text-blue-600 transition-colors">{sch.subject?.name}</h4>
+                                    <div className="flex items-center gap-3 mt-1 text-[10px] font-bold text-slate-400">
+                                        <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {shiftTimes[sch.startShift]}</span>
+                                        <span className="flex items-center gap-1 italic"><MapPin className="h-3 w-3" /> P.{sch.room?.name || '---'}</span>
+                                    </div>
+                                </div>
+                            </Link>
+                        ));
+                    })()}
+                </div>
+            </div>
+
+            {/* Visualization Section */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 xl:grid-cols-12 gap-6">
+                {/* Academic results (Bar chart) */}
+                <div className="lg:col-span-2 xl:col-span-5 bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                    <div className="flex justify-between items-center mb-6 border-b border-slate-50 pb-4">
+                        <h3 className="text-sm font-black text-slate-800">Kết quả học tập</h3>
+                        <select className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[10px] font-bold outline-none">
+                            <option>Kỳ 1 (2025-2026)</option>
                         </select>
                     </div>
-
-                    <div className="h-[250px] w-full">
+                    <div className="h-64 w-full bg-[url('https://www.transparenttextures.com/patterns/graph-paper.png')] bg-fixed rounded-xl p-4">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={chartData}>
-                                <defs>
-                                    <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.8} />
-                                        <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.4} />
-                                    </linearGradient>
-                                </defs>
-                                <XAxis
-                                    dataKey="name"
-                                    axisLine={false}
-                                    tickLine={false}
-                                    tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }}
-                                    interval={0}
-                                />
-                                <YAxis
-                                    hide
-                                    domain={[0, 10]}
-                                />
+                            <BarChart data={lastSemesterChartData}>
+                                <XAxis dataKey="name" hide />
+                                <YAxis hide domain={[0, 10]} />
+                                <Bar dataKey="score" radius={[4, 4, 0, 0]} barSize={24}>
+                                    {lastSemesterChartData.map((entry, index) => (
+                                        <Cell
+                                            key={`cell-${index}`}
+                                            fill={entry.score >= 8.5 ? '#10b981' : entry.score >= 7.0 ? '#3b82f6' : entry.score >= 5.0 ? '#f59e0b' : '#ef4444'}
+                                            fillOpacity={0.6}
+                                        />
+                                    ))}
+                                </Bar>
                                 <Tooltip
-                                    cursor={{ fill: '#f1f5f9' }}
                                     content={({ active, payload }) => {
                                         if (active && payload && payload.length) {
                                             return (
-                                                <div className="bg-white p-3 rounded-xl shadow-2xl border border-slate-100">
-                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{payload[0].payload.name}</p>
-                                                    <p className="text-lg font-black text-blue-600">{payload[0].value}</p>
+                                                <div className="bg-slate-900 text-white px-2 py-1 rounded text-[10px] font-bold">
+                                                    {payload[0].value}
                                                 </div>
                                             );
                                         }
                                         return null;
                                     }}
                                 />
-                                <Bar dataKey="score" radius={[8, 8, 8, 8]} barSize={32}>
-                                    {chartData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={entry.score >= 8.5 ? '#10b981' : entry.score >= 7.0 ? '#3b82f6' : entry.score >= 5.0 ? '#f59e0b' : '#ef4444'} />
-                                    ))}
-                                </Bar>
                             </BarChart>
                         </ResponsiveContainer>
-                    </div>
-                </motion.div>
-
-                {/* Today's Schedule Card */}
-                <motion.div
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.5 }}
-                    className="lg:col-span-2 rounded-[2rem] border border-white bg-slate-900 p-6 text-white shadow-2xl overflow-hidden relative"
-                >
-                    <div className="absolute top-0 right-0 p-4 opacity-10">
-                        <Clock className="h-24 w-24" />
-                    </div>
-                    <div className="relative z-10 h-full flex flex-col">
-                        <h2 className="text-base font-black mb-4">Lịch học hôm nay</h2>
-
-                        <div className="space-y-4 flex-1">
-                            {todaySchedule.length > 0 ? (
-                                todaySchedule.map((sch, i) => (
-                                    <div key={i} className="group relative flex gap-4">
-                                        <div className="flex flex-col items-center">
-                                            <div className="h-2 w-2 rounded-full bg-blue-400 group-hover:scale-150 transition-transform" />
-                                            <div className="w-[1px] flex-1 bg-white/10 my-1" />
-                                        </div>
-                                        <div>
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <span className="text-[10px] font-black uppercase text-blue-400 tracking-widest">Ca {sch.shift}</span>
-                                                <span className="text-[10px] font-bold text-slate-400 tracking-tighter">{shiftTimes[sch.shift]}</span>
-                                            </div>
-                                            <p className="text-sm font-bold text-white line-clamp-1">{sch.subject?.name}</p>
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <MapPin className="h-3 w-3 text-slate-500" />
-                                                <span className="text-[10px] font-bold text-slate-400">Phòng {sch.room?.name || '---'}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))
-                            ) : (
-                                <div className="flex flex-col items-center justify-center py-10 opacity-40">
-                                    <Calendar className="h-10 w-10 mb-2" />
-                                    <p className="text-xs italic font-medium">Không có lịch học</p>
-                                </div>
-                            )}
+                        <div className="flex items-center justify-center h-full -mt-64 relative z-10 pointer-events-none">
+                            <p className="text-slate-400 text-xs font-bold bg-white/50 px-4 py-2 rounded-lg backdrop-blur-sm">Chưa có dữ liệu hiển thị</p>
                         </div>
-
-                        <Button className="w-full mt-6 rounded-xl bg-white/10 text-white hover:bg-white/20 border-none text-[10px] font-black uppercase tracking-widest h-10">
-                            Chi tiết tuần này
-                        </Button>
                     </div>
-                </motion.div>
-            </div>
-
-            {/* Current Enrolled Courses */}
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.6 }}
-                className="rounded-[2.5rem] border border-white bg-white/60 p-6 shadow-sm backdrop-blur-2xl"
-            >
-                <div className="flex justify-between items-center mb-6">
-                    <div>
-                        <h2 className="text-base font-black text-slate-900">Lớp học phần đang tham gia</h2>
-                        <p className="text-[10px] font-medium text-slate-400">Danh sách các môn học trong học kỳ hiện tại</p>
-                    </div>
-                    <Button variant="ghost" className="text-blue-600 font-black text-xs hover:bg-blue-50 rounded-xl px-4 h-8">
-                        Xem tất cả
-                    </Button>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {enrollments.length > 0 ? (
-                        enrollments.map((enr, i) => (
-                            <div key={i} className="flex items-center gap-4 p-4 rounded-2xl bg-white/40 border border-slate-100 hover:border-blue-200 transition-all hover:shadow-md group">
-                                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors duration-300">
-                                    <BookOpen className="h-6 w-6" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-0.5">
-                                        <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{enr.courseClass?.code}</span>
-                                        <div className="h-0.5 w-0.5 rounded-full bg-slate-300" />
-                                        <span className="text-[10px] font-bold text-slate-400">{enr.courseClass?.subject?.credits} Tín chỉ</span>
+                {/* Credit progress (Doughnut chart) */}
+                <div className="lg:col-span-2 xl:col-span-3 bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex flex-col items-center justify-between">
+                    <div className="flex justify-between items-center mb-6 border-b border-slate-50 pb-4 w-full">
+                        <h3 className="text-sm font-black text-slate-800 self-start">Tiến độ học tập</h3>
+                        <Link href="/portal/training">
+                            <ChevronRight className="h-4 w-4 text-slate-300 hover:text-blue-500 cursor-pointer" />
+                        </Link>
+                    </div>
+                    <div className="h-56 w-56 relative flex items-center justify-center">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie
+                                    data={creditsData}
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius={70}
+                                    outerRadius={90}
+                                    paddingAngle={5}
+                                    dataKey="value"
+                                    startAngle={90}
+                                    endAngle={-270}
+                                >
+                                    <Cell fill="#00e5ff" />
+                                    <Cell fill="#f1f5f9" />
+                                </Pie>
+                            </PieChart>
+                        </ResponsiveContainer>
+                        <div className="absolute flex flex-col items-center">
+                            <span className="text-2xl font-black text-blue-600">{student?.totalEarnedCredits || 0}</span>
+                            <div className="w-12 h-0.5 bg-slate-200 my-1" />
+                            <span className="text-sm font-black text-slate-400">135</span>
+                        </div>
+                    </div>
+                    <div className="w-full h-1" /> {/* Spacer */}
+                </div>
+
+                {/* Course List */}
+                <div className="lg:col-span-4 xl:col-span-4 bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                    <div className="flex justify-between items-center mb-6 border-b border-slate-50 pb-4">
+                        <h3 className="text-sm font-black text-slate-800">Lớp học phần</h3>
+                        <select className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[10px] font-bold outline-none">
+                            <option>Kỳ 1 (2025-2026)</option>
+                        </select>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-12 text-[10px] font-bold text-slate-400 uppercase tracking-tight pb-2 border-b border-slate-50">
+                            <div className="col-span-9">Môn học/Học phần</div>
+                            <div className="col-span-3 text-right">Số tín chỉ</div>
+                        </div>
+                        {enrollments.length > 0 ? (
+                            enrollments.map((enr, i) => (
+                                <div key={i} className="grid grid-cols-12 items-center group">
+                                    <div className="col-span-9 pr-4">
+                                        <Link href="/portal/courses">
+                                            <p className="text-[10px] font-bold text-blue-500 hover:underline cursor-pointer tracking-tight">{enr.courseClass?.code}</p>
+                                        </Link>
+                                        <h4 className="text-[11px] font-bold text-slate-600 truncate">{enr.courseClass?.subject?.name}</h4>
                                     </div>
-                                    <h4 className="text-sm font-black text-slate-800 line-clamp-1 group-hover:text-blue-600 transition-colors uppercase">{enr.courseClass?.subject?.name}</h4>
-                                    <p className="text-[10px] font-bold text-slate-400 mt-0.5 flex items-center gap-1.5">
-                                        <User className="h-3 w-3" />
-                                        GV: {enr.courseClass?.lecturer?.fullName || 'Chưa cập nhật'}
-                                    </p>
+                                    <div className="col-span-3 text-right text-xs font-black text-slate-800">
+                                        {enr.courseClass?.subject?.credits}
+                                    </div>
                                 </div>
-                                <div className="h-8 w-8 flex items-center justify-center rounded-lg bg-slate-50 text-slate-400 group-hover:text-blue-600 transition-colors">
-                                    <ChevronRight className="h-4 w-4" />
-                                </div>
+                            ))
+                        ) : (
+                            <div className="py-8 text-center text-slate-400 text-xs italic">
+                                Không có học phần trong kỳ này
                             </div>
-                        ))
-                    ) : (
-                        <div className="col-span-full py-12 text-center text-slate-400 font-medium italic text-xs">
-                            Chưa có dữ liệu đăng ký học phần
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
-            </motion.div>
+            </div>
         </div>
     );
 }

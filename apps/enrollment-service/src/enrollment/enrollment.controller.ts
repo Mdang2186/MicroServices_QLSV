@@ -1,4 +1,5 @@
 import { Controller, Post, Body, Get, Param } from '@nestjs/common';
+import { ApiBody } from '@nestjs/swagger';
 import { EnrollmentService } from './enrollment.service';
 
 @Controller('enrollments')
@@ -6,6 +7,15 @@ export class EnrollmentController {
     constructor(private readonly enrollmentService: EnrollmentService) { }
 
     @Post()
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                studentId: { type: 'string', example: 'STU12345' },
+                classId: { type: 'string', example: 'CLS67890' }
+            }
+        }
+    })
     register(@Body() body: { studentId: string; classId: string }) {
         return this.enrollmentService.registerCourse(body.studentId, body.classId);
     }
@@ -42,6 +52,25 @@ export class EnrollmentController {
     }
 
     @Post('attendance/bulk')
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                date: { type: 'string', example: '2023-11-20T00:00:00Z' },
+                attendances: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            enrollmentId: { type: 'string', example: 'ENR9999' },
+                            status: { type: 'string', example: 'PRESENT' },
+                            note: { type: 'string', example: 'Đi trễ 15p' }
+                        }
+                    }
+                }
+            }
+        }
+    })
     bulkMarkAttendance(@Body() body: {
         date: string;
         attendances: { enrollmentId: string; status: string; note?: string }[]

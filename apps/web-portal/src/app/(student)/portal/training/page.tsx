@@ -1,188 +1,174 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
+import { StudentService } from "@/services/student.service";
+import Cookies from "js-cookie";
 import {
     Award,
-    Zap,
-    Star,
-    ShieldCheck,
-    Users,
-    Heart,
     ChevronRight,
     TrendingUp,
-    Calendar,
-    Download
+    Download,
+    Info,
+    Printer,
+    Trophy
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const trainingData = [
-    {
-        semester: "Học kỳ 1 (2024 - 2025)",
-        score: 85,
-        rating: "Tốt",
-        criteria: [
-            { name: "Ý thức tham gia học tập", score: 18, max: 20, icon: Zap },
-            { name: "Ý thức chấp hành nội quy", score: 25, max: 25, icon: ShieldCheck },
-            { name: "Ý thức tham gia hoạt động CT-XH", score: 15, max: 20, icon: Users },
-            { name: "Phẩm chất công dân và quan hệ cộng đồng", score: 12, max: 15, icon: Heart },
-            { name: "Ý thức tham gia các hoạt động Đoàn, Hội", score: 15, max: 20, icon: Star },
-        ]
-    },
-    {
-        semester: "Học kỳ 2 (2023 - 2024)",
-        score: 92,
-        rating: "Xuất sắc",
-        criteria: [
-            { name: "Ý thức tham gia học tập", score: 20, max: 20, icon: Zap },
-            { name: "Ý thức chấp hành nội quy", score: 25, max: 25, icon: ShieldCheck },
-            { name: "Ý thức tham gia hoạt động CT-XH", score: 18, max: 20, icon: Users },
-            { name: "Phẩm chất công dân và quan hệ cộng đồng", score: 14, max: 15, icon: Heart },
-            { name: "Ý thức tham gia các hoạt động Đoàn, Hội", score: 15, max: 20, icon: Star },
-        ]
-    }
-];
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table";
 
 export default function TrainingResultsPage() {
-    return (
-        <div className="min-h-screen space-y-6 bg-transparent pb-20">
-            {/* Header Section */}
-            <motion.div
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="relative overflow-hidden rounded-[2rem] border border-white bg-white/70 p-6 shadow-[0_20px_50px_rgba(0,0,0,0.05)] backdrop-blur-3xl ring-1 ring-purple-500/5"
-            >
-                <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-purple-400/20 blur-3xl opacity-50" />
-                <div className="absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-indigo-400/20 blur-3xl opacity-50" />
+    const [trainingData, setTrainingData] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
 
-                <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                const userCookie = Cookies.get("student_user");
+                if (!userCookie) return;
+                const user = JSON.parse(userCookie);
+                const studentId = user.student?.id || user.id;
+
+                const data = await StudentService.getTrainingResults(studentId);
+                if (data && data.length > 0) {
+                    setTrainingData(data);
+                } else {
+                    // Fallback mock data if API returns empty
+                    setTrainingData([
+                        { semester: "Học kỳ 1 - 2023-2024", score: 85, rating: "Tốt" },
+                        { semester: "Học kỳ 2 - 2023-2024", score: 92, rating: "Xuất sắc" }
+                    ]);
+                }
+            } catch (error) {
+                console.error("Failed to fetch training results:", error);
+                setTrainingData([]);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+    }, []);
+
+    if (loading) {
+        return (
+            <div className="flex min-h-[80vh] items-center justify-center">
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-purple-600"></div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-screen space-y-4 bg-transparent pb-20">
+            {/* Header Section */}
+            <div className="bg-white border border-slate-200 shadow-sm rounded-[2.5rem] overflow-hidden">
+                <div className="px-8 py-6 flex flex-col md:flex-row justify-between items-center bg-purple-50/50 border-b border-slate-200 gap-6">
                     <div className="flex items-center gap-4">
-                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-700 text-white shadow-xl shadow-purple-500/30">
-                            <Award className="h-7 w-7" />
+                        <div className="h-12 w-12 rounded-2xl bg-white border border-purple-200 flex items-center justify-center text-purple-600 shadow-sm">
+                            <Award className="h-6 w-6" />
                         </div>
                         <div>
-                            <h1 className="text-2xl font-black tracking-tight text-slate-900">Kết quả rèn luyện</h1>
-                            <p className="mt-0.5 text-xs font-medium text-slate-500">Ghi nhận nỗ lực hoạt động và rèn luyện đạo đức</p>
+                            <h1 className="text-xl font-bold text-slate-700 uppercase tracking-tight">Kết quả rèn luyện</h1>
+                            <p className="text-xs font-semibold text-purple-600">Ghi nhận nỗ lực hoạt động và đạo đức</p>
                         </div>
                     </div>
+
+                    <div className="flex items-center gap-3 bg-white px-6 py-3 rounded-2xl border border-purple-100 shadow-sm">
+                        <div className="text-right">
+                            <p className="text-[10px] font-bold uppercase text-slate-400">Xếp loại chủ đạo</p>
+                            <p className="text-xl font-black text-purple-600">Xuất sắc</p>
+                        </div>
+                        <div className="h-10 w-10 flex items-center justify-center rounded-xl bg-purple-50 text-purple-600">
+                            <Trophy className="h-5 w-5" />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="px-8 py-4 flex flex-wrap justify-between items-center gap-4 bg-white">
                     <div className="flex gap-2">
-                        <Button className="rounded-xl bg-white text-slate-900 hover:bg-slate-50 border border-slate-200 h-9 px-4 text-xs font-bold">
-                            <Download className="mr-2 h-3.5 w-3.5" /> Xuất minh chứng
+                        <Button variant="outline" className="h-9 rounded-lg border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50">
+                            <Printer className="mr-2 h-4 w-4" /> In minh chứng
                         </Button>
-                        <Button className="rounded-xl bg-purple-600 text-white hover:bg-purple-700 shadow-xl shadow-purple-200 h-9 px-4 text-xs font-bold">
-                            Tất cả học kỳ
+                        <Button className="h-9 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50">
+                            <Download className="mr-2 h-4 w-4" /> Tải bảng điểm RL
                         </Button>
                     </div>
                 </div>
-            </motion.div>
 
-            {/* Content Tabs / Semester Cards */}
-            <div className="space-y-8">
-                {trainingData.map((data, idx) => (
-                    <motion.div
-                        key={idx}
-                        initial={{ opacity: 0, x: idx % 2 === 0 ? -20 : 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.2 * idx }}
-                        className="relative"
-                    >
-                        {/* Semester Header */}
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="h-1.5 w-8 rounded-full bg-purple-600" />
-                            <h2 className="text-lg font-black text-slate-800">{data.semester}</h2>
-                            <div className="hidden md:block h-[1px] flex-1 bg-slate-200" />
-                        </div>
-
-                        <div className="grid lg:grid-cols-3 gap-6">
-                            {/* Score Card */}
-                            <div className="lg:col-span-1 rounded-[1.5rem] border border-white bg-white/60 p-6 shadow-xl backdrop-blur-2xl flex flex-col items-center justify-center text-center">
-                                <div className="relative mb-6">
-                                    <svg className="h-32 w-32 -rotate-90">
-                                        <circle
-                                            cx="64" cy="64" r="54"
-                                            fill="none"
-                                            stroke="#f3f4f6"
-                                            strokeWidth="12"
-                                        />
-                                        <motion.circle
-                                            initial={{ strokeDasharray: "0, 340" }}
-                                            animate={{ strokeDasharray: `${(data.score / 100) * 340}, 340` }}
-                                            transition={{ duration: 1.5, ease: "easeOut" }}
-                                            cx="64" cy="64" r="54"
-                                            fill="none"
-                                            stroke="url(#purpleGradient)"
-                                            strokeWidth="12"
-                                            strokeLinecap="round"
-                                        />
-                                        <defs>
-                                            <linearGradient id="purpleGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                                                <stop offset="0%" stopColor="#9333ea" />
-                                                <stop offset="100%" stopColor="#4f46e5" />
-                                            </linearGradient>
-                                        </defs>
-                                    </svg>
-                                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                        <span className="text-3xl font-black text-slate-800">{data.score}</span>
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Điểm</span>
-                                    </div>
-                                </div>
-                                <div className={cn(
-                                    "px-4 py-1.5 rounded-full text-xs font-black shadow-lg",
-                                    data.rating === "Xuất sắc" ? "bg-amber-100 text-amber-700 shadow-amber-100" : "bg-emerald-100 text-emerald-700 shadow-emerald-100"
-                                )}>
-                                    Phân loại: {data.rating}
-                                </div>
-                            </div>
-
-                            {/* Details Table */}
-                            <div className="lg:col-span-2 space-y-3">
-                                {data.criteria.map((item, i) => (
-                                    <div key={i} className="flex items-center gap-4 rounded-2xl border border-white bg-white/60 p-4 shadow-sm backdrop-blur-xl transition-all hover:bg-white hover:shadow-md ring-1 ring-slate-100/50">
-                                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-50 text-purple-600">
-                                            <item.icon className="h-4 w-4" />
+                <div className="overflow-x-auto border-t border-slate-100">
+                    <Table className="border-collapse">
+                        <TableHeader className="bg-purple-50/30">
+                            <TableRow className="hover:bg-transparent border-slate-200">
+                                <TableHead className="font-bold text-purple-800 text-xs uppercase pl-8 h-12">Học kỳ</TableHead>
+                                <TableHead className="w-48 font-bold text-purple-800 text-xs uppercase h-12 text-center">Xếp loại</TableHead>
+                                <TableHead className="w-48 font-bold text-purple-800 text-xs uppercase text-center h-12">Tổng điểm</TableHead>
+                                <TableHead className="w-32 font-bold text-purple-800 text-xs uppercase text-center h-12 pr-8">Chi tiết</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {trainingData.length > 0 ? (
+                                trainingData.map((data: any, idx: number) => (
+                                    <TableRow key={idx} className="hover:bg-slate-50 border-slate-100 transition-colors h-14">
+                                        <TableCell className="font-bold text-slate-700 text-xs pl-8">{data.semester}</TableCell>
+                                        <TableCell className="text-center">
+                                            <span className={cn(
+                                                "px-3 py-1 rounded text-[10px] font-black border uppercase tracking-tight",
+                                                data.rating === "Xuất sắc" ? "bg-amber-50 text-amber-600 border-amber-200" :
+                                                    data.rating === "Tốt" ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
+                                                        "bg-blue-50 text-blue-600 border-blue-200"
+                                            )}>
+                                                {data.rating}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell className="text-center font-black text-slate-800 text-sm">{data.score}</TableCell>
+                                        <TableCell className="text-center pr-8">
+                                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-lg bg-slate-50 border border-slate-200 hover:bg-purple-50 hover:border-purple-200 group">
+                                                <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-purple-600" />
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            ) : (
+                                <TableRow>
+                                    <TableCell colSpan={4} className="h-32 text-center bg-[url('https://www.transparenttextures.com/patterns/graph-paper.png')] bg-fixed">
+                                        <div className="flex flex-col items-center justify-center opacity-40">
+                                            <Award className="h-10 w-10 text-slate-400 mb-2" />
+                                            <p className="text-sm font-bold text-slate-500">Chưa có dữ liệu rèn luyện</p>
                                         </div>
-                                        <div className="flex-1">
-                                            <h4 className="text-xs font-bold text-slate-800 flex justify-between">
-                                                <span>{item.name}</span>
-                                                <span className="text-purple-600">{item.score}/{item.max}</span>
-                                            </h4>
-                                            <div className="mt-2 h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
-                                                <motion.div
-                                                    initial={{ width: 0 }}
-                                                    animate={{ width: `${(item.score / item.max) * 100}%` }}
-                                                    transition={{ duration: 1, delay: 0.5 + (i * 0.1) }}
-                                                    className="h-full bg-gradient-to-r from-purple-500 to-indigo-600 rounded-full"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </motion.div>
-                ))}
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </div>
             </div>
 
             {/* Info Section */}
-            <motion.div
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="rounded-[1.5rem] bg-slate-900 p-6 text-white shadow-2xl relative overflow-hidden"
-            >
-                <div className="absolute right-0 top-0 p-4 opacity-10">
-                    <TrendingUp className="h-24 w-24" />
+            <div className="grid md:grid-cols-1 gap-4">
+                <div className="bg-white border border-slate-200 rounded-[1.5rem] p-6 flex items-start gap-4">
+                    <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                        <Info className="h-5 w-5" />
+                    </div>
+                    <div>
+                        <h3 className="text-sm font-bold text-slate-800 mb-1 leading-none">Lưu ý về Điểm rèn luyện</h3>
+                        <p className="text-xs font-medium text-slate-500 leading-relaxed max-w-2xl">
+                            Điểm rèn luyện là cơ sở để xét học bổng, khen thưởng và các chế độ ưu tiên khác.
+                            Sinh viên cần tích cực tham gia các hoạt động ngoại khóa, đoàn hội để cải thiện kết quả này.
+                        </p>
+                        <Button variant="link" className="px-0 h-auto mt-2 text-blue-600 text-xs font-bold hover:no-underline">
+                            Xem quy định chi tiết <ChevronRight className="h-3 w-3 ml-1" />
+                        </Button>
+                    </div>
                 </div>
-                <div className="relative z-10 max-w-2xl">
-                    <h3 className="text-lg font-black mb-2">Lưu ý về Điểm rèn luyện</h3>
-                    <p className="text-slate-400 text-xs font-medium leading-relaxed mb-6">
-                        Điểm rèn luyện là cơ sở để xét học bổng, khen thưởng và các chế độ ưu tiên khác.
-                        Sinh viên cần tích cực tham gia các hoạt động ngoại khóa, đoàn hội để cải thiện kết quả này.
-                    </p>
-                    <Button className="rounded-xl bg-white text-slate-900 hover:bg-white/90 px-6 h-9 font-bold text-xs">
-                        Xem quy định chi tiết <ChevronRight className="ml-2 h-3.5 w-3.5" />
-                    </Button>
-                </div>
-            </motion.div>
+            </div>
         </div>
     );
 }

@@ -2,7 +2,7 @@
 import axios from 'axios';
 
 async function testWebAdminLogin() {
-    const url = 'http://localhost:3000/api/auth/login';
+    const url = '/api/auth/login';
     const payload = {
         email: 'admin01@uni.edu.vn',
         password: '123456'

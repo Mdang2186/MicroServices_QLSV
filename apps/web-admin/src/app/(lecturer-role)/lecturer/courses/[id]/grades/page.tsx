@@ -33,7 +33,7 @@ export default function LecturerGradeEntryPage() {
     useEffect(() => {
         if (!classId || !TOKEN) return;
 
-        fetch(`http://localhost:3000/api/grades/class/${classId}`, {
+        fetch(`/api/grades/class/${classId}`, {
             headers: { Authorization: `Bearer ${TOKEN}` }
         })
             .then(r => r.ok ? r.json() : [])
@@ -67,7 +67,7 @@ export default function LecturerGradeEntryPage() {
         setMessage({ text: "", type: "" });
 
         try {
-            const res = await fetch(`http://localhost:3000/api/grades/bulk`, {
+            const res = await fetch(`/api/grades/bulk`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

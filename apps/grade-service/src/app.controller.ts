@@ -1,4 +1,5 @@
 import { Controller, Get, Param, Post, Body } from '@nestjs/common';
+import { ApiBody } from '@nestjs/swagger';
 import { AppService } from './app.service';
 
 @Controller()
@@ -21,6 +22,24 @@ export class AppController {
   }
 
   @Post('bulk')
+  @ApiBody({
+    schema: {
+        type: 'object',
+        properties: {
+            grades: {
+                type: 'array',
+                items: {
+                    type: 'object',
+                    properties: {
+                        enrollmentId: { type: 'string', example: 'ENR123' },
+                        subjectCode: { type: 'string', example: 'MATH101' },
+                        score: { type: 'number', example: 8.5 }
+                    }
+                }
+            }
+        }
+    }
+  })
   bulkUpdateGrades(@Body() body: { grades: any[] }) {
     return this.appService.bulkUpdateGrades(body.grades);
   }
