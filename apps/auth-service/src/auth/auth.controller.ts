@@ -107,6 +107,21 @@ export class AuthController {
     return this.authService.deleteLecturer(id);
   }
 
+  @Post("lecturers/:id/grant-account")
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        username: { type: "string" },
+        email: { type: "string" },
+        password: { type: "string" }
+      }
+    }
+  })
+  async grantAccount(@Param("id") id: string, @Body() data: any) {
+    return this.authService.grantAccount(id, data);
+  }
+
   // --- Admin Student Management ---
   @Post("students")
   @ApiBody({

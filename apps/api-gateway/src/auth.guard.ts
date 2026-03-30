@@ -14,10 +14,17 @@ export class AuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
 
-    // Whitelist login/register endpoints
+    // Whitelist public endpoints
+    const publicEndpoints = ["/api/auth/login", "/api/auth/register", "/api/auth/forgot-password", "/api/auth/reset-password"];
+    const isPublic = publicEndpoints.some(endpoint => request.originalUrl.startsWith(endpoint));
+
     if (
-      request.originalUrl.includes("/api/auth/login") ||
-      request.originalUrl.includes("/api/auth/register")
+      isPublic ||
+      request.originalUrl.includes("/api/semesters") ||
+      request.originalUrl.includes("/api/courses/faculties") ||
+      request.originalUrl.includes("/api/courses/majors") ||
+      request.originalUrl.includes("/api/rooms") ||
+      request.originalUrl.includes("/api/courses/subjects")
     ) {
       return true;
     }
@@ -31,6 +38,9 @@ export class AuthGuard implements CanActivate {
         secret: process.env.JWT_SECRET || "supersecretkey",
       });
       request["user"] = payload;
+      // Forward to microservices via headers
+      request.headers['x-user-id'] = payload.sub;
+      request.headers['x-user-role'] = payload.role;
     } catch {
       throw new UnauthorizedException();
     }

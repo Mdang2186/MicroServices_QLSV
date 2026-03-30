@@ -1,0 +1,32 @@
+
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+
+async function main() {
+    const student = await prisma.student.findFirst({
+        where: { studentCode: '22103100030' },
+        include: {
+            enrollments: {
+                include: {
+                    courseClass: {
+                        include: { subject: true, semester: true }
+                    }
+                }
+            }
+        }
+    });
+
+    if (!student) {
+        console.log('Student not found');
+        return;
+    }
+
+    console.log(`Student: ${student.fullName} (${student.id})`);
+    student.enrollments.forEach(e => {
+        console.log(`${e.courseClass.semester.name} | ${e.courseClass.subject.code} | ${e.courseClass.subject.name} | ${e.tuitionFee} | ${e.status}`);
+    });
+}
+
+main()
+    .catch(e => console.error(e))
+    .finally(async () => await prisma.$disconnect());

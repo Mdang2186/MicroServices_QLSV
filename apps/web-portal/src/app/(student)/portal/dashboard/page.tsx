@@ -207,7 +207,6 @@ export default function StudentDashboard() {
                     { label: "Lịch theo tuần", icon: Calendar, color: "text-blue-600", href: "/portal/schedule" },
                     { label: "Lịch theo tiến độ", icon: ClipboardList, color: "text-sky-600", href: "/portal/training" },
                     { label: "Tra cứu công nợ", icon: Wallet, color: "text-emerald-600", href: "/portal/tuition" },
-                    { label: "Thanh toán trực tuyến", icon: CreditCard, color: "text-indigo-600", href: "/portal/tuition?tab=payment" },
                     { label: "Phiếu thu tổng hợp", icon: FileText, color: "text-sky-700", href: "/portal/tuition?tab=history" },
                 ].map((action, i) => (
                     <Link key={i} href={action.href} className="flex flex-col items-center justify-center gap-3 p-4 bg-white border border-slate-100 rounded-xl shadow-sm hover:shadow-md hover:border-blue-200 transition-all group">

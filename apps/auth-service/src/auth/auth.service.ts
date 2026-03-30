@@ -54,12 +54,34 @@ export class AuthService {
       const user = await this.validateUser(loginDto.email, loginDto.password);
 
       let profileId = undefined;
+      let fullName = user.username; // Default to username
+      let degree = undefined;
+
       if (user.role === Role.STUDENT) {
-        const student = await this.prisma.student.findUnique({ where: { userId: user.id } });
-        profileId = student?.id;
+        const student = await this.prisma.student.findUnique({ 
+          where: { userId: user.id },
+          select: { id: true, fullName: true } 
+        });
+        if (student) {
+          profileId = student.id;
+          fullName = student.fullName;
+        }
       } else if (user.role === Role.LECTURER) {
-        const lecturer = await this.prisma.lecturer.findUnique({ where: { userId: user.id } });
-        profileId = lecturer?.id;
+        const lecturer = await this.prisma.lecturer.findUnique({ 
+          where: { userId: user.id },
+          select: { id: true, fullName: true, degree: true }
+        });
+        if (lecturer) {
+          profileId = lecturer.id;
+          fullName = lecturer.fullName;
+          degree = lecturer.degree;
+        } else {
+          degree = "Giảng viên";
+        }
+      } else if (user.role === 'SUPER_ADMIN') {
+        fullName = "Quản trị viên";
+      } else if (user.role === 'ACADEMIC_STAFF') {
+        fullName = "Cán bộ Đào tạo";
       }
 
       const payload = { username: user.username, sub: user.id, role: user.role, profileId };
@@ -69,9 +91,11 @@ export class AuthService {
         email: user.email,
         role: user.role,
         profileId,
+        fullName,
+        degree,
         accessToken: this.jwtService.sign(payload),
       };
-      console.log(`[AuthService] Login successful for: ${user.id}, profileId: ${profileId}`);
+      console.log(`[AuthService] Login successful for: ${user.id}, role: ${user.role}, name: ${fullName}, degree: ${degree}`);
       return response;
     } catch (error: any) {
       console.error(`[AuthService] Error in login: ${error.message}`, error.stack);
@@ -221,28 +245,47 @@ export class AuthService {
       throw new ConflictException(`Mã giảng viên ${data.lectureCode} đã tồn tại trong hệ thống`);
     }
 
-    // 1. Create User with LECTURER role
-    const hashedPassword = await bcrypt.hash("123456", 10);
-    const user = await this.prisma.user.create({
-      data: {
-        username: data.username || data.email.split('@')[0],
-        email: data.email,
-        passwordHash: hashedPassword,
-        role: Role.LECTURER,
-      }
-    });
-
-    // 2. Create Lecturer Profile
+    // [MODIFIED] Create Lecturer Profile ONLY (No account yet)
     return this.prisma.lecturer.create({
       data: {
-        id: user.id,
         lectureCode: data.lectureCode,
         fullName: data.fullName,
         facultyId: data.facultyId,
         degree: data.degree,
         phone: data.phone,
-        userId: user.id,
+        // userId: null // Defaults to null in schema
       }
+    });
+  }
+
+  async grantAccount(id: string, data: any) {
+    const lecturer = await this.prisma.lecturer.findUnique({ 
+      where: { id },
+      include: { user: true }
+    });
+    if (!lecturer) throw new NotFoundException("Giảng viên không tồn tại");
+    if (lecturer.userId) throw new ConflictException("Giảng viên này đã có tài khoản");
+
+    // Default password to 123456 or from data
+    const password = data.password || "123456";
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const email = data.email || `${lecturer.lectureCode.toLowerCase()}@uneti.edu.vn`;
+    const username = data.username || lecturer.lectureCode;
+
+    // 1. Create User
+    const user = await this.prisma.user.create({
+      data: {
+        username: username,
+        email: email,
+        passwordHash: hashedPassword,
+        role: Role.LECTURER,
+      }
+    });
+
+    // 2. Link User to Lecturer
+    return this.prisma.lecturer.update({
+      where: { id },
+      data: { userId: user.id }
     });
   }
 
@@ -256,15 +299,16 @@ export class AuthService {
       if (existing) throw new ConflictException(`Mã giảng viên ${data.lectureCode} đã được sử dụng`);
     }
 
-    // We use a transaction or split updates if Prisma types for nested unchecked updates are problematic
-    // In this case, updating User and Lecturer separately is safer for type-safety
-    await this.prisma.user.update({
-      where: { id: lecturer.userId },
-      data: {
-        email: data.email,
-        username: data.username || data.email.split('@')[0],
-      }
-    });
+    // Update User if it exists
+    if (lecturer.userId) {
+      await this.prisma.user.update({
+        where: { id: lecturer.userId },
+        data: {
+          email: data.email,
+          username: data.username || (data.email ? data.email.split('@')[0] : undefined),
+        }
+      });
+    }
 
     return this.prisma.lecturer.update({
       where: { id },
@@ -281,22 +325,30 @@ export class AuthService {
   async deleteLecturer(id: string) {
     const lecturer = await this.prisma.lecturer.findUnique({ where: { id } });
     if (!lecturer) throw new NotFoundException("Lecturer not found");
-    // Delete the user (cascades to lecturer profile)
-    return this.prisma.user.delete({ where: { id: lecturer.userId } });
+    
+    // If lecturer has a user, delete the user (cascades to lecturer profile)
+    if (lecturer.userId) {
+      return this.prisma.user.delete({ where: { id: lecturer.userId } });
+    }
+    
+    // If no user, delete the lecturer profile directly
+    return this.prisma.lecturer.delete({ where: { id } });
   }
 
   // --- Admin Student Management (Proxying to maintain IAM consistency) ---
 
   async createStudent(data: any) {
-    // Check if student code already exists
-    const existingStudent = await this.prisma.student.findUnique({
+    // 1. Check if student profile already exists by studentCode
+    let existingStudent = await this.prisma.student.findUnique({
       where: { studentCode: data.studentCode }
     });
-    if (existingStudent) {
-      throw new ConflictException(`Mã sinh viên ${data.studentCode} đã tồn tại trong hệ thống`);
+
+    // 2. If student has an account already, throw error
+    if (existingStudent && existingStudent.userId) {
+      throw new ConflictException(`Mã sinh viên ${data.studentCode} đã có tài khoản trong hệ thống`);
     }
 
-    // 1. Create User with STUDENT role
+    // 3. Create User with STUDENT role
     const hashedPassword = await bcrypt.hash("123456", 10);
     const user = await this.prisma.user.create({
       data: {
@@ -307,20 +359,34 @@ export class AuthService {
       }
     });
 
-    // 2. Create Student Profile
-    // Note: We need a majorId. For now we use a default if not provided
-    const major = await this.prisma.major.findFirst();
-
-    return this.prisma.student.create({
-      data: {
-        userId: user.id,
-        studentCode: data.studentCode,
-        fullName: data.fullName,
-        intake: data.intake,
-        status: data.status || 'ACTIVE',
-        majorId: data.majorId || major?.id,
-        dob: data.dob ? new Date(data.dob) : new Date("2000-01-01"),
-      }
-    });
+    // 4. Update or Create Student Profile
+    if (existingStudent) {
+      // Link existing profile to new account
+      return this.prisma.student.update({
+        where: { id: existingStudent.id },
+        data: {
+          userId: user.id,
+          // Update other fields if provided
+          fullName: data.fullName || existingStudent.fullName,
+          intake: data.intake || existingStudent.intake,
+          majorId: data.majorId || existingStudent.majorId,
+          dob: data.dob ? new Date(data.dob) : existingStudent.dob,
+        }
+      });
+    } else {
+      // Create new profile linked to new account
+      const major = await this.prisma.major.findFirst();
+      return this.prisma.student.create({
+        data: {
+          userId: user.id,
+          studentCode: data.studentCode,
+          fullName: data.fullName,
+          intake: data.intake,
+          status: data.status || 'ACTIVE',
+          majorId: data.majorId || major?.id,
+          dob: data.dob ? new Date(data.dob) : new Date("2000-01-01"),
+        }
+      });
+    }
   }
 }

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body } from "@nestjs/common";
+import { Controller, Get, Post, Body, Put, Delete, Param } from "@nestjs/common";
 import { ApiBody } from "@nestjs/swagger";
 import { MajorService } from "./major.service";
 
@@ -23,5 +23,15 @@ export class MajorController {
     })
     create(@Body() data: any) {
         return this.majorService.create(data);
+    }
+
+    @Put(":id")
+    update(@Param("id") id: string, @Body() data: any) {
+        return this.majorService.update(id, data);
+    }
+
+    @Delete(":id")
+    delete(@Param("id") id: string) {
+        return this.majorService.delete(id);
     }
 }

@@ -142,7 +142,7 @@ export default function LecturerGradeSelectionPage() {
                                 </div>
 
                                 <Link
-                                    href={`/lecturer/courses/${c.id}/grades`}
+                                    href={`/lecturer/grades/${c.id}`}
                                     className="w-full flex items-center justify-center gap-2 py-3 bg-[#f8fafc] text-indigo-600 text-sm font-extrabold rounded-xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm group-hover:shadow-indigo-100"
                                 >
                                     Bắt đầu nhập điểm

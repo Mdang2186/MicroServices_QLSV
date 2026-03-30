@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, BookOpen, Settings, LogOut, GraduationCap, UserCog, ShieldCheck, Menu, X } from "lucide-react";
+import { LayoutDashboard, Users, BookOpen, Settings, LogOut, GraduationCap, UserCog, ShieldCheck, Menu, X, CreditCard } from "lucide-react";
 
 export default function AdminSidebar() {
     const pathname = usePathname();
@@ -15,6 +15,7 @@ export default function AdminSidebar() {
         { href: "/admin/lecturers", icon: BookOpen, label: "Giảng viên" },
         { href: "/admin/staff", icon: UserCog, label: "Nhân viên ĐT" },
         { href: "/admin/users", icon: Users, label: "Tra cứu User" },
+        { href: "/staff/tuition", icon: CreditCard, label: "Quản lý Học phí" },
     ];
 
     return (

@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, BookOpen, Settings, LogOut, GraduationCap, Building2, UserCog, Menu, X } from "lucide-react";
+import { LayoutDashboard, Users, BookOpen, Settings, LogOut, GraduationCap, Building2, UserCog, Menu, X, UserCheck, CreditCard } from "lucide-react";
 
 export default function StaffSidebar() {
     const pathname = usePathname();
@@ -13,8 +13,11 @@ export default function StaffSidebar() {
         { href: "/staff/dashboard", icon: LayoutDashboard, label: "Bảng điều khiển" },
         { href: "/staff/students", icon: GraduationCap, label: "Quản lý Sinh viên" },
         { href: "/staff/courses", icon: BookOpen, label: "Học phần - Lớp" },
+        { href: "/staff/academic-review", icon: UserCheck, label: "Duyệt điểm & Học vụ" },
+        { href: "/staff/subjects", icon: BookOpen, label: "Quản lý Môn học" },
         { href: "/staff/departments", icon: Building2, label: "Khoa - Ngành" },
         { href: "/staff/lecturers", icon: Users, label: "Hồ sơ Giảng viên" },
+        { href: "/staff/tuition", icon: CreditCard, label: "Quản lý Học phí" },
     ];
 
     return (

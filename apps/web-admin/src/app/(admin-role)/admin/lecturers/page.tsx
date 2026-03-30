@@ -21,7 +21,9 @@ import {
     Building2,
     GraduationCap,
     UserCheck,
-    Filter
+    Filter,
+    ShieldCheck,
+    Key
 } from "lucide-react";
 import Modal from "@/components/modal";
 
@@ -94,7 +96,38 @@ export default function AdminLecturersPage() {
         }
     };
 
-    const handleEditLecturer = async (e: React.FormEvent) => {
+    const handleGrantAccount = async (lecturer: any) => {
+    if (!confirm(`Bạn có chắc muốn cấp tài khoản cho giảng viên ${lecturer.fullName}?`)) return;
+    
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/auth/lecturers/${lecturer.id}/grant-account`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${TOKEN}`
+        },
+        body: JSON.stringify({
+          email: lecturer.email || null, // Backend will use default if null
+          username: lecturer.lectureCode
+        })
+      });
+      
+      if (res.ok) {
+        alert("Cấp tài khoản thành công! Mật khẩu mặc định: 123456");
+        await fetchLecturers();
+      } else {
+        const err = await res.json();
+        alert(err.message || "Lỗi khi cấp tài khoản");
+      }
+    } catch (error) {
+      alert("Lỗi kết nối server");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditLecturer = async (e: React.FormEvent) => {
         e.preventDefault();
         setFormLoading(true);
         try {
@@ -255,6 +288,7 @@ export default function AdminLecturersPage() {
                                 <th className="py-4 px-8 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Mã giảng viên</th>
                                 <th className="py-4 px-8 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Khoa / Bộ môn</th>
                                 <th className="py-4 px-8 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Trình độ</th>
+                                <th className="py-4 px-8 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Tài khoản</th>
                                 <th className="py-4 px-8 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Thao tác</th>
                             </tr>
                         </thead>
@@ -288,8 +322,30 @@ export default function AdminLecturersPage() {
                                             {l.degree || "Thạc sĩ"}
                                         </div>
                                     </td>
+                                    <td className="py-5 px-8">
+                                        {l.userId ? (
+                                            <div className="flex items-center gap-1.5 text-emerald-600">
+                                                <ShieldCheck size={14} />
+                                                <span className="text-[11px] font-black uppercase tracking-wider">Đã cấp</span>
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center gap-1.5 text-slate-400">
+                                                <Key size={14} />
+                                                <span className="text-[11px] font-black uppercase tracking-wider">Chưa có</span>
+                                            </div>
+                                        )}
+                                    </td>
                                     <td className="py-5 px-8 text-right">
                                         <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all duration-200">
+                                            {!l.userId && (
+                                                <button
+                                                    onClick={() => handleGrantAccount(l)}
+                                                    className="p-2.5 text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"
+                                                    title="Cấp tài khoản"
+                                                >
+                                                    <Key size={16} />
+                                                </button>
+                                            )}
                                             <button
                                                 onClick={() => openEditModal(l)}
                                                 className="p-2.5 text-uneti-blue hover:bg-uneti-blue-light rounded-xl transition-all"

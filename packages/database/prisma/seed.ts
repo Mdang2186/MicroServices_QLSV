@@ -38,6 +38,9 @@ async function main() {
     await prisma.subject.deleteMany();
     await prisma.adminClass.deleteMany();
     await prisma.lecturer.deleteMany();
+    await prisma.specialization.deleteMany();
+    await prisma.prerequisite.deleteMany();
+    await prisma.tuitionConfig.deleteMany();
     await prisma.major.deleteMany();
     await prisma.faculty.deleteMany();
     await prisma.semester.deleteMany();
@@ -139,9 +142,28 @@ async function main() {
     }
 
     const majors = [
-        { id: "MAJ_KTPM", facultyId: "FAC_CNTT", code: "KTPM", name: "Kỹ thuật phần mềm", credits: 150, mCode: "103" },
-        { id: "MAJ_KHMT", facultyId: "FAC_CNTT", code: "KHMT", name: "Khoa học máy tính", credits: 150, mCode: "101" },
-        { id: "MAJ_QTKD", facultyId: "FAC_KT", code: "QTKD", name: "Quản trị kinh doanh", credits: 135, mCode: "205" },
+        { 
+            id: "MAJ_KTPM", facultyId: "FAC_CNTT", code: "KTPM", name: "Kỹ thuật phần mềm", credits: 150, mCode: "103",
+            specializations: [
+                { id: "SPEC_KTPM_1", code: "PM1", name: "Phát triển ứng dụng Web" },
+                { id: "SPEC_KTPM_2", code: "PM2", name: "Phát triển ứng dụng Di động" },
+                { id: "SPEC_KTPM_3", code: "PM3", name: "Kiểm thử phần mềm" },
+            ]
+        },
+        { 
+            id: "MAJ_KHMT", facultyId: "FAC_CNTT", code: "KHMT", name: "Khoa học máy tính", credits: 150, mCode: "101",
+            specializations: [
+                { id: "SPEC_KHMT_1", code: "CS1", name: "Trí tuệ nhân tạo (AI)" },
+                { id: "SPEC_KHMT_2", code: "CS2", name: "Khoa học dữ liệu" },
+            ]
+        },
+        { 
+            id: "MAJ_QTKD", facultyId: "FAC_KT", code: "QTKD", name: "Quản trị kinh doanh", credits: 135, mCode: "205",
+            specializations: [
+                { id: "SPEC_QTKD_1", code: "BA1", name: "Quản trị marketing" },
+                { id: "SPEC_QTKD_2", code: "BA2", name: "Quản trị nhân sự" },
+            ]
+        },
         { id: "MAJ_KETOAN", facultyId: "FAC_KT", code: "KTK", name: "Kế toán", credits: 135, mCode: "201" },
         { id: "MAJ_NNA", facultyId: "FAC_NN", code: "NNA", name: "Ngôn ngữ Anh", credits: 130, mCode: "301" },
         { id: "MAJ_NNT", facultyId: "FAC_NN", code: "NNT", name: "Ngôn ngữ Trung", credits: 130, mCode: "302" },
@@ -151,6 +173,14 @@ async function main() {
         await prisma.major.create({
             data: { id: m.id, facultyId: m.facultyId, code: m.code, name: m.name, totalCreditsRequired: m.credits }
         });
+
+        if (m.specializations) {
+            for (const s of m.specializations) {
+                await prisma.specialization.create({
+                    data: { id: s.id, majorId: m.id, code: s.code, name: s.name }
+                });
+            }
+        }
     }
 
     // --- 4. Subjects ---
@@ -182,6 +212,18 @@ async function main() {
                 practiceHours: 0,
                 department: "Bộ môn Chuyên ngành",
                 description: `Mô tả môn học ${s.name}`
+            }
+        });
+
+        // Add to Curriculum for the major
+        await prisma.curriculum.create({
+            data: {
+                id: `CURR_${s.id}`,
+                majorId: s.majorId,
+                subjectId: s.id,
+                suggestedSemester: (subjectData.indexOf(s) % 8) + 1,
+                isMandatory: true,
+                cohort: "K16"
             }
         });
     }
@@ -383,43 +425,52 @@ async function main() {
 
         for (let j = 0; j < subjectData.length; j++) {
             const sub = subjectData[j];
-            const courseCode = `${sub.code}_${sem.code.slice(0, 3)}_${j}`;
-            const lecturer = lecturers[j % lecturers.length];
+            
+            // TẠO 3 LỚP HỌC PHẦN CHO MỖI MÔN TRONG 1 HỌC KỲ
+            for (let classNum = 1; classNum <= 3; classNum++) {
+                const uniqueId = j * 3 + classNum;
+                const courseCode = `${sub.code}_${sem.code.slice(0, 3)}_${classNum.toString().padStart(2, '0')}`;
+                const lecturer = lecturers[uniqueId % lecturers.length];
 
-            const courseClass = await prisma.courseClass.create({
-                data: {
-                    id: `CCLASS_${courseCode}`,
-                    subjectId: sub.id,
-                    semesterId: sem.id,
-                    lecturerId: lecturer.id,
-                    code: courseCode,
-                    name: `${sub.name} [${sem.code}]`,
-                    maxSlots: 80,
-                    currentSlots: 0,
-                    status: "LOCKED"
-                }
-            });
+                const courseClass = await prisma.courseClass.create({
+                    data: {
+                        id: `CCLASS_${courseCode}_${sem.id.slice(-4)}`,
+                        subjectId: sub.id,
+                        semesterId: sem.id,
+                        lecturerId: lecturer.id,
+                        code: courseCode,
+                        name: `${sub.name} Lớp ${classNum} [${sem.code}]`,
+                        maxSlots: 80,
+                        currentSlots: 0,
+                        status: classNum === 1 ? "OPEN" : "LOCKED" // Giả lập trạng thái
+                    }
+                });
 
-            // Schedule: Ensure uniqueness by factoring in semester index
-            await prisma.classSchedule.create({
-                data: {
-                    id: `SCH_${courseCode}`,
-                    courseClassId: courseClass.id,
-                    roomId: rooms[j % rooms.length].id,
-                    dayOfWeek: ((j + sIdx) % 6) + 2,
-                    startShift: ((j + sIdx * 2) % 4) * 3 + 1,
-                    endShift: (((j + sIdx * 2) % 4) * 3 + 1) + 2,
-                    type: "THEORY"
-                }
-            });
+                // Schedule: Ensure uniqueness by factoring in semester index & uniqueId
+                await prisma.classSchedule.create({
+                    data: {
+                        id: `SCH_${courseCode}_${sem.id.slice(-4)}`,
+                        courseClassId: courseClass.id,
+                        roomId: rooms[uniqueId % rooms.length].id,
+                        semesterId: sem.id,
+                        dayOfWeek: ((uniqueId + sIdx) % 6) + 2,
+                        startShift: ((uniqueId + sIdx * 2) % 4) * 3 + 1,
+                        endShift: (((uniqueId + sIdx * 2) % 4) * 3 + 1) + 2,
+                        type: "THEORY"
+                    }
+                });
+            }
 
-            // Enroll all students from the relevant major
+            // Enroll all students from the relevant major into CLASS 1 for simplicity of seeding grades
+            const courseCodeClass1 = `${sub.code}_${sem.code.slice(0, 3)}_01`;
+            const courseClassIdToEnroll = `CCLASS_${courseCodeClass1}_${sem.id.slice(-4)}`;
+
             const relevantStudents = students.filter(s => s.majorId === sub.majorId);
             for (const sv of relevantStudents) {
                 const enrollment = await prisma.enrollment.create({
                     data: {
                         studentId: sv.id,
-                        courseClassId: courseClass.id,
+                        courseClassId: courseClassIdToEnroll,
                         status: "SUCCESS",
                         tuitionFee: sub.credits * tuitionRate
                     }
@@ -446,7 +497,7 @@ async function main() {
                 await prisma.grade.create({
                     data: {
                         studentId: sv.id,
-                        courseClassId: courseClass.id,
+                        courseClassId: courseClassIdToEnroll,
                         subjectId: sub.id,
                         attendanceScore: 10,
                         regularScore1: 8 + (j % 3),

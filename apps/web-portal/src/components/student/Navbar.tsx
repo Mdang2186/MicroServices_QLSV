@@ -25,6 +25,7 @@ const navItems = [
     { label: "Đăng ký học", href: "/portal/enroll", icon: Book },
     { label: "Lịch học", href: "/portal/schedule", icon: Calendar },
     { label: "Học phí", href: "/portal/tuition", icon: CreditCard },
+    { label: "Hồ sơ", href: "/portal/profile", icon: User },
     { label: "Đổi mật khẩu", href: "/portal/change-password", icon: Settings },
 ];
 

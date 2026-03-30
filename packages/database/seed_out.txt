@@ -1,0 +1,27 @@
+npm warn Unknown project config "NEXT_TELEMETRY_DISABLED". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+🚀 Starting database cleanup...
+🌱 Database cleaned. Seeding new data for 2026...
+➤ Creating Semesters & Rooms...
+➤ Creating Faculties & Majors...
+➤ Creating Subjects...
+➤ Creating 10 Lecturers...
+➤ Creating 150 Students across 6 Admin Classes...
+➤ Generating Courses, Schedules, and Academic Records...
+❌ Seed error: PrismaClientKnownRequestError: 
+Invalid `prisma.classSchedule.create()` invocation in
+D:\KHOA_LUAN_TOT_NGHIEP\MicroServices_QLSV\packages\database\prisma\seed.ts:437:44
+
+  434 });
+  435 
+  436 // Schedule: Ensure uniqueness by factoring in semester index & classNum
+→ 437 await prisma.classSchedule.create(
+Unique constraint failed on the constraint: `dbo.ClassSchedule`
+    at $n.handleRequestError (D:\KHOA_LUAN_TOT_NGHIEP\MicroServices_QLSV\node_modules\@prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (D:\KHOA_LUAN_TOT_NGHIEP\MicroServices_QLSV\node_modules\@prisma\client\runtime\library.js:121:6623)
+    at $n.request (D:\KHOA_LUAN_TOT_NGHIEP\MicroServices_QLSV\node_modules\@prisma\client\runtime\library.js:121:6307)
+    at async l (D:\KHOA_LUAN_TOT_NGHIEP\MicroServices_QLSV\node_modules\@prisma\client\runtime\library.js:130:9633)
+    at async main (D:\KHOA_LUAN_TOT_NGHIEP\MicroServices_QLSV\packages\database\prisma\seed.ts:437:17) {
+  code: 'P2002',
+  clientVersion: '5.22.0',
+  meta: { modelName: 'ClassSchedule', target: 'dbo.ClassSchedule' }
+}

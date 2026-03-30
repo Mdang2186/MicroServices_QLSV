@@ -1,0 +1,398 @@
+'Log files:
+D:\KHOA_LUAN_TOT_NGHIEP\MicroServices_QLSV\.npm-cache\_logs\2026-03-23T10_50_27_294Z-debug-0.log
+
+# npm resolution error report
+
+While resolving: student-management-system@0.0.0
+Found: @nestjs/common@10.4.22
+node_modules/@nestjs/common
+  peer @nestjs/common@">=7.0.9" from @nestjs-modules/mailer@2.3.0
+  node_modules/@nestjs-modules/mailer
+    @nestjs-modules/mailer@"^2.0.2" from auth-service@0.0.1
+    apps/auth-service
+      auth-service@0.0.1
+      node_modules/auth-service
+        workspace apps\auth-service from the root project
+    @nestjs-modules/mailer@"^2.3.0" from the root project
+  peer @nestjs/common@"^8.0.0 || ^9.0.0 || ^10.0.0" from @nestjs/jwt@10.2.0
+  apps/api-gateway/node_modules/@nestjs/jwt
+    @nestjs/jwt@"^10.2.0" from api-gateway@0.0.1
+    apps/api-gateway
+      api-gateway@0.0.1
+      node_modules/api-gateway
+        workspace apps\api-gateway from the root project
+  peer @nestjs/common@"^10.0.0" from @nestjs/platform-express@10.4.22
+  apps/api-gateway/node_modules/@nestjs/platform-express
+    @nestjs/platform-express@"^10.0.0" from api-gateway@0.0.1
+    apps/api-gateway
+      api-gateway@0.0.1
+      node_modules/api-gateway
+        workspace apps\api-gateway from the root project
+  peer @nestjs/common@"^10.0.0 || ^11.0.0" from @nestjs/mapped-types@2.1.0
+  apps/api-gateway/node_modules/@nestjs/swagger/node_modules/@nestjs/mapped-types
+    @nestjs/mapped-types@"2.1.0" from @nestjs/swagger@11.2.6
+    apps/api-gateway/node_modules/@nestjs/swagger
+  peer @nestjs/common@"^8.0.0 || ^9.0.0 || ^10.0.0" from @nestjs/jwt@10.2.0
+  apps/auth-service/node_modules/@nestjs/jwt
+    @nestjs/jwt@"^10.2.0" from auth-service@0.0.1
+    apps/auth-service
+      auth-service@0.0.1
+      node_modules/auth-service
+        workspace apps\auth-service from the root project
+  peer @nestjs/common@"^10.0.0" from @nestjs/microservices@10.4.22
+  apps/auth-service/node_modules/@nestjs/microservices
+    @nestjs/microservices@"^10.0.0" from auth-service@0.0.1
+    apps/auth-service
+      auth-service@0.0.1
+      node_modules/auth-service
+        workspace apps\auth-service from the root project
+  peer @nestjs/common@"^8.0.0 || ^9.0.0 || ^10.0.0" from @nestjs/passport@10.0.3
+  apps/auth-service/node_modules/@nestjs/passport
+    @nestjs/passport@"^10.0.3" from auth-service@0.0.1
+    apps/auth-service
+      auth-service@0.0.1
+      node_modules/auth-service
+        workspace apps\auth-service from the root project
+  peer @nestjs/common@"^10.0.0" from @nestjs/platform-express@10.4.22
+  apps/auth-service/node_modules/@nestjs/platform-express
+    @nestjs/platform-express@"^10.0.0" from auth-service@0.0.1
+    apps/auth-service
+      auth-service@0.0.1
+      node_modules/auth-service
+        workspace apps\auth-service from the root project
+  peer @nestjs/common@"^10.0.0 || ^11.0.0" from @nestjs/mapped-types@2.1.0
+  apps/auth-service/node_modules/@nestjs/swagger/node_modules/@nestjs/mapped-types
+    @nestjs/mapped-types@"2.1.0" from @nestjs/swagger@11.2.6
+    apps/auth-service/node_modules/@nestjs/swagger
+  peer @nestjs/common@"^10.0.0" from @nestjs/platform-express@10.4.22
+  apps/course-service/node_modules/@nestjs/platform-express
+    @nestjs/platform-express@"^10.0.0" from course-service@0.0.1
+    apps/course-service
+      course-service@0.0.1
+      node_modules/course-service
+        workspace apps\course-service from the root project
+  peer @nestjs/common@"^10.0.0 || ^11.0.0" from @nestjs/mapped-types@2.1.0
+  apps/course-service/node_modules/@nestjs/swagger/node_modules/@nestjs/mapped-types
+    @nestjs/mapped-types@"2.1.0" from @nestjs/swagger@11.2.6
+    apps/course-service/node_modules/@nestjs/swagger
+  peer @nestjs/common@"^10.0.0" from @nestjs/microservices@10.4.22
+  apps/enrollment-service/node_modules/@nestjs/microservices
+    @nestjs/microservices@"^10.0.0" from enrollment-service@0.0.1
+    apps/enrollment-service
+      enrollment-service@0.0.1
+      node_modules/enrollment-service
+        workspace apps\enrollment-service from the root project
+  peer @nestjs/common@"^10.0.0" from @nestjs/platform-express@10.4.22
+  apps/enrollment-service/node_modules/@nestjs/platform-express
+    @nestjs/platform-express@"^10.0.0" from enrollment-service@0.0.1
+    apps/enrollment-service
+      enrollment-service@0.0.1
+      node_modules/enrollment-service
+        workspace apps\enrollment-service from the root project
+  peer @nestjs/common@"^10.0.0 || ^11.0.0" from @nestjs/mapped-types@2.1.0
+  apps/enrollment-service/node_modules/@nestjs/swagger/node_modules/@nestjs/mapped-types
+    @nestjs/mapped-types@"2.1.0" from @nestjs/swagger@11.2.6
+    apps/enrollment-service/node_modules/@nestjs/swagger
+  peer @nestjs/common@"^10.0.0" from @nestjs/platform-express@10.4.22
+  apps/grade-service/node_modules/@nestjs/platform-express
+    @nestjs/platform-express@"^10.0.0" from grade-service@0.0.1
+    apps/grade-service
+      grade-service@0.0.1
+      node_modules/grade-service
+        workspace apps\grade-service from the root project
+  peer @nestjs/common@"^10.0.0 || ^11.0.0" from @nestjs/mapped-types@2.1.0
+  apps/grade-service/node_modules/@nestjs/swagger/node_modules/@nestjs/mapped-types
+    @nestjs/mapped-types@"2.1.0" from @nestjs/swagger@11.2.6
+    apps/grade-service/node_modules/@nestjs/swagger
+  peer @nestjs/common@"^10.0.0" from @nestjs/microservices@10.4.22
+  apps/student-service/node_modules/@nestjs/microservices
+    @nestjs/microservices@"^10.0.0" from student-service@0.0.1
+    apps/student-service
+      student-service@0.0.1
+      node_modules/student-service
+        workspace apps\student-service from the root project
+  peer @nestjs/common@"^10.0.0" from @nestjs/platform-express@10.4.22
+  apps/student-service/node_modules/@nestjs/platform-express
+    @nestjs/platform-express@"^10.0.0" from student-service@0.0.1
+    apps/student-service
+      student-service@0.0.1
+      node_modules/student-service
+        workspace apps\student-service from the root project
+  peer @nestjs/common@"^10.0.0 || ^11.0.0" from @nestjs/mapped-types@2.1.0
+  apps/student-service/node_modules/@nestjs/swagger/node_modules/@nestjs/mapped-types
+    @nestjs/mapped-types@"2.1.0" from @nestjs/swagger@11.2.6
+    apps/student-service/node_modules/@nestjs/swagger
+  peer @nestjs/common@"^8.0.0 || ^9.0.0 || ^10.0.0" from @nestjs/config@3.3.0
+  node_modules/@nestjs/config
+    @nestjs/config@"^3.1.1" from api-gateway@0.0.1
+    apps/api-gateway
+      api-gateway@0.0.1
+      node_modules/api-gateway
+        workspace apps\api-gateway from the root project
+    @nestjs/config@"^3.1.1" from auth-service@0.0.1
+    apps/auth-service
+      auth-service@0.0.1
+      node_modules/auth-service
+        workspace apps\auth-service from the root project
+    @nestjs/config@"^3.1.1" from enrollment-service@0.0.1
+    apps/enrollment-service
+      enrollment-service@0.0.1
+      node_modules/enrollment-service
+        workspace apps\enrollment-service from the root project
+    @nestjs/config@"^3.1.1" from student-service@0.0.1
+    apps/student-service
+      student-service@0.0.1
+      node_modules/student-service
+        workspace apps\student-service from the root project
+  peer @nestjs/common@"^10.0.0" from @nestjs/core@10.4.22
+  node_modules/@nestjs/core
+    peer @nestjs/core@">=7.0.9" from @nestjs-modules/mailer@2.3.0
+    node_modules/@nestjs-modules/mailer
+      @nestjs-modules/mailer@"^2.0.2" from auth-service@0.0.1
+      apps/auth-service
+        auth-service@0.0.1
+        node_modules/auth-service
+          workspace apps\auth-service from the root project
+      @nestjs-modules/mailer@"^2.3.0" from the root project
+    peer @nestjs/core@"^10.0.0" from @nestjs/platform-express@10.4.22
+    apps/api-gateway/node_modules/@nestjs/platform-express
+      @nestjs/platform-express@"^10.0.0" from api-gateway@0.0.1
+      apps/api-gateway
+        api-gateway@0.0.1
+        node_modules/api-gateway
+          workspace apps\api-gateway from the root project
+    peer @nestjs/core@"^10.0.0" from @nestjs/microservices@10.4.22
+    apps/auth-service/node_modules/@nestjs/microservices
+      @nestjs/microservices@"^10.0.0" from auth-service@0.0.1
+      apps/auth-service
+        auth-service@0.0.1
+        node_modules/auth-service
+          workspace apps\auth-service from the root project
+    peer @nestjs/core@"^10.0.0" from @nestjs/platform-express@10.4.22
+    apps/auth-service/node_modules/@nestjs/platform-express
+      @nestjs/platform-express@"^10.0.0" from auth-service@0.0.1
+      apps/auth-service
+        auth-service@0.0.1
+        node_modules/auth-service
+          workspace apps\auth-service from the root project
+    peer @nestjs/core@"^10.0.0" from @nestjs/platform-express@10.4.22
+    apps/course-service/node_modules/@nestjs/platform-express
+      @nestjs/platform-express@"^10.0.0" from course-service@0.0.1
+      apps/course-service
+        course-service@0.0.1
+        node_modules/course-service
+          workspace apps\course-service from the root project
+    peer @nestjs/core@"^10.0.0" from @nestjs/microservices@10.4.22
+    apps/enrollment-service/node_modules/@nestjs/microservices
+      @nestjs/microservices@"^10.0.0" from enrollment-service@0.0.1
+      apps/enrollment-service
+        enrollment-service@0.0.1
+        node_modules/enrollment-service
+          workspace apps\enrollment-service from the root project
+    peer @nestjs/core@"^10.0.0" from @nestjs/platform-express@10.4.22
+    apps/enrollment-service/node_modules/@nestjs/platform-express
+      @nestjs/platform-express@"^10.0.0" from enrollment-service@0.0.1
+      apps/enrollment-service
+        enrollment-service@0.0.1
+        node_modules/enrollment-service
+          workspace apps\enrollment-service from the root project
+    peer @nestjs/core@"^10.0.0" from @nestjs/platform-express@10.4.22
+    apps/grade-service/node_modules/@nestjs/platform-express
+      @nestjs/platform-express@"^10.0.0" from grade-service@0.0.1
+      apps/grade-service
+        grade-service@0.0.1
+        node_modules/grade-service
+          workspace apps\grade-service from the root project
+    peer @nestjs/core@"^10.0.0" from @nestjs/microservices@10.4.22
+    apps/student-service/node_modules/@nestjs/microservices
+      @nestjs/microservices@"^10.0.0" from student-service@0.0.1
+      apps/student-service
+        student-service@0.0.1
+        node_modules/student-service
+          workspace apps\student-service from the root project
+    peer @nestjs/core@"^10.0.0" from @nestjs/platform-express@10.4.22
+    apps/student-service/node_modules/@nestjs/platform-express
+      @nestjs/platform-express@"^10.0.0" from student-service@0.0.1
+      apps/student-service
+        student-service@0.0.1
+        node_modules/student-service
+          workspace apps\student-service from the root project
+    peer @nestjs/core@"^9.0.0 || ^10.0.0" from @nestjs/swagger@7.4.2
+    node_modules/@nestjs/swagger
+      @nestjs/swagger@"^7.4.2" from the root project
+    peer @nestjs/core@"^10.0.0" from @nestjs/testing@10.4.22
+    node_modules/@nestjs/testing
+      dev @nestjs/testing@"^10.0.0" from api-gateway@0.0.1
+      apps/api-gateway
+        api-gateway@0.0.1
+        node_modules/api-gateway
+          workspace apps\api-gateway from the root project
+      dev @nestjs/testing@"^10.0.0" from auth-service@0.0.1
+      apps/auth-service
+        auth-service@0.0.1
+        node_modules/auth-service
+          workspace apps\auth-service from the root project
+      dev @nestjs/testing@"^10.0.0" from course-service@0.0.1
+      apps/course-service
+        course-service@0.0.1
+        node_modules/course-service
+          workspace apps\course-service from the root project
+      dev @nestjs/testing@"^10.0.0" from enrollment-service@0.0.1
+      apps/enrollment-service
+        enrollment-service@0.0.1
+        node_modules/enrollment-service
+          workspace apps\enrollment-service from the root project
+      dev @nestjs/testing@"^10.0.0" from grade-service@0.0.1
+      apps/grade-service
+        grade-service@0.0.1
+        node_modules/grade-service
+          workspace apps\grade-service from the root project
+      dev @nestjs/testing@"^10.0.0" from student-service@0.0.1
+      apps/student-service
+        student-service@0.0.1
+        node_modules/student-service
+          workspace apps\student-service from the root project
+    @nestjs/core@"^10.0.0" from @repo/shared-utils@0.0.0
+    packages/shared-utils
+      @repo/shared-utils@0.0.0
+      node_modules/@repo/shared-utils
+        workspace packages\shared-utils from the root project
+    @nestjs/core@"^10.0.0" from api-gateway@0.0.1
+    apps/api-gateway
+      api-gateway@0.0.1
+      node_modules/api-gateway
+        workspace apps\api-gateway from the root project
+    @nestjs/core@"^10.0.0" from auth-service@0.0.1
+    apps/auth-service
+      auth-service@0.0.1
+      node_modules/auth-service
+        workspace apps\auth-service from the root project
+    @nestjs/core@"^10.0.0" from course-service@0.0.1
+    apps/course-service
+      course-service@0.0.1
+      node_modules/course-service
+        workspace apps\course-service from the root project
+    @nestjs/core@"^10.0.0" from enrollment-service@0.0.1
+    apps/enrollment-service
+      enrollment-service@0.0.1
+      node_modules/enrollment-service
+        workspace apps\enrollment-service from the root project
+    @nestjs/core@"^10.0.0" from grade-service@0.0.1
+    apps/grade-service
+      grade-service@0.0.1
+      node_modules/grade-service
+        workspace apps\grade-service from the root project
+    @nestjs/core@"^10.0.0" from student-service@0.0.1
+    apps/student-service
+      student-service@0.0.1
+      node_modules/student-service
+        workspace apps\student-service from the root project
+  peer @nestjs/common@"^8.0.0 || ^9.0.0 || ^10.0.0 || ^11.0.0" from @nestjs/jwt@11.0.2
+  node_modules/@nestjs/jwt
+    @nestjs/jwt@"^11.0.2" from the root project
+  peer @nestjs/common@"^8.0.0 || ^9.0.0 || ^10.0.0" from @nestjs/mapped-types@2.0.5
+  node_modules/@nestjs/mapped-types
+    @nestjs/mapped-types@"2.0.5" from @nestjs/swagger@7.4.2
+    node_modules/@nestjs/swagger
+      @nestjs/swagger@"^7.4.2" from the root project
+  peer @nestjs/common@"^10.0.0 || ^11.0.0" from @nestjs/passport@11.0.5
+  node_modules/@nestjs/passport
+    dev @nestjs/passport@"^11.0.5" from enrollment-service@0.0.1
+    apps/enrollment-service
+      enrollment-service@0.0.1
+      node_modules/enrollment-service
+        workspace apps\enrollment-service from the root project
+    dev @nestjs/passport@"^11.0.5" from student-service@0.0.1
+    apps/student-service
+      student-service@0.0.1
+      node_modules/student-service
+        workspace apps\student-service from the root project
+    @nestjs/passport@"^11.0.5" from the root project
+  peer @nestjs/common@"^9.0.0 || ^10.0.0" from @nestjs/swagger@7.4.2
+  node_modules/@nestjs/swagger
+    @nestjs/swagger@"^7.4.2" from the root project
+  peer @nestjs/common@"^10.0.0" from @nestjs/testing@10.4.22
+  node_modules/@nestjs/testing
+    dev @nestjs/testing@"^10.0.0" from api-gateway@0.0.1
+    apps/api-gateway
+      api-gateway@0.0.1
+      node_modules/api-gateway
+        workspace apps\api-gateway from the root project
+    dev @nestjs/testing@"^10.0.0" from auth-service@0.0.1
+    apps/auth-service
+      auth-service@0.0.1
+      node_modules/auth-service
+        workspace apps\auth-service from the root project
+    dev @nestjs/testing@"^10.0.0" from course-service@0.0.1
+    apps/course-service
+      course-service@0.0.1
+      node_modules/course-service
+        workspace apps\course-service from the root project
+    dev @nestjs/testing@"^10.0.0" from enrollment-service@0.0.1
+    apps/enrollment-service
+      enrollment-service@0.0.1
+      node_modules/enrollment-service
+        workspace apps\enrollment-service from the root project
+    dev @nestjs/testing@"^10.0.0" from grade-service@0.0.1
+    apps/grade-service
+      grade-service@0.0.1
+      node_modules/grade-service
+        workspace apps\grade-service from the root project
+    dev @nestjs/testing@"^10.0.0" from student-service@0.0.1
+    apps/student-service
+      student-service@0.0.1
+      node_modules/student-service
+        workspace apps\student-service from the root project
+  peer @nestjs/common@"^8.0.0 || ^9.0.0 || ^10.0.0" from @nestjs/passport@10.0.3
+  packages/shared-utils/node_modules/@nestjs/passport
+    @nestjs/passport@"^10.0.0" from @repo/shared-utils@0.0.0
+    packages/shared-utils
+      @repo/shared-utils@0.0.0
+      node_modules/@repo/shared-utils
+        workspace packages\shared-utils from the root project
+  @nestjs/common@"^10.0.0" from @repo/shared-utils@0.0.0
+  packages/shared-utils
+    @repo/shared-utils@0.0.0
+    node_modules/@repo/shared-utils
+      workspace packages\shared-utils from the root project
+  @nestjs/common@"^10.0.0" from api-gateway@0.0.1
+  apps/api-gateway
+    api-gateway@0.0.1
+    node_modules/api-gateway
+      workspace apps\api-gateway from the root project
+  @nestjs/common@"^10.0.0" from auth-service@0.0.1
+  apps/auth-service
+    auth-service@0.0.1
+    node_modules/auth-service
+      workspace apps\auth-service from the root project
+  @nestjs/common@"^10.0.0" from course-service@0.0.1
+  apps/course-service
+    course-service@0.0.1
+    node_modules/course-service
+      workspace apps\course-service from the root project
+  @nestjs/common@"^10.0.0" from enrollment-service@0.0.1
+  apps/enrollment-service
+    enrollment-service@0.0.1
+    node_modules/enrollment-service
+      workspace apps\enrollment-service from the root project
+  @nestjs/common@"^10.0.0" from grade-service@0.0.1
+  apps/grade-service
+    grade-service@0.0.1
+    node_modules/grade-service
+      workspace apps\grade-service from the root project
+  @nestjs/common@"^10.0.0" from student-service@0.0.1
+  apps/student-service
+    student-service@0.0.1
+    node_modules/student-service
+      workspace apps\student-service from the root project
+
+Could not resolve dependency:
+dev @nestjs/platform-express@"*" from the root project
+
+Conflicting peer dependency: @nestjs/common@11.1.17
+node_modules/@nestjs/common
+  peer @nestjs/common@"^11.0.0" from @nestjs/platform-express@11.1.17
+  node_modules/@nestjs/platform-express
+    dev @nestjs/platform-express@"*" from the root project
+
+Fix the upstream dependency conflict, or retry this command with --force or --legacy-peer-deps to accept an incorrect (and potentially broken) dependency resolution.

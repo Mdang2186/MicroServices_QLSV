@@ -1,0 +1,24 @@
+'Log files:
+D:\KHOA_LUAN_TOT_NGHIEP\MicroServices_QLSV\apps\web-admin\.npm-cache\_logs\2026-03-23T10_14_37_777Z-debug-0.log
+
+# npm resolution error report
+
+While resolving: web-admin@0.1.0
+Found: react@19.2.3
+node_modules/react
+  react@"19.2.3" from web-admin@0.1.0
+  apps/web-admin
+    web-admin@0.1.0
+    node_modules/web-admin
+      workspace apps\web-admin from the root project
+
+Could not resolve dependency:
+peer react@"^18.2.0" from next@14.1.0
+node_modules/next
+  next@"14.1.0" from web-admin@0.1.0
+  apps/web-admin
+    web-admin@0.1.0
+    node_modules/web-admin
+      workspace apps\web-admin from the root project
+
+Fix the upstream dependency conflict, or retry this command with --force or --legacy-peer-deps to accept an incorrect (and potentially broken) dependency resolution.

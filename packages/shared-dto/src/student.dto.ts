@@ -8,8 +8,49 @@ export interface CreateStudentDto {
     majorId: string;
     phone?: string;
     address?: string;
+    gender?: string;
+    citizenId?: string;
+    emailPersonal?: string;
+    // Identification
+    idIssueDate?: string;
+    idIssuePlace?: string;
+
+    // Academic Details
+    admissionDate?: string;
+    campus?: string;
+    educationLevel?: string;
+    educationType?: string;
+    intake?: string;
+    region?: string;
     status?: StudentStatus;
     userId?: string;
+    adminClassId?: string;
+    specializationId?: string;
+
+    // Social/Politic
+    policyBeneficiary?: string;
+    youthUnionDate?: string;
+    partyDate?: string;
+
+    // Demographic
+    ethnicity?: string;
+    religion?: string;
+    nationality?: string;
+    birthPlace?: string;
+    permanentAddress?: string;
+
+    // Bank
+    bankName?: string;
+    bankBranch?: string;
+    bankAccountName?: string;
+    bankAccountNumber?: string;
+
+    // Grades/Stats
+    gpa?: number;
+    cpa?: number;
+    totalEarnedCredits?: number;
+    warningLevel?: number;
+    academicStatus?: string;
 }
 
 export interface UpdateStudentDto extends Partial<CreateStudentDto> { }
@@ -22,7 +63,40 @@ export interface StudentResponse {
     dob: Date;
     status: StudentStatus;
     majorId: string;
-    userId: string;
+    adminClassId?: string;
+    specializationId?: string;
+    specialization?: any;
+    userId?: string;
     createdAt: Date;
     updatedAt: Date;
+    phone?: string;
+    address?: string;
+    gender?: string;
+    citizenId?: string;
+    emailPersonal?: string;
+    admissionDate?: Date;
+    campus?: string;
+    educationLevel?: string;
+    educationType?: string;
+    intake?: string;
+    ethnicity?: string;
+    religion?: string;
+    nationality?: string;
+    region?: string;
+    idIssueDate?: Date;
+    idIssuePlace?: string;
+    policyBeneficiary?: string;
+    youthUnionDate?: Date;
+    partyDate?: Date;
+    birthPlace?: string;
+    permanentAddress?: string;
+    bankName?: string;
+    bankBranch?: string;
+    bankAccountName?: string;
+    bankAccountNumber?: string;
+    gpa: number;
+    cpa: number;
+    totalEarnedCredits: number;
+    warningLevel: number;
+    academicStatus: string;
 }

@@ -18,7 +18,8 @@ import {
     ChevronRight,
     Building2,
     GraduationCap,
-    Filter
+    Filter,
+    Shield
 } from "lucide-react";
 import Modal from "@/components/modal";
 
@@ -56,9 +57,10 @@ export default function AdminStaffPage() {
             });
             if (res.ok) {
                 const data = await res.json();
-                const filtered = data.filter((u: any) => u.role === 'ADMIN' || u.role === 'ACADEMIC_STAFF');
+                const filtered = data.filter((u: any) => u.role === 'SUPER_ADMIN' || u.role === 'ADMIN' || u.role === 'ACADEMIC_STAFF');
                 setStaff(filtered);
             }
+
         } catch (error) {
             console.error("Failed to fetch staff", error);
         } finally {
@@ -150,9 +152,10 @@ export default function AdminStaffPage() {
 
     const stats = {
         total: staff.length,
-        admins: staff.filter(s => s.role === 'ADMIN').length,
+        admins: staff.filter(s => s.role === 'SUPER_ADMIN' || s.role === 'ADMIN').length,
         academic: staff.filter(s => s.role === 'ACADEMIC_STAFF').length,
     };
+
 
     const filteredStaff = staff.filter(s =>
         s.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -224,7 +227,7 @@ export default function AdminStaffPage() {
                         <input
                             type="text"
                             placeholder="Tìm kiếm nhân viên..."
-                            className="w-full pl-12 pr-4 py-3 bg-slate-50 border-transparent rounded-2xl text-[13px] font-bold focus:ring-2 focus:ring-uneti-blue/10 focus:bg-white transition-all outline-none"
+                            className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-[13px] font-bold focus:ring-4 focus:ring-uneti-blue/5 focus:bg-white focus:border-uneti-blue/20 transition-all outline-none"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
@@ -247,10 +250,11 @@ export default function AdminStaffPage() {
                                 <tr key={s.id} className="hover:bg-slate-50/80 transition-colors group">
                                     <td className="py-5 px-8">
                                         <div className="flex items-center gap-4">
-                                            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black text-[14px] shadow-inner transition-all duration-300 ${s.role === 'ADMIN' ? 'bg-uneti-blue-light text-uneti-blue' : 'bg-emerald-50 text-emerald-600'
+                                            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black text-[14px] shadow-inner transition-all duration-300 ${s.role === 'SUPER_ADMIN' || s.role === 'ADMIN' ? 'bg-slate-900 text-white' : 'bg-emerald-50 text-emerald-600'
                                                 }`}>
                                                 {s.username?.charAt(0).toUpperCase()}
                                             </div>
+
                                             <div>
                                                 <p className="text-[14px] font-black text-slate-800 leading-snug">{s.username}</p>
                                                 <p className="text-[11px] font-medium text-slate-400 mt-1">ID: {s.id.slice(0, 8)}...</p>
@@ -264,11 +268,14 @@ export default function AdminStaffPage() {
                                         </div>
                                     </td>
                                     <td className="py-5 px-8">
-                                        <span className={`px-3 py-1.5 rounded-xl text-[10px] font-black tracking-widest uppercase shadow-sm ${s.role === 'ADMIN' ? 'bg-uneti-blue text-white' : 'bg-emerald-600 text-white'
+                                        <span className={`px-3 py-1.5 rounded-xl text-[10px] font-black tracking-widest uppercase shadow-sm flex items-center gap-1.5 ${s.role === 'SUPER_ADMIN' || s.role === 'ADMIN' ? 'bg-slate-900 text-white' : 'bg-emerald-600 text-white'
                                             }`}>
-                                            {s.role === 'ADMIN' ? 'Admin' : 'Đào tạo'}
+                                            {(s.role === 'SUPER_ADMIN' || s.role === 'ADMIN') && <Shield size={10} />}
+                                            {s.role === 'ACADEMIC_STAFF' && <UserCog size={10} />}
+                                            {s.role === 'ADMIN' ? 'SUPER_ADMIN' : (s.role === 'ACADEMIC_STAFF' ? 'Đào tạo' : s.role)}
                                         </span>
                                     </td>
+
                                     <td className="py-5 px-8">
                                         <div className="flex items-center gap-2 text-[12px] font-bold text-slate-400">
                                             <Calendar size={14} className="text-slate-200" />
@@ -371,9 +378,10 @@ export default function AdminStaffPage() {
                                 value={formData.role}
                                 onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                             >
-                                <option value="ACADEMIC_STAFF">Nhân viên Đào tạo</option>
-                                <option value="ADMIN">Quản trị viên (Admin)</option>
+                                <option value="ACADEMIC_STAFF">🏢 Nhân viên Đào tạo</option>
+                                <option value="SUPER_ADMIN">⚡ Quản trị viên (Admin)</option>
                             </select>
+
                             <ChevronRight size={16} className="absolute right-4 top-1/2 -translate-y-1/2 rotate-90 text-slate-400 pointer-events-none" />
                         </div>
                     </div>
@@ -433,9 +441,10 @@ export default function AdminStaffPage() {
                                 value={formData.role}
                                 onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                             >
-                                <option value="ACADEMIC_STAFF">Nhân viên Đào tạo</option>
-                                <option value="ADMIN">Quản trị viên (Admin)</option>
+                                <option value="ACADEMIC_STAFF">🏢 Nhân viên Đào tạo</option>
+                                <option value="SUPER_ADMIN">⚡ Quản trị viên (Admin)</option>
                             </select>
+
                             <ChevronRight size={16} className="absolute right-4 top-1/2 -translate-y-1/2 rotate-90 text-slate-400 pointer-events-none" />
                         </div>
                     </div>

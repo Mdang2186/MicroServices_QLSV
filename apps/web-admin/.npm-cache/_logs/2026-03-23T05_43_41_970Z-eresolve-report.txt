@@ -1,0 +1,42 @@
+'Log files:
+D:\KHOA_LUAN_TOT_NGHIEP\MicroServices_QLSV\apps\web-admin\.npm-cache\_logs\2026-03-23T05_43_41_970Z-debug-0.log
+
+# npm resolution error report
+
+While resolving: auth-service@0.0.1
+Found: @nestjs/websockets@undefined
+node_modules/@nestjs/websockets
+
+Could not resolve dependency:
+peerOptional @nestjs/websockets@"^10.0.0" from @nestjs/core@10.4.22
+node_modules/@nestjs/core
+  @nestjs/core@"^10.0.0" from auth-service@0.0.1
+  apps/auth-service
+    auth-service@0.0.1
+    node_modules/auth-service
+      workspace apps\auth-service from the root project
+  peer @nestjs/core@"^9.0.0 || ^10.0.0" from @nestjs/swagger@7.4.2
+  node_modules/@nestjs/swagger
+    @nestjs/swagger@"^7.4.2" from auth-service@0.0.1
+    apps/auth-service
+      auth-service@0.0.1
+      node_modules/auth-service
+        workspace apps\auth-service from the root project
+  peer @nestjs/core@"^10.0.0" from @nestjs/microservices@10.4.22
+  node_modules/@nestjs/microservices
+    @nestjs/microservices@"^10.0.0" from auth-service@0.0.1
+    apps/auth-service
+      auth-service@0.0.1
+      node_modules/auth-service
+        workspace apps\auth-service from the root project
+    peerOptional @nestjs/microservices@"^10.0.0" from @nestjs/core@10.4.22
+  peer @nestjs/core@"^10.0.0" from @nestjs/platform-express@10.4.22
+  node_modules/@nestjs/platform-express
+    @nestjs/platform-express@"^10.0.0" from auth-service@0.0.1
+    apps/auth-service
+      auth-service@0.0.1
+      node_modules/auth-service
+        workspace apps\auth-service from the root project
+    peerOptional @nestjs/platform-express@"^10.0.0" from @nestjs/core@10.4.22
+
+Fix the upstream dependency conflict, or retry this command with --force or --legacy-peer-deps to accept an incorrect (and potentially broken) dependency resolution.

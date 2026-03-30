@@ -10,9 +10,21 @@ interface ModalProps {
     title: string;
     children: React.ReactNode;
     footer?: React.ReactNode;
+    maxWidth?: "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl";
 }
 
-export default function Modal({ isOpen, onClose, title, children, footer }: ModalProps) {
+const maxWidthClasses = {
+    sm: "max-w-sm",
+    md: "max-w-md",
+    lg: "max-w-lg",
+    xl: "max-w-xl",
+    "2xl": "max-w-2xl",
+    "3xl": "max-w-3xl",
+    "4xl": "max-w-4xl",
+    "5xl": "max-w-5xl",
+};
+
+export default function Modal({ isOpen, onClose, title, children, footer, maxWidth = "lg" }: ModalProps) {
     // Handle escape key
     useEffect(() => {
         const handleEsc = (e: KeyboardEvent) => {
@@ -43,10 +55,10 @@ export default function Modal({ isOpen, onClose, title, children, footer }: Moda
                     initial={{ scale: 0.95, opacity: 0, y: 10 }}
                     animate={{ scale: 1, opacity: 1, y: 0 }}
                     exit={{ scale: 0.95, opacity: 0, y: 10 }}
-                    className="relative w-full max-w-lg bg-white rounded-[28px] shadow-2xl overflow-hidden border border-slate-100"
+                    className={`relative w-full ${maxWidthClasses[maxWidth]} bg-white rounded-[28px] shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]`}
                 >
                     {/* Header */}
-                    <div className="px-6 py-5 border-b border-slate-50 flex items-center justify-between bg-slate-50/30">
+                    <div className="px-6 py-5 border-b border-slate-50 flex items-center justify-between bg-white shrink-0">
                         <h3 className="text-lg font-black text-slate-800 tracking-tight">{title}</h3>
                         <button
                             onClick={onClose}
@@ -57,13 +69,13 @@ export default function Modal({ isOpen, onClose, title, children, footer }: Moda
                     </div>
 
                     {/* Body */}
-                    <div className="p-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                    <div className="p-6 overflow-y-auto custom-scrollbar flex-grow">
                         {children}
                     </div>
 
                     {/* Footer */}
                     {footer && (
-                        <div className="px-6 py-5 border-t border-slate-50 flex items-center justify-end gap-3 bg-slate-50/30">
+                        <div className="px-6 py-5 border-t border-slate-50 flex items-center justify-end gap-3 bg-white shrink-0">
                             {footer}
                         </div>
                     )}

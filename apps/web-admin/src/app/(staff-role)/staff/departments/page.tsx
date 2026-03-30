@@ -1,57 +1,174 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Cookies from "js-cookie";
 import {
     Building2,
-    Search,
     Plus,
     Edit2,
     Trash2,
-    Filter,
-    ChevronRight,
-    ArrowRight,
-    BookOpen,
-    Users,
     Layers,
-    Check,
-    AlertCircle
+    ChevronRight,
+    CheckCircle2,
+    AlertCircle,
+    X
 } from "lucide-react";
 import Modal from "@/components/modal";
+import DataTable from "@/components/DataTable";
 
 export default function StaffDepartmentsPage() {
+    const [activeTab, setActiveTab] = useState<"faculties" | "majors">("faculties");
+    const [faculties, setFaculties] = useState<any[]>([]);
     const [majors, setMajors] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [searchQuery, setSearchQuery] = useState("");
-    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    
+    // Modal states
+    const [isFacultyModalOpen, setIsFacultyModalOpen] = useState(false);
+    const [isMajorModalOpen, setIsMajorModalOpen] = useState(false);
+    const [editingFaculty, setEditingFaculty] = useState<any>(null);
+    const [editingMajor, setEditingMajor] = useState<any>(null);
+    
+    // Form states
+    const [facultyForm, setFacultyForm] = useState({ name: "", code: "", deanName: "" });
+    const [majorForm, setMajorForm] = useState({ name: "", code: "", facultyId: "", totalCreditsRequired: 120 });
+    
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [successMsg, setSuccessMsg] = useState<string | null>(null);
+    const [actionLoading, setActionLoading] = useState(false);
 
     const TOKEN = Cookies.get("admin_accessToken");
+    const headers = useMemo(() => ({
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${TOKEN}`
+    }), [TOKEN]);
 
     useEffect(() => {
-        fetchMajors();
+        fetchData();
     }, []);
 
-    const fetchMajors = async () => {
+    const fetchData = async () => {
         setLoading(true);
         try {
-            const res = await fetch("/api/majors", {
-                headers: { Authorization: `Bearer ${TOKEN}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setMajors(data);
-            }
+            const [facRes, majRes] = await Promise.all([
+                fetch("/api/faculties", { headers }),
+                fetch("/api/majors", { headers })
+            ]);
+            if (facRes.ok) setFaculties(await facRes.json());
+            if (majRes.ok) setMajors(await majRes.json());
         } catch (error) {
-            console.error("Failed to fetch majors", error);
+            console.error("Failed to fetch data", error);
         } finally {
             setLoading(false);
         }
     };
 
-    const filteredMajors = majors.filter(m =>
-        m.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.description?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    // Faculty Handlers
+    const handleFacultySubmit = async () => {
+        setActionLoading(true);
+        setErrorMsg(null);
+        try {
+            const url = editingFaculty ? `/api/faculties/${editingFaculty.id}` : "/api/faculties";
+            const method = editingFaculty ? "PUT" : "POST";
+            const res = await fetch(url, {
+                method,
+                headers,
+                body: JSON.stringify(facultyForm)
+            });
+            if (res.ok) {
+                setSuccessMsg(editingFaculty ? "Cập nhật Khoa thành công!" : "Thêm Khoa mới thành công!");
+                setIsFacultyModalOpen(false);
+                fetchData();
+            } else {
+                const data = await res.json();
+                setErrorMsg(data.message || "Có lỗi xảy ra");
+            }
+        } catch (error) {
+            setErrorMsg("Lỗi kết nối");
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleFacultyDelete = async (id: string) => {
+        if (!confirm("Bạn có chắc chắn muốn xóa Khoa này?")) return;
+        try {
+            const res = await fetch(`/api/faculties/${id}`, { method: "DELETE", headers });
+            if (res.ok) {
+                setSuccessMsg("Đã xóa Khoa thành công!");
+                fetchData();
+            } else {
+                const data = await res.json();
+                alert(data.message || "Không thể xóa Khoa");
+            }
+        } catch (error) {
+            alert("Lỗi kết nối");
+        }
+    };
+
+    // Major Handlers
+    const handleMajorSubmit = async () => {
+        setActionLoading(true);
+        setErrorMsg(null);
+        try {
+            const url = editingMajor ? `/api/majors/${editingMajor.id}` : "/api/majors";
+            const method = editingMajor ? "PUT" : "POST";
+            const res = await fetch(url, {
+                method,
+                headers,
+                body: JSON.stringify(majorForm)
+            });
+            if (res.ok) {
+                setSuccessMsg(editingMajor ? "Cập nhật Ngành thành công!" : "Thêm Ngành mới thành công!");
+                setIsMajorModalOpen(false);
+                fetchData();
+            } else {
+                const data = await res.json();
+                setErrorMsg(data.message || "Có lỗi xảy ra");
+            }
+        } catch (error) {
+            setErrorMsg("Lỗi kết nối");
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleMajorDelete = async (id: string) => {
+        if (!confirm("Bạn có chắc chắn muốn xóa Ngành này?")) return;
+        try {
+            const res = await fetch(`/api/majors/${id}`, { method: "DELETE", headers });
+            if (res.ok) {
+                setSuccessMsg("Đã xóa Ngành thành công!");
+                fetchData();
+            } else {
+                const data = await res.json();
+                alert(data.message || "Không thể xóa Ngành");
+            }
+        } catch (error) {
+            alert("Lỗi kết nối");
+        }
+    };
+
+    const facultyColumns = [
+        { header: "Mã Khoa", accessorKey: "code" },
+        { header: "Tên Khoa", accessorKey: "name" },
+        { header: "Trưởng Khoa", accessorKey: "deanName" },
+        { 
+            header: "Số Ngành", 
+            accessorKey: "_count", 
+            cell: (item: any) => item._count?.majors || 0 
+        },
+    ];
+
+    const majorColumns = [
+        { header: "Mã Ngành", accessorKey: "code" },
+        { header: "Tên Ngành", accessorKey: "name" },
+        { 
+            header: "Thuộc Khoa", 
+            accessorKey: "facultyId", 
+            cell: (item: any) => faculties.find(f => f.id === item.facultyId)?.name || "N/A"
+        },
+        { header: "Số tín chỉ", accessorKey: "totalCreditsRequired" },
+    ];
 
     if (loading) {
         return (
@@ -70,125 +187,249 @@ export default function StaffDepartmentsPage() {
                         <Building2 size={14} className="text-uneti-blue" />
                         <span>Hệ thống</span>
                         <ChevronRight size={10} />
-                        <span className="text-uneti-blue">Khoa - Ngành</span>
+                        <span className="text-uneti-blue">Cơ cấu tổ chức</span>
                     </div>
-                    <h1 className="text-3xl font-black text-slate-900 tracking-tight">Cơ cấu tổ chức</h1>
-                    <p className="text-[13px] font-medium text-slate-500">Quản lý danh sách các Khoa và Ngành đào tạo của Nhà trường</p>
+                    <h1 className="text-3xl font-black text-slate-900 tracking-tight">Quản lý Khoa - Ngành</h1>
+                    <p className="text-[13px] font-medium text-slate-500">Thiết lập bộ máy tổ chức và các ngành đào tạo của Nhà trường</p>
                 </div>
                 <div className="flex items-center gap-3">
                     <button
-                        onClick={() => setIsAddModalOpen(true)}
+                        onClick={() => {
+                            if (activeTab === "faculties") {
+                                setEditingFaculty(null);
+                                setFacultyForm({ name: "", code: "", deanName: "" });
+                                setIsFacultyModalOpen(true);
+                            } else {
+                                setEditingMajor(null);
+                                setMajorForm({ name: "", code: "", facultyId: faculties[0]?.id || "", totalCreditsRequired: 120 });
+                                setIsMajorModalOpen(true);
+                            }
+                        }}
                         className="flex items-center gap-2 px-6 py-2.5 bg-uneti-blue text-white rounded-xl text-[12px] font-black hover:shadow-xl hover:shadow-uneti-blue/20 transition-all shadow-lg shadow-uneti-blue/10 uppercase tracking-wider"
                     >
                         <Plus size={18} />
-                        Thêm Ngành mới
+                        Thêm {activeTab === "faculties" ? "Khoa" : "Ngành"} mới
                     </button>
                 </div>
             </div>
 
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {[
-                    { label: "Tổng số Ngành", value: majors.length, icon: Layers, color: "blue" },
-                    { label: "Số lượng Khoa", value: 4, icon: Building2, color: "indigo" },
-                    { label: "Tổng Sinh viên", value: "2.5k+", icon: Users, color: "emerald" },
-                ].map((s, i) => (
-                    <div key={i} className="bg-white p-6 rounded-[28px] border border-slate-100 shadow-sm flex items-center gap-5">
-                        <div className="w-14 h-14 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-600">
-                            <s.icon size={24} strokeWidth={1.5} />
-                        </div>
-                        <div>
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{s.label}</p>
-                            <p className="text-2xl font-black text-slate-900">{s.value}</p>
-                        </div>
-                    </div>
-                ))}
+            {/* Notifications */}
+            {successMsg && (
+                <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center gap-3 text-emerald-600 animate-in slide-in-from-top-2">
+                    <CheckCircle2 size={18} />
+                    <p className="text-xs font-bold">{successMsg}</p>
+                    <button onClick={() => setSuccessMsg(null)} className="ml-auto"><X size={14} /></button>
+                </div>
+            )}
+
+            {/* Tabs */}
+            <div className="flex gap-2 p-1.5 bg-slate-100/50 w-fit rounded-2xl border border-slate-100">
+                <button
+                    onClick={() => setActiveTab("faculties")}
+                    className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === "faculties" ? "bg-white text-uneti-blue shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+                >
+                    <Building2 size={14} />
+                    Danh sách Khoa
+                </button>
+                <button
+                    onClick={() => setActiveTab("majors")}
+                    className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === "majors" ? "bg-white text-uneti-blue shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+                >
+                    <Layers size={14} />
+                    Danh sách Ngành
+                </button>
             </div>
 
-            {/* List Grid */}
-            <div className="space-y-6">
-                <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
-                    <div className="relative flex-1 group">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-uneti-blue" size={18} />
-                        <input
-                            type="text"
-                            placeholder="Tìm kiếm tên ngành hoặc mã khoa..."
-                            className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-transparent rounded-[20px] text-[13px] font-bold focus:ring-4 focus:ring-uneti-blue/5 focus:bg-white transition-all outline-none"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filteredMajors.map((m, i) => (
-                        <div key={i} className="bg-white rounded-[32px] border border-slate-100 p-6 hover:shadow-2xl hover:shadow-slate-200/50 transition-all group flex flex-col justify-between border-t-8 border-t-uneti-blue">
-                            <div className="space-y-4">
-                                <div className="flex justify-between items-start">
-                                    <div className="w-12 h-12 rounded-2xl bg-uneti-blue-light text-uneti-blue flex items-center justify-center font-black text-lg">
-                                        {m.name?.substring(0, 1)}
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button className="p-2 text-slate-400 hover:text-uneti-blue transition-colors">
-                                            <Edit2 size={16} />
-                                        </button>
-                                        <button className="p-2 text-slate-400 hover:text-rose-500 transition-colors">
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </div>
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-black text-slate-900 leading-tight group-hover:text-uneti-blue transition-colors">{m.name}</h3>
-                                    <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mt-1">Khoa Công nghệ Thông tin</p>
-                                </div>
-                                <p className="text-[13px] font-medium text-slate-500 line-clamp-2 leading-relaxed">
-                                    {m.description || "Chương trình đào tạo kỹ sư chất lượng cao theo tiêu chuẩn quốc tế."}
-                                </p>
-                            </div>
-
-                            <div className="mt-8 pt-6 border-t border-slate-50 flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <Users size={14} className="text-slate-400" />
-                                    <span className="text-[11px] font-black text-slate-600">850 SV</span>
-                                </div>
-                                <button className="flex items-center gap-2 px-4 py-2 bg-slate-50 text-uneti-blue rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-uneti-blue hover:text-white transition-all group/btn">
-                                    Chi tiết
-                                    <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
+            {/* Main Content */}
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                {activeTab === "faculties" ? (
+                    <DataTable
+                        data={faculties}
+                        columns={facultyColumns}
+                        searchKey="name"
+                        searchPlaceholder="Tìm kiếm tên khoa..."
+                        actions={(item) => (
+                            <div className="flex justify-end gap-2">
+                                <button
+                                    onClick={() => {
+                                        setEditingFaculty(item);
+                                        setFacultyForm({ name: item.name, code: item.code, deanName: item.deanName || "" });
+                                        setIsFacultyModalOpen(true);
+                                    }}
+                                    className="p-2 text-slate-400 hover:text-uneti-blue transition-colors"
+                                >
+                                    <Edit2 size={16} />
+                                </button>
+                                <button
+                                    onClick={() => handleFacultyDelete(item.id)}
+                                    className="p-2 text-slate-400 hover:text-rose-500 transition-colors"
+                                >
+                                    <Trash2 size={16} />
                                 </button>
                             </div>
-                        </div>
-                    ))}
-                </div>
+                        )}
+                    />
+                ) : (
+                    <DataTable
+                        data={majors}
+                        columns={majorColumns}
+                        searchKey="name"
+                        searchPlaceholder="Tìm kiếm tên ngành..."
+                        actions={(item) => (
+                            <div className="flex justify-end gap-2">
+                                <button
+                                    onClick={() => {
+                                        setEditingMajor(item);
+                                        setMajorForm({ 
+                                            name: item.name, 
+                                            code: item.code, 
+                                            facultyId: item.facultyId, 
+                                            totalCreditsRequired: item.totalCreditsRequired 
+                                        });
+                                        setIsMajorModalOpen(true);
+                                    }}
+                                    className="p-2 text-slate-400 hover:text-uneti-blue transition-colors"
+                                >
+                                    <Edit2 size={16} />
+                                </button>
+                                <button
+                                    onClick={() => handleMajorDelete(item.id)}
+                                    className="p-2 text-slate-400 hover:text-rose-500 transition-colors"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
+                        )}
+                    />
+                )}
             </div>
 
-            {/* ADD MODAL */}
+            {/* Faculty Modal */}
             <Modal
-                isOpen={isAddModalOpen}
-                onClose={() => setIsAddModalOpen(false)}
-                title="Khởi tạo Ngành đào tạo"
+                isOpen={isFacultyModalOpen}
+                onClose={() => setIsFacultyModalOpen(false)}
+                title={editingFaculty ? "Cập nhật Khoa" : "Thêm Khoa mới"}
                 footer={
                     <div className="flex items-center justify-end gap-3 w-full px-2">
-                        <button onClick={() => setIsAddModalOpen(false)} className="px-6 py-2.5 text-[12px] font-black text-slate-400 uppercase">Hủy bỏ</button>
-                        <button className="px-8 py-3 bg-uneti-blue text-white rounded-[20px] text-[12px] font-black hover:bg-slate-900 transition-all shadow-lg shadow-uneti-blue/10">LƯU CẤU TRÚC</button>
+                        <button onClick={() => setIsFacultyModalOpen(false)} className="px-6 py-2.5 text-[12px] font-black text-slate-400 uppercase">Hủy bỏ</button>
+                        <button 
+                            onClick={handleFacultySubmit}
+                            disabled={actionLoading}
+                            className="px-8 py-3 bg-uneti-blue text-white rounded-[20px] text-[12px] font-black hover:bg-slate-900 transition-all shadow-lg shadow-uneti-blue/10 disabled:opacity-50"
+                        >
+                            {actionLoading ? "ĐANG XỬ LÝ..." : "LƯU THÔNG TIN"}
+                        </button>
                     </div>
                 }
             >
                 <div className="py-6 space-y-6 px-2">
+                    {errorMsg && (
+                        <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600">
+                            <AlertCircle size={18} />
+                            <p className="text-xs font-bold">{errorMsg}</p>
+                        </div>
+                    )}
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Mã Khoa</label>
+                        <input 
+                            type="text" 
+                            className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none" 
+                            placeholder="Ví dụ: FIT" 
+                            value={facultyForm.code}
+                            onChange={e => setFacultyForm(f => ({ ...f, code: e.target.value }))}
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tên Khoa</label>
+                        <input 
+                            type="text" 
+                            className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none" 
+                            placeholder="Ví dụ: Công nghệ Thông tin" 
+                            value={facultyForm.name}
+                            onChange={e => setFacultyForm(f => ({ ...f, name: e.target.value }))}
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Trưởng Khoa</label>
+                        <input 
+                            type="text" 
+                            className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none" 
+                            placeholder="Tên giảng viên..." 
+                            value={facultyForm.deanName}
+                            onChange={e => setFacultyForm(f => ({ ...f, deanName: e.target.value }))}
+                        />
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Major Modal */}
+            <Modal
+                isOpen={isMajorModalOpen}
+                onClose={() => setIsMajorModalOpen(false)}
+                title={editingMajor ? "Cập nhật Ngành" : "Thêm Ngành mới"}
+                footer={
+                    <div className="flex items-center justify-end gap-3 w-full px-2">
+                        <button onClick={() => setIsMajorModalOpen(false)} className="px-6 py-2.5 text-[12px] font-black text-slate-400 uppercase">Hủy bỏ</button>
+                        <button 
+                            onClick={handleMajorSubmit}
+                            disabled={actionLoading}
+                            className="px-8 py-3 bg-uneti-blue text-white rounded-[20px] text-[12px] font-black hover:bg-slate-900 transition-all shadow-lg shadow-uneti-blue/10 disabled:opacity-50"
+                        >
+                            {actionLoading ? "ĐANG XỬ LÝ..." : "LƯU THÔNG TIN"}
+                        </button>
+                    </div>
+                }
+            >
+                <div className="py-6 space-y-6 px-2">
+                    {errorMsg && (
+                        <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600">
+                            <AlertCircle size={18} />
+                            <p className="text-xs font-bold">{errorMsg}</p>
+                        </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Mã Ngành</label>
+                            <input 
+                                type="text" 
+                                className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none font-mono" 
+                                placeholder="CNTT01" 
+                                value={majorForm.code}
+                                onChange={e => setMajorForm(f => ({ ...f, code: e.target.value }))}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Số tín chỉ BC</label>
+                            <input 
+                                type="number" 
+                                className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none" 
+                                value={majorForm.totalCreditsRequired}
+                                onChange={e => setMajorForm(f => ({ ...f, totalCreditsRequired: parseInt(e.target.value) }))}
+                            />
+                        </div>
+                    </div>
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tên Ngành đào tạo</label>
-                        <input type="text" className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none" placeholder="Ví dụ: Khoa học máy tính" />
+                        <input 
+                            type="text" 
+                            className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none" 
+                            placeholder="Ví dụ: Công nghệ thông tin" 
+                            value={majorForm.name}
+                            onChange={e => setMajorForm(f => ({ ...f, name: e.target.value }))}
+                        />
                     </div>
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Thuộc Khoa</label>
-                        <select className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold outline-none appearance-none">
-                            <option>Khoa Công nghệ Thông tin</option>
-                            <option>Khoa Kinh tế</option>
-                            <option>Khoa Điện tử</option>
+                        <select 
+                            className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold outline-none appearance-none cursor-pointer"
+                            value={majorForm.facultyId}
+                            onChange={e => setMajorForm(f => ({ ...f, facultyId: e.target.value }))}
+                        >
+                            <option value="">-- Chọn Khoa chủ quản --</option>
+                            {faculties.map(f => (
+                                <option key={f.id} value={f.id}>{f.name}</option>
+                            ))}
                         </select>
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Mô tả tóm tắt</label>
-                        <textarea className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold outline-none h-24 resize-none" placeholder="Nhập mô tả ngành học..." />
                     </div>
                 </div>
             </Modal>

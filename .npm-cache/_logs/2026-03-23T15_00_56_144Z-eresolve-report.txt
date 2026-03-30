@@ -1,0 +1,36 @@
+'Log files:
+D:\KHOA_LUAN_TOT_NGHIEP\MicroServices_QLSV\.npm-cache\_logs\2026-03-23T15_00_56_144Z-debug-0.log
+
+# npm resolution error report
+
+While resolving: student-management-system@0.0.0
+Found: @nestjs/core@11.1.17
+node_modules/@nestjs/core
+  peer @nestjs/core@">=7.0.9" from @nestjs-modules/mailer@2.3.0
+  node_modules/@nestjs-modules/mailer
+    @nestjs-modules/mailer@"^2.3.0" from the root project
+    @nestjs-modules/mailer@"^2.0.2" from auth-service@0.0.1
+    apps/auth-service
+  peer @nestjs/core@"^11.0.1" from @nestjs/swagger@11.2.6
+  apps/auth-service/node_modules/@nestjs/swagger
+  peer @nestjs/core@"^11.0.1" from @nestjs/swagger@11.2.6
+  apps/student-service/node_modules/@nestjs/swagger
+  peer @nestjs/core@"^11.0.1" from @nestjs/swagger@11.2.6
+  apps/api-gateway/node_modules/@nestjs/swagger
+  peer @nestjs/core@"^11.0.1" from @nestjs/swagger@11.2.6
+  apps/enrollment-service/node_modules/@nestjs/swagger
+  peer @nestjs/core@"^11.0.0" from @nestjs/platform-express@11.1.17
+  node_modules/@nestjs/platform-express
+    dev @nestjs/platform-express@"^11.1.17" from the root project
+    peerOptional @nestjs/platform-express@"^11.0.0" from @nestjs/core@11.1.17
+
+Could not resolve dependency:
+@nestjs/swagger@"^7.4.2" from the root project
+
+Conflicting peer dependency: @nestjs/core@10.4.22
+node_modules/@nestjs/core
+  peer @nestjs/core@"^9.0.0 || ^10.0.0" from @nestjs/swagger@7.4.2
+  node_modules/@nestjs/swagger
+    @nestjs/swagger@"^7.4.2" from the root project
+
+Fix the upstream dependency conflict, or retry this command with --force or --legacy-peer-deps to accept an incorrect (and potentially broken) dependency resolution.

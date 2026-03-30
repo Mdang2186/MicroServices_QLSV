@@ -19,6 +19,8 @@ export interface UserResponse {
     role: string;
     accessToken?: string;
     profileId?: string;
+    fullName?: string;
+    degree?: string;
 }
 
 export interface ChangePasswordDto {

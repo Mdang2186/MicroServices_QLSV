@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { StudentService } from "@/services/student.service";
 import Cookies from "js-cookie";
+import { useRouter } from "next/navigation";
 import {
     Calendar as CalendarIcon,
     ChevronLeft,
@@ -11,44 +12,43 @@ import {
     Clock,
     Printer,
     Maximize2,
-    CheckCircle2,
-    Info,
     CalendarCheck,
-    Search
+    Search,
+    Users,
+    Info,
+    Filter
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const SESSIONS = [
-    { label: "Sáng", range: "1-6", time: "07:00 - 12:15", value: 1, color: "bg-yellow-50/50" },
-    { label: "Chiều", range: "7-12", time: "13:00 - 18:15", value: 2, color: "bg-blue-50/50" },
-    { label: "Tối", range: "13-14", time: "18:30 - 21:00", value: 3, color: "bg-slate-50/50" },
+    { label: "Sáng", time: "07:00 - 12:15", value: "morning", color: "bg-blue-50/10 text-slate-500 border-slate-100" },
+    { label: "Chiều", time: "13:00 - 18:15", value: "afternoon", color: "bg-blue-50/10 text-slate-500 border-slate-100" },
+    { label: "Tối", time: "18:30 - 21:00", value: "evening", color: "bg-blue-50/10 text-slate-500 border-slate-100" },
 ];
 
 const DAYS = [
-    { name: "Thứ Hai", value: 2 },
-    { name: "Thứ Ba", value: 3 },
-    { name: "Thứ Tư", value: 4 },
-    { name: "Thứ Năm", value: 5 },
-    { name: "Thứ Sáu", value: 6 },
-    { name: "Thứ Bảy", value: 7 },
-    { name: "Chủ Nhật", value: 8 },
+    { name: "Thứ Hai", short: "T2", value: 2 },
+    { name: "Thứ Ba", short: "T3", value: 3 },
+    { name: "Thứ Tư", short: "T4", value: 4 },
+    { name: "Thứ Năm", short: "T5", value: 5 },
+    { name: "Thứ Sáu", short: "T6", value: 6 },
+    { name: "Thứ Bảy", short: "T7", value: 7 },
+    { name: "Chủ Nhật", short: "CN", value: 8 },
 ];
 
 const LEGEND = [
-    { label: "Lịch học lý thuyết", color: "bg-slate-100 border-slate-300" },
-    { label: "Lịch học thực hành", color: "bg-green-100 border-green-300" },
-    { label: "Lịch học trực tuyến", color: "bg-sky-100 border-sky-300" },
-    { label: "Lịch thi", color: "bg-yellow-100 border-yellow-300" },
-    { label: "Lịch tạm ngưng", color: "bg-red-100 border-red-300" },
+    { label: "Lý thuyết", color: "bg-white border-slate-200", textColor: "text-slate-500" },
+    { label: "Thực hành", color: "bg-green-50/80 border-green-100", textColor: "text-green-700" },
+    { label: "Lịch thi", color: "bg-yellow-50/80 border-yellow-200", textColor: "text-yellow-700" },
 ];
 
 export default function SchedulePage() {
+    const router = useRouter();
     const [enrollments, setEnrollments] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedDate, setSelectedDate] = useState(new Date());
-    const [selectedSchedule, setSelectedSchedule] = useState<any>(null);
     const [filter, setFilter] = useState("all");
 
     useEffect(() => {
@@ -95,8 +95,9 @@ export default function SchedulePage() {
         return Array.from({ length: 7 }, (_, i) => addDays(start, i));
     }, [selectedDate]);
 
-    const getSchedulesForDayAndSession = (dayValue: number, sessionValue: number) => {
-        const dateAtIdx = weekDays[dayValue === 8 ? 6 : dayValue - 2];
+    const getSchedulesForDayAndSession = (dayValue: number, sessionValue: string) => {
+        const dateAtIdx = weekDays.find(d => d.getDay() === (dayValue === 8 ? 0 : dayValue));
+        if (!dateAtIdx) return [];
 
         return enrollments.flatMap(enr => {
             const schedules = enr.courseClass?.schedules || [];
@@ -104,12 +105,18 @@ export default function SchedulePage() {
                 .filter((s: any) => {
                     if (s.dayOfWeek !== dayValue) return false;
 
-                    // Session mapping
-                    if (sessionValue === 1 && s.startShift > 6) return false;
-                    if (sessionValue === 2 && (s.startShift < 7 || s.startShift > 12)) return false;
-                    if (sessionValue === 3 && s.startShift < 13) return false;
+                    const start = Number(s.startShift);
+                    let sessionMatch = false;
+                    if (sessionValue === "morning") sessionMatch = start <= 6;
+                    else if (sessionValue === "afternoon") sessionMatch = start > 6 && start <= 12;
+                    else if (sessionValue === "evening") sessionMatch = start > 12;
 
-                    // Semester range check
+                    if (!sessionMatch) return false;
+
+                    // Filter based on UI filter state
+                    if (filter === "study" && s.type === "EXAM") return false;
+                    if (filter === "exam" && s.type !== "EXAM") return false;
+
                     if (enr.courseClass?.semester) {
                         const start = new Date(enr.courseClass.semester.startDate);
                         const end = new Date(enr.courseClass.semester.endDate);
@@ -119,13 +126,15 @@ export default function SchedulePage() {
                 })
                 .map((s: any) => ({
                     ...s,
+                    id: `${enr.id}-${s.id}`,
                     subjectName: enr.courseClass?.subject?.name,
                     classCode: enr.courseClass?.code,
-                    roomName: s.room?.name,
+                    classId: enr.courseClass?.id,
+                    roomName: s.room?.name || s.roomId || 'Chưa cập nhật',
                     lecturerName: enr.courseClass?.lecturer?.fullName,
                     type: s.type || 'THEORY'
                 }));
-        });
+        }).sort((a, b) => Number(a.startShift) - Number(b.startShift));
     };
 
     const navigateDate = (direction: 'next' | 'prev') => {
@@ -143,98 +152,110 @@ export default function SchedulePage() {
     }
 
     return (
-        <div className="min-h-screen space-y-4 bg-transparent pb-20">
-            {/* Main Container */}
-            <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
-                {/* Header */}
-                <div className="px-6 py-4 flex flex-col md:flex-row justify-between items-center bg-slate-50 border-b border-slate-200 gap-4">
-                    <h1 className="text-xl font-bold text-slate-700">Lịch học, lịch thi theo tuần</h1>
+        <div className="min-h-screen space-y-6 pb-20 max-w-7xl mx-auto">
+            {/* Elegant Header Area */}
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-2 border-b border-slate-100">
+                <div className="space-y-1">
+                    <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-3 py-1 rounded-full w-fit mb-2">Academic Calendar</p>
+                    <h1 className="text-2xl font-black text-slate-800 tracking-tight">Lịch học, lịch thi theo tuần</h1>
+                </div>
 
-                    <div className="flex items-center gap-6">
-                        <div className="flex items-center gap-4 text-sm font-medium text-slate-600">
-                            <label className="flex items-center gap-1.5 cursor-pointer">
-                                <input type="radio" checked={filter === "all"} onChange={() => setFilter("all")} className="w-4 h-4 text-blue-600" /> Tất cả
-                            </label>
-                            <label className="flex items-center gap-1.5 cursor-pointer">
-                                <input type="radio" checked={filter === "study"} onChange={() => setFilter("study")} className="w-4 h-4 text-blue-600" /> Lịch học
-                            </label>
-                            <label className="flex items-center gap-1.5 cursor-pointer">
-                                <input type="radio" checked={filter === "exam"} onChange={() => setFilter("exam")} className="w-4 h-4 text-blue-600" /> Lịch thi
-                            </label>
-                        </div>
+                <div className="flex items-center gap-2 p-1 bg-slate-50 rounded-2xl border border-slate-100">
+                    <button
+                        onClick={() => navigateDate('prev')}
+                        className="h-10 w-10 flex items-center justify-center rounded-xl hover:bg-white hover:shadow-sm text-slate-400 hover:text-blue-600 transition-all"
+                    >
+                        <ChevronLeft size={20} />
+                    </button>
+                    <div className="px-4 py-1.5 text-xs font-black text-slate-700 tracking-tight flex flex-col items-center">
+                        <span>Tuần từ {weekDays[0].toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}</span>
+                        <span className="text-[9px] text-slate-400 uppercase">Đến {weekDays[6].toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+                    </div>
+                    <button
+                        onClick={() => navigateDate('next')}
+                        className="h-10 w-10 flex items-center justify-center rounded-xl hover:bg-white hover:shadow-sm text-slate-400 hover:text-blue-600 transition-all"
+                    >
+                        <ChevronRight size={20} />
+                    </button>
+                </div>
+            </div>
 
-                        <div className="flex items-center gap-1 bg-white border border-slate-300 p-0.5 rounded shadow-sm">
-                            <input
-                                type="text"
-                                readOnly
-                                value={`${weekDays[0].toLocaleDateString('vi-VN')} - ${weekDays[6].toLocaleDateString('vi-VN')}`}
-                                className="px-2 py-1 text-sm border-none focus:ring-0 w-44 font-medium text-slate-700"
-                            />
-                            <div className="p-1 text-slate-400">
-                                <CalendarIcon className="h-4 w-4" />
-                            </div>
+            {/* Toolbar & Filters */}
+            <div className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                    <div className="h-10 px-4 rounded-xl bg-slate-50 flex items-center gap-3 border border-slate-100">
+                        <Filter size={14} className="text-slate-400" />
+                        <div className="flex items-center gap-6 text-[11px] font-bold text-slate-600">
+                            {[
+                                { id: "all", label: "Tất cả" },
+                                { id: "study", label: "Lịch học" },
+                                { id: "exam", label: "Lịch thi" }
+                            ].map((f) => (
+                                <label key={f.id} className="flex items-center gap-2 cursor-pointer group">
+                                    <div className="relative flex items-center justify-center">
+                                        <input
+                                            type="radio"
+                                            name="filter"
+                                            checked={filter === f.id}
+                                            onChange={() => setFilter(f.id)}
+                                            className="peer h-4 w-4 appearance-none rounded-full border border-slate-300 checked:border-blue-600 transition-all cursor-pointer"
+                                        />
+                                        <div className="absolute h-2 w-2 rounded-full bg-blue-600 opacity-0 peer-checked:opacity-100 transition-opacity" />
+                                    </div>
+                                    <span className={cn("transition-colors group-hover:text-blue-600", filter === f.id && "text-blue-600 font-black")}>
+                                        {f.label}
+                                    </span>
+                                </label>
+                            ))}
                         </div>
                     </div>
                 </div>
 
-                {/* Toolbar */}
-                <div className="px-6 py-3 flex flex-wrap justify-end items-center gap-2 bg-white border-b border-slate-200">
+                <div className="flex items-center gap-2">
                     <Button
-                        variant="secondary"
+                        variant="ghost"
                         size="sm"
                         onClick={() => setSelectedDate(new Date())}
-                        className="bg-sky-500 hover:bg-sky-600 text-white rounded-sm h-8 px-4 flex items-center gap-1.5"
+                        className="h-10 rounded-xl px-4 text-xs font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-600 transition-all border border-transparent hover:border-blue-100"
                     >
-                        <CalendarCheck className="h-4 w-4" /> Hiện tại
+                        <CalendarCheck className="mr-2 h-4 w-4" /> Hôm nay
                     </Button>
                     <Button
-                        variant="secondary"
+                        variant="ghost"
                         size="sm"
-                        className="bg-sky-500 hover:bg-sky-600 text-white rounded-sm h-8 px-4 flex items-center gap-1.5"
+                        className="h-10 rounded-xl px-4 text-xs font-bold text-slate-600 hover:bg-emerald-50 hover:text-emerald-600 transition-all border border-transparent hover:border-emerald-100"
                     >
-                        <Printer className="h-4 w-4" /> In lịch
-                    </Button>
-                    <div className="flex bg-sky-500 p-0.5 rounded-sm">
-                        <button
-                            onClick={() => navigateDate('prev')}
-                            className="h-7 px-2 hover:bg-sky-600 text-white transition-colors border-r border-sky-400 flex items-center justify-center gap-1 text-xs font-bold"
-                        >
-                            <ChevronLeft className="h-4 w-4" /> Trở về
-                        </button>
-                        <button
-                            onClick={() => navigateDate('next')}
-                            className="h-7 px-2 hover:bg-sky-600 text-white transition-colors flex items-center justify-center gap-1 text-xs font-bold"
-                        >
-                            Tiếp <ChevronRight className="h-4 w-4" />
-                        </button>
-                    </div>
-                    <Button
-                        variant="secondary"
-                        size="sm"
-                        className="bg-sky-500 hover:bg-sky-600 text-white rounded-sm h-8 px-2"
-                    >
-                        <Maximize2 className="h-4 w-4" />
+                        <Printer className="mr-2 h-4 w-4" /> Xuất PDF
                     </Button>
                 </div>
+            </div>
 
-                {/* Table Grid */}
+            {/* Schedule Grid */}
+            <div className="bg-white rounded-none border border-slate-200 shadow-sm overflow-hidden relative">
+                {/* Visual Accent */}
+                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-50/30 rounded-full blur-3xl -mr-32 -mt-32"></div>
+
                 <div className="overflow-x-auto">
-                    <table className="w-full border-collapse min-w-[1200px] border-l border-t border-slate-200">
+                    <table className="w-full border-collapse min-w-[1000px]">
                         <thead>
-                            <tr className="bg-sky-50">
-                                <th className="w-24 p-3 border-r border-b border-slate-200 text-sm font-bold text-sky-700 text-center">Ca học</th>
+                            <tr className="bg-slate-50/80">
+                                <th className="w-20 p-3 text-[11px] font-black text-blue-600 uppercase border border-slate-200">Ca học</th>
                                 {DAYS.map((day, idx) => {
                                     const isToday = new Date().toDateString() === weekDays[idx].toDateString();
                                     return (
                                         <th
                                             key={day.value}
                                             className={cn(
-                                                "p-3 border-r border-b border-slate-200 text-center",
-                                                isToday && "bg-sky-100"
+                                                "p-3 border border-slate-200 text-center transition-colors min-w-[140px]",
+                                                isToday && "bg-blue-50/50"
                                             )}
                                         >
-                                            <p className="text-sm font-bold text-sky-700">{day.name}</p>
-                                            <p className="text-sm font-bold text-sky-700">{weekDays[idx].toLocaleDateString('vi-VN')}</p>
+                                            <div className="space-y-0.5">
+                                                <p className={cn("text-[11px] font-black uppercase text-blue-600")}>{day.name}</p>
+                                                <p className={cn("text-[11px] font-bold text-blue-500 tabular-nums")}>
+                                                    {weekDays[idx].toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                                </p>
+                                            </div>
                                         </th>
                                     );
                                 })}
@@ -242,41 +263,50 @@ export default function SchedulePage() {
                         </thead>
                         <tbody>
                             {SESSIONS.map((session) => (
-                                <tr key={session.value}>
-                                    <td className={cn("p-4 border-r border-b border-slate-200 text-center font-bold text-slate-700 align-middle", session.color)}>
-                                        <div className="flex flex-col items-center">
-                                            <span className="text-sm">{session.label}</span>
+                                <tr key={session.value} className="group/row">
+                                    <td className="p-0 border border-slate-200 bg-slate-50/30">
+                                        <div className="flex items-center justify-center p-4 min-h-[140px]">
+                                            <span className="text-xs font-black text-slate-700 uppercase [writing-mode:vertical-lr] rotate-180">{session.label}</span>
                                         </div>
                                     </td>
                                     {DAYS.map((day, idx) => {
                                         const schedules = getSchedulesForDayAndSession(day.value, session.value);
+                                        const isToday = new Date().toDateString() === weekDays[idx].toDateString();
                                         return (
                                             <td
                                                 key={`${day.value}-${session.value}`}
-                                                className="p-1 border-r border-b border-slate-200 align-top min-h-[160px] bg-[url('https://www.transparenttextures.com/patterns/graph-paper.png')] bg-fixed"
+                                                className={cn(
+                                                    "p-1.5 border border-slate-200 align-top transition-colors min-h-[120px]",
+                                                    isToday && "bg-blue-50/5"
+                                                )}
                                             >
-                                                <div className="space-y-1">
+                                                <div className="space-y-1.5">
                                                     {schedules.map((s, i) => (
-                                                        <div
+                                                        <motion.div
                                                             key={i}
-                                                            onClick={() => setSelectedSchedule(s)}
+                                                            initial={{ opacity: 0 }}
+                                                            animate={{ opacity: 1 }}
                                                             className={cn(
-                                                                "p-3 border rounded shadow-sm cursor-pointer transition-all hover:brightness-95",
-                                                                s.type === 'PRACTICE' ? "bg-green-100 border-green-300" :
-                                                                    s.type === 'ONLINE' ? "bg-sky-100 border-sky-300" :
-                                                                        "bg-slate-100 border-slate-300"
+                                                                "p-2.5 rounded-sm border text-left transition-all shadow-sm",
+                                                                s.type === 'EXAM' 
+                                                                    ? "bg-yellow-50/90 border-yellow-200" 
+                                                                    : (s.type === 'PRACTICE' || s.roomName?.toLowerCase().includes('lab'))
+                                                                    ? "bg-green-50/90 border-green-200"
+                                                                    : "bg-white border-slate-200"
                                                             )}
                                                         >
-                                                            <div className="space-y-1 leading-tight">
-                                                                <h4 className="text-sm font-bold text-slate-800">{s.subjectName}</h4>
-                                                                <p className="text-xs font-medium text-slate-600 uppercase">{s.classCode}</p>
-                                                                <div className="pt-1.5 space-y-0.5">
-                                                                    <p className="text-[11px] font-medium text-slate-600">Tiết: {s.startShift} - {s.endShift}</p>
-                                                                    <p className="text-[11px] font-medium text-slate-600">Phòng: {s.roomName || '---'}</p>
-                                                                    <p className="text-[11px] font-medium text-slate-600 truncate">GV: {s.lecturerName || '---'}</p>
+                                                            <div className="space-y-1">
+                                                                <h4 className="text-[10px] font-black text-blue-700 leading-tight">
+                                                                    {s.subjectName}
+                                                                </h4>
+                                                                <p className="text-[9px] font-bold text-slate-600">{s.classCode}</p>
+                                                                <div className="space-y-0.5 mt-1 border-t border-black/5 pt-1">
+                                                                    <p className="text-[9px] font-bold text-slate-700">Tiết: {s.startShift} - {s.endShift}</p>
+                                                                    <p className="text-[9px] font-bold text-slate-700">Phòng: {s.roomName || 'Chưa cập nhật'}</p>
+                                                                    <p className="text-[9px] font-bold text-slate-700 truncate">GV: {s.lecturerName || 'Hệ thống'}</p>
                                                                 </div>
                                                             </div>
-                                                        </div>
+                                                        </motion.div>
                                                     ))}
                                                 </div>
                                             </td>
@@ -288,78 +318,29 @@ export default function SchedulePage() {
                     </table>
                 </div>
 
-                {/* Legend */}
-                <div className="px-6 py-6 bg-slate-50 border-t border-slate-200">
-                    <div className="flex flex-wrap gap-x-8 gap-y-4">
-                        {LEGEND.map((item, idx) => (
-                            <div key={idx} className="flex items-center gap-2">
-                                <div className={cn("h-4 w-10 border shadow-sm", item.color)} />
-                                <span className="text-xs font-medium text-slate-600">{item.label}</span>
-                            </div>
-                        ))}
+                {/* Simplified Legend */}
+                <div className="px-8 py-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex flex-wrap gap-6">
+                        <div className="flex items-center gap-2">
+                            <div className="h-4 w-12 rounded-sm bg-white border border-slate-300" />
+                            <span className="text-[10px] font-bold text-slate-600">Lịch học lý thuyết</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="h-4 w-12 rounded-sm bg-green-50 border border-green-200" />
+                            <span className="text-[10px] font-bold text-slate-600">Lịch học thực hành</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="h-4 w-12 rounded-sm bg-yellow-50 border border-yellow-200" />
+                            <span className="text-[10px] font-bold text-slate-600">Lịch thi</span>
+                        </div>
                     </div>
+                    <p className="text-[10px] font-bold text-slate-400 flex items-center gap-1.5">
+                        <Info size={12} className="text-blue-400" />
+                        Lịch học được cập nhật trực tiếp từ hệ thống UNETI
+                    </p>
                 </div>
             </div>
 
-            {/* Detail Modal (Keep and simplify) */}
-            <AnimatePresence>
-                {selectedSchedule && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            onClick={() => setSelectedSchedule(null)}
-                            className="absolute inset-0 bg-slate-900/20"
-                        />
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            className="relative w-full max-w-md bg-white p-6 shadow-xl border border-slate-200"
-                        >
-                            <div className="mb-4 flex items-start justify-between">
-                                <div>
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600">{selectedSchedule.classCode}</span>
-                                    <h2 className="text-lg font-bold text-slate-800 leading-tight">{selectedSchedule.subjectName}</h2>
-                                </div>
-                                <button
-                                    onClick={() => setSelectedSchedule(null)}
-                                    className="text-slate-400 hover:text-slate-600"
-                                >
-                                    <Maximize2 className="h-5 w-5 rotate-45" />
-                                </button>
-                            </div>
-
-                            <div className="space-y-3">
-                                <div className="flex justify-between py-2 border-b border-slate-100">
-                                    <span className="text-sm text-slate-500 font-medium">Phòng học</span>
-                                    <span className="text-sm text-slate-800 font-bold">{selectedSchedule.roomName || '---'}</span>
-                                </div>
-                                <div className="flex justify-between py-2 border-b border-slate-100">
-                                    <span className="text-sm text-slate-500 font-medium">Tiết học</span>
-                                    <span className="text-sm text-slate-800 font-bold">{selectedSchedule.startShift} - {selectedSchedule.endShift}</span>
-                                </div>
-                                <div className="flex justify-between py-2 border-b border-slate-100">
-                                    <span className="text-sm text-slate-500 font-medium">Giảng viên</span>
-                                    <span className="text-sm text-slate-800 font-bold">{selectedSchedule.lecturerName || 'Chưa cập nhật'}</span>
-                                </div>
-                                <div className="flex justify-between py-2 border-b border-slate-100">
-                                    <span className="text-sm text-slate-500 font-medium">Hình thức</span>
-                                    <span className="text-sm text-slate-800 font-bold">{selectedSchedule.type === 'PRACTICE' ? 'Thực hành' : selectedSchedule.type === 'ONLINE' ? 'Trực tuyến' : 'Lý thuyết'}</span>
-                                </div>
-                            </div>
-
-                            <Button
-                                onClick={() => setSelectedSchedule(null)}
-                                className="mt-6 w-full h-10 bg-slate-800 text-white font-medium hover:bg-slate-700"
-                            >
-                                Đóng
-                            </Button>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
         </div>
     );
 }

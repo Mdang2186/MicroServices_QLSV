@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Param } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Query } from '@nestjs/common';
 import { ApiBody } from '@nestjs/swagger';
 import { EnrollmentService } from './enrollment.service';
 
@@ -20,24 +20,53 @@ export class EnrollmentController {
         return this.enrollmentService.registerCourse(body.studentId, body.classId);
     }
 
+    @Post('switch')
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                studentId: { type: 'string', example: 'STU12345' },
+                oldClassId: { type: 'string', example: 'CLS1' },
+                newClassId: { type: 'string', example: 'CLS2' }
+            }
+        }
+    })
+    switch(@Body() body: { studentId: string; oldClassId: string; newClassId: string }) {
+        return this.enrollmentService.switchClass(body.studentId, body.oldClassId, body.newClassId);
+    }
+
+    @Get('semesters')
+    getSemesters() {
+        return this.enrollmentService.getSemesters();
+    }
+
     @Get('classes')
     getClasses() {
         return this.enrollmentService.getOpenClasses();
     }
 
     @Get('student/:studentId')
-    getStudentEnrollments(@Param('studentId') studentId: string) {
-        return this.enrollmentService.getStudentEnrollments(studentId);
+    getStudentEnrollments(
+        @Param('studentId') studentId: string,
+        @Query('semesterId') semesterId?: string
+    ) {
+        return this.enrollmentService.getStudentEnrollments(studentId, semesterId);
     }
 
     @Get('registration-status/:studentId')
-    getRegistrationStatus(@Param('studentId') studentId: string) {
-        return this.enrollmentService.getRegistrationStatus(studentId);
+    getRegistrationStatus(
+        @Param('studentId') studentId: string,
+        @Query('semesterId') semesterId?: string
+    ) {
+        return this.enrollmentService.getRegistrationStatus(studentId, semesterId);
     }
 
     @Get('subject/:subjectId/classes')
-    getClassesBySubject(@Param('subjectId') subjectId: string) {
-        return this.enrollmentService.getClassesBySubject(subjectId);
+    getClassesBySubject(
+        @Param('subjectId') subjectId: string,
+        @Query('semesterId') semesterId?: string
+    ) {
+        return this.enrollmentService.getClassesBySubject(subjectId, semesterId);
     }
 
     // ===== ADMIN ENDPOINTS =====

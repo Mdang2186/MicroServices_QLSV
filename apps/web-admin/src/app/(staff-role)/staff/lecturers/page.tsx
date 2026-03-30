@@ -117,6 +117,29 @@ export default function StaffLecturersPage() {
         }
     };
 
+    const handleGrantAccount = async (id: string) => {
+        try {
+            setFormLoading(true);
+            const res = await fetch(`/api/auth/lecturers/${id}/grant-account`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${TOKEN}`
+                }
+            });
+            if (res.ok) {
+                alert("Cấp tài khoản thành công! Mật khẩu mặc định: 123456");
+                await fetchLecturers();
+            } else {
+                const data = await res.json();
+                alert(data.message || "Lỗi khi cấp tài khoản");
+            }
+        } catch (error) {
+            alert("Lỗi kết nối server");
+        } finally {
+            setFormLoading(false);
+        }
+    };
+
     const confirmDelete = async () => {
         setFormLoading(true);
         try {
@@ -292,7 +315,17 @@ export default function StaffLecturersPage() {
                                         </div>
                                     </td>
                                     <td className="py-6 px-10 text-right">
-                                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                                        <div className="flex items-center justify-end gap-2 transition-all duration-300">
+                                            {!l.userId && (
+                                                <button
+                                                    onClick={() => handleGrantAccount(l.id)}
+                                                    className="p-3 text-emerald-600 hover:bg-emerald-50 rounded-2xl transition-all"
+                                                    title="Cấp tài khoản"
+                                                    disabled={formLoading}
+                                                >
+                                                    <CheckCircle2 size={18} />
+                                                </button>
+                                            )}
                                             <button
                                                 onClick={() => openEditModal(l)}
                                                 className="p-3 text-uneti-blue hover:bg-uneti-blue-light rounded-2xl transition-all"

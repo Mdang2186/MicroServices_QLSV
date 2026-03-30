@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Cookies from "js-cookie";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
     BookOpen,
     Search,
@@ -14,15 +15,26 @@ import {
     ArrowLeft,
     BookMarked,
     Edit3,
-    UserCheck
+    UserCheck,
+    LayoutGrid,
+    MoreHorizontal,
+    ArrowUpRight,
+    TrendingUp,
+    ChevronLeft
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export default function LecturerCoursesPage() {
+    const router = useRouter();
     const [user, setUser] = useState<any>(null);
     const [courses, setCourses] = useState<any[]>([]);
     const [filteredCourses, setFilteredCourses] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 8;
 
     const TOKEN = Cookies.get("admin_accessToken");
 
@@ -35,7 +47,8 @@ export default function LecturerCoursesPage() {
         if (!user?.id) return;
         const headers: any = TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {};
 
-        fetch("/api/courses/my-classes", { headers })
+        const lecturerId = user.profileId || user.lecturer?.id || user.id;
+        fetch(`/api/courses/lecturer/${lecturerId}`, { headers })
             .then(r => r.ok ? r.json() : [])
             .then(data => {
                 const fetched = Array.isArray(data) ? data : data?.data || [];
@@ -57,152 +70,163 @@ export default function LecturerCoursesPage() {
             (c.code?.toLowerCase().includes(query))
         );
         setFilteredCourses(filtered);
+        setCurrentPage(1);
     }, [searchQuery, courses]);
+
+    const paginatedCourses = filteredCourses.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+    const totalPages = Math.ceil(filteredCourses.length / itemsPerPage);
 
     if (loading) {
         return (
-            <div className="flex min-h-screen items-center justify-center bg-[#f4f7fe]">
-                <div className="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
+            <div className="flex min-h-screen items-center justify-center bg-[#f8fafc]">
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-600"></div>
             </div>
         );
     }
 
     return (
-        <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto space-y-6 animate-in fade-in duration-500">
-            {/* Header / Breadcrumb */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                    <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                        <GraduationCap size={14} className="text-uneti-blue" />
-                        <span>Giảng viên Portal</span>
-                        <ChevronRight size={10} />
-                        <span className="text-uneti-blue">Lớp học phần</span>
-                    </div>
-                    <h1 className="text-2xl font-black text-slate-900 tracking-tight">Danh sách lớp học</h1>
-                </div>
-                <div className="flex items-center gap-3">
-                    <Link href="/lecturer/dashboard" className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-50 transition-all shadow-sm">
-                        <ArrowLeft size={16} />
-                        Quay lại
-                    </Link>
+        <div className="min-h-screen space-y-8 pb-20 max-w-7xl mx-auto px-4 sm:px-6 animate-in fade-in duration-700">
+            {/* Nav & Action Header */}
+            <div className="flex border-b border-slate-100 pb-2">
+                <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    <GraduationCap size={14} className="text-slate-400" />
+                    <span>Giảng viên Portal</span>
+                    <ChevronRight size={10} />
+                    <span className="text-slate-800">Quản lý lớp học</span>
                 </div>
             </div>
 
-            {/* Welcome / Stats Banner - Compact */}
-            <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-uneti-blue/5 rounded-full blur-2xl -mr-16 -mt-16"></div>
-
-                <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-uneti-blue-light text-uneti-blue flex items-center justify-center">
-                        <BookOpen size={24} />
-                    </div>
-                    <div>
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Đang phụ trách</p>
-                        <p className="text-xl font-black text-slate-900">{courses.length} Lớp học phần</p>
-                    </div>
-                </div>
-
-                {/* Filter & Search Bar - Integrated */}
-                <div className="flex flex-col sm:flex-row gap-3 flex-1 max-w-2xl relative z-10">
-                    <div className="relative flex-1">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                        <input
-                            type="text"
-                            placeholder="Tìm kiếm mã hoặc tên lớp..."
-                            className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-uneti-blue/20 transition-all outline-none"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
-                    </div>
-                    <button className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-black text-slate-600 hover:border-uneti-blue/30 transition-all shadow-sm">
-                        <Filter size={16} />
-                        BỘ LỌC
-                    </button>
-                    <div className="flex items-center px-4 bg-slate-50 rounded-xl">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{filteredCourses.length} Kết quả</span>
-                    </div>
+            {/* Title & Search Bar */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <h1 className="text-2xl font-black text-slate-800 tracking-tight">
+                    Danh sách học phần
+                </h1>
+                
+                <div className="flex items-center gap-3 w-full md:w-80 relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                    <input
+                        type="text"
+                        placeholder="Tìm kiếm lớp học..."
+                        className="bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs font-bold text-slate-700 w-full focus:ring-1 focus:ring-slate-300 transition-all outline-none"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
                 </div>
             </div>
 
-            {/* Course Grid - Compact Cards */}
-            {filteredCourses.length === 0 ? (
-                <div className="bg-white rounded-[24px] py-16 flex flex-col items-center justify-center text-center border border-slate-100 shadow-sm">
-                    <div className="w-16 h-16 rounded-2xl bg-slate-50 flex items-center justify-center mb-4 text-slate-200">
-                        <Search size={32} />
-                    </div>
-                    <h3 className="font-bold text-slate-800">Không tìm thấy lớp học</h3>
-                    <p className="text-xs text-slate-400 mt-1 max-w-xs">Hãy thử thay đổi từ khóa hoặc loại bỏ bộ lọc.</p>
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-                    {filteredCourses.map((c, i) => {
-                        const progress = Math.min(100, Math.round(((c.currentSlots || 0) / (c.maxSlots || 1)) * 100));
+            {/* Course List Layout */}
+            <div className="space-y-2">
+                <AnimatePresence mode="wait">
+                    {paginatedCourses.map((c, i) => {
                         return (
-                            <div key={i} className="bg-white rounded-2xl border border-slate-100 p-5 hover:border-uneti-blue/20 hover:shadow-lg transition-all flex flex-col group border-t-4 border-t-uneti-blue relative overflow-hidden">
-                                <div className="absolute top-0 right-0 w-24 h-24 bg-uneti-blue/5 rounded-full blur-xl -mr-12 -mt-12 pointer-events-none"></div>
-
-                                <div className="flex justify-between items-start mb-4 relative z-10">
-                                    <span className="bg-uneti-blue-light text-uneti-blue font-black text-[9px] px-2.5 py-1.5 rounded-lg tracking-widest uppercase">
-                                        {c.code}
-                                    </span>
-                                    <div className="flex h-1.5 w-6 gap-1">
-                                        <div className="h-full flex-1 rounded-full bg-emerald-400"></div>
-                                        <div className="h-full flex-1 rounded-full bg-slate-100"></div>
-                                    </div>
-                                </div>
-
-                                <h3 className="font-bold text-slate-800 text-sm mb-4 line-clamp-2 min-h-[40px] leading-snug group-hover:text-uneti-blue transition-colors">
-                                    {c.name || c.subject?.name}
-                                </h3>
-
-                                <div className="grid grid-cols-2 gap-3 mb-5">
-                                    <div className="flex items-center gap-2 py-1.5 px-2 bg-slate-50 rounded-lg">
-                                        <Users size={14} className="text-slate-400" />
-                                        <span className="text-[10px] font-bold text-slate-600">{c.currentSlots}/{c.maxSlots} SV</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 py-1.5 px-2 bg-slate-50 rounded-lg">
-                                        <BookMarked size={14} className="text-slate-400" />
-                                        <span className="text-[10px] font-bold text-slate-600">{c.subject?.credits || 3} TÍN CHỈ</span>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-4 relative z-10 pb-2">
-                                    <div className="space-y-1.5">
-                                        <div className="flex justify-between text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                            <span>Sĩ số lớp</span>
-                                            <span className="text-uneti-blue">{progress}%</span>
+                            <motion.div
+                                key={c.id}
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: 10 }}
+                                transition={{ duration: 0.2 }}
+                            >
+                                <div className="bg-white border border-slate-100 p-3 hover:bg-slate-50 transition-all flex items-center justify-between group rounded-xl">
+                                    <div className="flex items-center gap-4 flex-1">
+                                        <div className="h-10 w-10 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400 border border-slate-100">
+                                            <BookOpen size={18} />
                                         </div>
-                                        <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                                            <div className="h-full bg-uneti-blue rounded-full transition-all duration-1000" style={{ width: `${progress}%` }}></div>
+                                        <div className="space-y-0.5">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[9px] font-black text-indigo-600 px-1.5 py-0.5 bg-indigo-50 rounded uppercase tracking-wider">
+                                                    {c.code}
+                                                </span>
+                                                <span className="text-[9px] font-bold text-slate-400 uppercase">
+                                                    HK {c.semester?.name?.split(' ').pop()} • {c.subject?.credits || 0} Tín chỉ
+                                                </span>
+                                            </div>
+                                            <h3 className="font-bold text-slate-700 text-sm uppercase tracking-tight line-clamp-1">
+                                                {c.name || c.subject?.name}
+                                            </h3>
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-2 pt-2">
-                                        <Link
-                                            href={`/lecturer/courses/${c.id}/attendance`}
-                                            className="flex items-center justify-center gap-2 py-2 bg-emerald-50 text-emerald-600 text-[10px] font-black rounded-lg hover:bg-emerald-600 hover:text-white transition-all"
-                                        >
-                                            <UserCheck size={14} /> ĐIỂM DANH
-                                        </Link>
-                                        <Link
-                                            href={`/lecturer/courses/${c.id}/grades`}
-                                            className="flex items-center justify-center gap-2 py-2 bg-blue-50 text-blue-600 text-[10px] font-black rounded-lg hover:bg-blue-600 hover:text-white transition-all"
-                                        >
-                                            <Edit3 size={14} /> NHẬP ĐIỂM
-                                        </Link>
+                                    <div className="hidden sm:flex items-center gap-8 mr-6">
+                                        <div className="flex flex-col items-end">
+                                            <p className="text-[8px] font-black text-slate-300 uppercase leading-none mb-1">Sinh viên</p>
+                                            <p className="text-xs font-black text-slate-600">{c.currentSlots}/{c.maxSlots}</p>
+                                        </div>
                                     </div>
 
-                                    <Link
-                                        href={`/lecturer/courses/${c.id}`}
-                                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-900 text-white text-[10px] font-black rounded-lg hover:bg-uneti-blue transition-all group/btn"
-                                    >
-                                        CHI TIẾT LỚP HỌC
-                                        <ChevronRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
-                                    </Link>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => router.push(`/lecturer/attendance/${c.id}`)}
+                                            className="h-8 rounded-lg border-slate-100 text-[9px] font-black uppercase text-emerald-600 hover:bg-emerald-50 hover:border-emerald-100"
+                                        >
+                                            Điểm danh
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => router.push(`/lecturer/grades/${c.id}`)}
+                                            className="h-8 rounded-lg border-slate-100 text-[9px] font-black uppercase text-blue-600 hover:bg-blue-50 hover:border-blue-100"
+                                        >
+                                            Nhập điểm
+                                        </Button>
+                                        <Button
+                                            onClick={() => router.push(`/lecturer/courses/${c.id}`)}
+                                            className="h-8 w-8 p-0 rounded-lg bg-slate-800 text-white hover:bg-slate-900 border-none"
+                                        >
+                                            <ArrowUpRight size={14} />
+                                        </Button>
+                                    </div>
                                 </div>
-                            </div>
+                            </motion.div>
                         );
                     })}
+                </AnimatePresence>
+            </div>
+
+            {/* Pagination UI */}
+            {totalPages > 1 && (
+                <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-2">
+                        Trang {currentPage} / {totalPages} (TỔNG {filteredCourses.length} LỚP)
+                    </p>
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                            disabled={currentPage === 1}
+                            className="h-9 w-9 p-0 rounded-xl border-slate-200"
+                        >
+                            <ChevronLeft size={16} />
+                        </Button>
+                        <Button
+                            variant="outline"
+                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                            disabled={currentPage === totalPages}
+                            className="h-9 w-9 p-0 rounded-xl border-slate-200"
+                        >
+                            <ChevronRight size={16} />
+                        </Button>
+                    </div>
+                </div>
+            )}
+
+            {filteredCourses.length === 0 && !loading && (
+                <div className="bg-white rounded-[3rem] py-24 flex flex-col items-center justify-center text-center border border-slate-100 shadow-sm relative overflow-hidden">
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-50 rounded-full blur-[100px] opacity-50"></div>
+                    <div className="relative z-10 scale-125 grayscale opacity-20 mb-8">
+                        <BookOpen size={80} />
+                    </div>
+                    <h3 className="text-xl font-black text-slate-800 relative z-10">Không tìm thấy lớp học nào</h3>
+                    <p className="text-xs font-bold text-slate-400 mt-2 max-w-xs relative z-10 px-4">Chúng tôi đã tìm kiếm khắp nơi nhưng không thấy kết quả khớp với "{searchQuery}".</p>
+                    <Button
+                        variant="ghost"
+                        onClick={() => setSearchQuery("")}
+                        className="mt-8 text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:bg-indigo-50 relative z-10"
+                    >
+                        Xóa tìm kiếm
+                    </Button>
                 </div>
             )}
         </div>

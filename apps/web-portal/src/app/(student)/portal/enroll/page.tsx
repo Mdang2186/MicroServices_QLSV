@@ -1,355 +1,207 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import api from "@/lib/api";
-import {
-    BookOpen,
-    CheckCircle2,
-    AlertCircle,
-    Clock,
-    Search,
-    ChevronRight,
-    Calendar,
-    Layers,
-    Info,
-    Check,
-    X,
-    Plus
-} from "lucide-react";
+import Cookies from "js-cookie";
+import { BookOpen, AlertCircle, ChevronRight, Layers, X, Plus, ArrowRightLeft, Check, Search, Info } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-interface SubjectStatus {
-    subjectId: string;
-    subjectCode: string;
-    subjectName: string;
-    credits: number;
-    suggestedSemester: number;
-    isMandatory: boolean;
-    isPassed: boolean;
-    isEnrolled: boolean;
-    isEligible: boolean;
-    missingPrereqs: string[];
-}
-
+// --- Types ---
 interface CourseClass {
-    id: string;
-    code: string;
-    name: string;
-    maxSlots: number;
-    currentSlots: number;
-    lecturer?: {
-        fullName: string;
-    };
-    schedules: {
-        dayOfWeek: number;
-        startShift: number;
-        endShift: number;
-        room?: {
-            name: string;
-        };
-    }[];
+    id: string; code: string; maxSlots: number; currentSlots: number; status: 'OPEN' | 'LOCKED' | 'CLOSED';
+    subject: { id: string; code: string; name: string; credits: number };
+    lecturer?: { fullName: string };
+    adminClasses: { code: string }[];
+    schedules: { dayOfWeek: number; startShift: number; endShift: number; room?: { name: string } }[];
 }
+interface Enrollment { id: string; tuitionFee: number; courseClass: CourseClass; }
+interface Semester { id: string; name: string; year: string; isCurrent: boolean; isRegistering: boolean; }
+
+// --- Reusable Slim UI Components ---
+const Table = ({ headers, children, footer }: any) => (
+    <div className="bg-white rounded-xl border shadow-sm overflow-hidden text-[11px] font-medium text-gray-700">
+        <table className="w-full border-collapse">
+            <thead className="bg-[#f8f9fa] text-gray-500 font-bold uppercase border-b italic">
+                <tr>{headers.map((h: string, i: number) => <th key={i} className="px-4 py-3 border text-left">{h}</th>)}</tr>
+            </thead>
+            <tbody className="divide-y">{children}</tbody>
+            {footer && <tfoot className="bg-blue-50/20 border-t-2">{footer}</tfoot>}
+        </table>
+    </div>
+);
+
+const Schedule = ({ list }: { list: any[] }) => (
+    <div className="flex flex-col gap-0.5 text-[10px] text-gray-400">
+        {list.map((s, i) => <span key={i}>T{s.dayOfWeek}({s.startShift}-{s.endShift}) {s.room?.name}</span>)}
+    </div>
+);
 
 export default function EnrollPage() {
-    const [status, setStatus] = useState<SubjectStatus[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [selectedSemester, setSelectedSemester] = useState<number | 'all'>('all');
-    const [selectedSubject, setSelectedSubject] = useState<SubjectStatus | null>(null);
+    const [studentId, setStudentId] = useState("");
+    const [sems, setSems] = useState<Semester[]>([]);
+    const [semId, setSemId] = useState("");
+    const [status, setStatus] = useState<any[]>([]);
+    const [enrolls, setEnrolls] = useState<Enrollment[]>([]);
+    const [selSub, setSelSub] = useState<any>(null);
     const [classes, setClasses] = useState<CourseClass[]>([]);
-    const [loadingClasses, setLoadingClasses] = useState(false);
-    const [registering, setRegistering] = useState<string | null>(null);
-    const [studentId, setStudentId] = useState<string | null>(null);
-    const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+    const [swTarget, setSwTarget] = useState<Enrollment | null>(null);
+    const [swClasses, setSwClasses] = useState<CourseClass[]>([]);
+    const [load, setLoad] = useState(false);
+    const [reg, setReg] = useState("");
+    const [msg, setMsg] = useState<any>(null);
+
+    // Deduplicate enrollments by subjectId so we don't show or sum the same subject multiple times
+    const uniqueEnrolls = useMemo(() => {
+        const grouped: Record<string, Enrollment> = {};
+        enrolls.forEach(e => {
+            const sid = e.courseClass.subject.id;
+            // Always prefer the PAID one if multiple exist, else just take the first
+            if (!grouped[sid] || e.status === "PAID") {
+                grouped[sid] = e;
+            }
+        });
+        return Object.values(grouped);
+    }, [enrolls]);
+
+    const totals = useMemo(() => ({
+        cr: uniqueEnrolls.reduce((s, e) => s + (e.courseClass?.subject?.credits || 0), 0),
+        fee: uniqueEnrolls.reduce((s, e) => s + Number(e.tuitionFee || 0), 0)
+    }), [uniqueEnrolls]);
 
     useEffect(() => {
-        const userStr = localStorage.getItem("student_user");
-        if (userStr) {
-            const user = JSON.parse(userStr);
-            // Try profileId first (new), then fallback to id if we haven't re-logged in
-            // But EnrollmentService needs studentId. 
-            // If profileId is missing, we might need a workaround or tell user to re-login.
-            if (user.profileId) {
-                setStudentId(user.profileId);
-            } else {
-                // Workaround: In a real app we'd fetch profileId from userId
-                // For this session, we'll try to use the id and let the backend throw if it's not a studentId
-                // Or we can try to find the studentId via an API if we had one.
-                setStudentId(user.id);
-            }
-        }
+        const u = JSON.parse(localStorage.getItem("student_user") || Cookies.get("student_user") || "{}");
+        if (u.id || u.profileId) setStudentId(u.profileId || u.id);
     }, []);
 
     useEffect(() => {
-        if (studentId) {
-            fetchStatus();
-        }
+        if (studentId) api.get("/api/enrollments/semesters").then(r => {
+            setSems(r.data);
+            const a = r.data.find((s: any) => s.isRegistering) || r.data.find((s: any) => s.isCurrent) || r.data[0];
+            if (a) setSemId(a.id);
+        });
     }, [studentId]);
 
-    const fetchStatus = async () => {
-        try {
-            setLoading(true);
-            const res = await api.get(`/api/enrollments/registration-status/${studentId}`);
-            setStatus(res.data);
-        } catch (err) {
-            console.error("Failed to fetch registration status", err);
-        } finally {
-            setLoading(false);
-        }
+    const refresh = async () => {
+        if (!studentId || !semId) return;
+        const [a, b] = await Promise.all([
+            api.get(`/api/enrollments/registration-status/${studentId}?semesterId=${semId}`),
+            api.get(`/api/enrollments/student/${studentId}?semesterId=${semId}`)
+        ]);
+        setStatus(a.data); setEnrolls(b.data);
     };
 
-    const fetchClasses = async (subject: SubjectStatus) => {
+    useEffect(() => { refresh(); }, [studentId, semId]);
+
+    const handle = async (cid: string, isSw = false) => {
+        setReg(cid);
         try {
-            setLoadingClasses(true);
-            setSelectedSubject(subject);
-            const res = await api.get(`/api/enrollments/subject/${subject.subjectId}/classes`);
-            setClasses(res.data);
-        } catch (err) {
-            console.error("Failed to fetch classes", err);
-        } finally {
-            setLoadingClasses(false);
-        }
+            if (isSw && swTarget) {
+                await api.post("/api/enrollments/switch", { studentId, oldClassId: swTarget.courseClass.id, newClassId: cid });
+                setSwTarget(null);
+            } else {
+                await api.post("/api/enrollments", { studentId, classId: cid });
+                setSelSub(null);
+            }
+            setMsg({ type: 'success', text: "Thao tác thành công!" }); refresh();
+        } catch (e: any) { setMsg({ type: 'error', text: e.response?.data?.message || "Thất bại" }); }
+        setReg("");
     };
 
-    const handleRegister = async (classId: string) => {
-        try {
-            setRegistering(classId);
-            setMessage(null);
-            await api.post("/api/enrollments", { studentId, classId });
-            setMessage({ type: 'success', text: 'Đăng ký môn học thành công!' });
-            fetchStatus(); // Refresh status
-            // Refresh classes slots
-            if (selectedSubject) fetchClasses(selectedSubject);
-        } catch (err: any) {
-            const errorMsg = err.response?.data?.message || 'Đăng ký thất bại. Vui lòng thử lại.';
-            setMessage({ type: 'error', text: errorMsg });
-        } finally {
-            setRegistering(null);
-        }
-    };
-
-    const semesters = Array.from(new Set(status.map(s => s.suggestedSemester))).sort((a, b) => a - b);
-
-    const filteredStatus = status.filter(s =>
-        selectedSemester === 'all' || s.suggestedSemester === selectedSemester
-    );
+    const isBlk = !sems.find(s => s.id === semId)?.isRegistering;
 
     return (
-        <div className="space-y-6 max-w-7xl mx-auto pb-20">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="min-h-screen bg-gray-50 pb-10 font-sans p-6 space-y-6">
+            <div className="max-w-7xl mx-auto flex flex-col md:flex-row gap-4 items-center justify-between bg-white p-5 rounded-2xl border shadow-sm">
                 <div>
-                    <h1 className="text-2xl font-bold text-[#003366]">Đăng ký học phần</h1>
-                    <p className="text-gray-500 text-sm">Chọn môn học từ chương trình khung để đăng ký lớp</p>
+                    <h1 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Đăng ký học phần</h1>
+                    <p className="text-[10px] text-gray-400 font-bold italic uppercase tracking-widest">Portal UNETI - Hệ thống đồng bộ (Optimized)</p>
                 </div>
-                <div className="flex items-center gap-2 bg-white p-1 rounded-lg border shadow-sm">
-                    <button
-                        onClick={() => setSelectedSemester('all')}
-                        className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${selectedSemester === 'all' ? 'bg-[#003366] text-white shadow' : 'text-gray-600 hover:bg-gray-100'}`}
-                    >
-                        Tất cả
-                    </button>
-                    {semesters.map(sem => (
-                        <button
-                            key={sem}
-                            onClick={() => setSelectedSemester(sem)}
-                            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${selectedSemester === sem ? 'bg-[#003366] text-white shadow' : 'text-gray-600 hover:bg-gray-100'}`}
-                        >
-                            HK {sem}
-                        </button>
-                    ))}
+                <div className="text-right flex flex-col items-end gap-2">
+                    <select className="bg-gray-50 border rounded-lg px-3 py-1.5 font-black text-[#003366] outline-none" value={semId} onChange={(e) => setSemId(e.target.value)}>
+                        {sems.map(s => <option key={s.id} value={s.id}>{s.name} ({s.year}) {s.isRegistering ? "• ĐANG MỞ" : "• ĐÓNG"}</option>)}
+                    </select>
+                    {isBlk && <div className="text-[10px] font-black text-amber-600 bg-amber-50 px-3 py-1 rounded-full uppercase border border-amber-200 shadow-sm animate-pulse">Chỉ xem & đổi lịch (Đã khóa đăng ký mới)</div>}
                 </div>
             </div>
 
-            {message && (
-                <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`p-4 rounded-xl border flex items-center gap-3 ${message.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}
-                >
-                    {message.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-                    <span className="font-medium">{message.text}</span>
-                    <button onClick={() => setMessage(null)} className="ml-auto text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
-                </motion.div>
-            )}
+            {msg && <div className={`p-4 rounded-xl font-bold flex justify-between border-l-8 shadow-sm ${msg.type === 'success' ? 'bg-emerald-50 text-emerald-800 border-emerald-500' : 'bg-red-50 text-red-800 border-red-500'}`}>{msg.text}<X className="w-5 h-5 cursor-pointer opacity-30" onClick={() => setMsg(null)} /></div>}
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Subject List */}
-                <div className="lg:col-span-2 space-y-4">
-                    <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
-                        <div className="px-6 py-4 border-b bg-gray-50/50 flex items-center justify-between">
-                            <h2 className="font-bold text-gray-800 flex items-center gap-2">
-                                <BookOpen className="w-5 h-5 text-[#003366]" />
-                                Danh sách môn học
-                            </h2>
-                            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{filteredStatus.length} môn học</span>
-                        </div>
+            <Table headers={["STT", "Học phần/Mã HP", "Tín chỉ", "Bắt buộc", "Đăng ký"]}>
+                {status.map((it, i) => (
+                    <tr key={it.subjectId} className={`hover:bg-blue-50/40 ${selSub?.subjectId === it.subjectId ? "bg-blue-50/60" : ""}`}>
+                        <td className="p-3 text-center border text-gray-400 w-12">{i + 1}</td>
+                        <td className="p-3 border">
+                            <div className="font-black text-blue-900">{it.subjectName}</div>
+                            <div className="text-[10px] text-gray-400 font-bold uppercase">{it.subjectCode} {it.isEnrolled && <span className="bg-blue-600 text-white px-2 py-0.5 rounded shadow-sm text-[8px] ml-2">ĐÃ ĐK</span>}</div>
+                        </td>
+                        <td className="p-3 border text-center font-black w-20">{it.credits}</td>
+                        <td className="p-3 border text-center w-20">{it.isMandatory ? <Check className="w-4 h-4 text-emerald-500 mx-auto" /> : "—"}</td>
+                        <td className="p-3 border text-center w-24">
+                            {!it.isEnrolled && !isBlk && <button onClick={() => { setSelSub(it); setLoad(true); api.get(`/api/enrollments/subject/${it.subjectId}/classes?semesterId=${semId}`).then(r => { setClasses(r.data); setLoad(false); }); }} className="bg-blue-600 text-white rounded-full p-1.5 shadow-lg active:scale-95"><Plus className="w-5 h-5" /></button>}
+                        </td>
+                    </tr>
+                ))}
+            </Table>
 
-                        {loading ? (
-                            <div className="p-12 flex flex-col items-center justify-center gap-4">
-                                <div className="w-10 h-10 border-4 border-[#003366]/20 border-t-[#003366] rounded-full animate-spin"></div>
-                                <p className="text-gray-400 text-sm font-medium">Đang tải dữ liệu...</p>
-                            </div>
-                        ) : (
-                            <div className="divide-y">
-                                {filteredStatus.map((subject) => (
-                                    <div
-                                        key={subject.subjectId}
-                                        onClick={() => !subject.isPassed && fetchClasses(subject)}
-                                        className={`px-6 py-4 flex items-center justify-between transition-all cursor-pointer ${selectedSubject?.subjectId === subject.subjectId ? 'bg-blue-50/50 border-l-4 border-l-[#003366]' : 'hover:bg-gray-50 border-l-4 border-l-transparent'
-                                            } ${subject.isPassed ? 'opacity-60 grayscale' : ''}`}
-                                    >
-                                        <div className="flex-1 min-w-0 pr-4">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <span className="text-xs font-bold text-[#003366] px-1.5 py-0.5 bg-blue-50 rounded italic">{subject.subjectCode}</span>
-                                                <h3 className="font-semibold text-gray-900 truncate">{subject.subjectName}</h3>
-                                            </div>
-                                            <div className="flex items-center gap-4 text-xs text-gray-500 font-medium">
-                                                <span className="flex items-center gap-1"><Layers className="w-3 h-3" /> {subject.credits} tín chỉ</span>
-                                                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Học kỳ {subject.suggestedSemester}</span>
-                                                {subject.isMandatory ? (
-                                                    <span className="text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100">Bắt buộc</span>
-                                                ) : (
-                                                    <span className="text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">Tự chọn</span>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        <div className="flex items-center gap-3">
-                                            {subject.isPassed && (
-                                                <span className="flex items-center gap-1 px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">
-                                                    <Check className="w-3 h-3" /> ĐÃ ĐẠT
-                                                </span>
-                                            )}
-                                            {subject.isEnrolled && (
-                                                <span className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-full text-[10px] font-bold shadow-sm shadow-blue-200">
-                                                    ĐÃ ĐĂNG KÝ
-                                                </span>
-                                            )}
-                                            {!subject.isPassed && !subject.isEnrolled && (
-                                                subject.isEligible ? (
-                                                    <span className="px-3 py-1 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-full text-[10px] font-bold">
-                                                        ĐỦ ĐIỀU KIỆN
-                                                    </span>
-                                                ) : (
-                                                    <div className="flex flex-col items-end gap-1">
-                                                        <span className="px-3 py-1 bg-red-50 text-red-600 border border-red-100 rounded-full text-[10px] font-bold">
-                                                            CHƯA ĐỦ ĐIỀU KIỆN
-                                                        </span>
-                                                        <span className="text-[9px] text-red-400">Thiếu: {subject.missingPrereqs.join(', ')}</span>
-                                                    </div>
-                                                )
-                                            )}
-                                            <ChevronRight className={`w-5 h-5 text-gray-300 transition-transform ${selectedSubject?.subjectId === subject.subjectId ? 'rotate-90 text-[#003366]' : ''}`} />
-                                        </div>
-                                    </div>
+            <AnimatePresence>
+                {selSub && (
+                    <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="p-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl shadow-2xl">
+                        <div className="bg-white rounded-xl overflow-hidden">
+                            <div className="bg-[#003366] px-5 py-3 flex text-white font-black text-xs uppercase italic tracking-widest justify-between"><div className="flex gap-2"><Search className="w-4 h-4" /> Lớp học phần khả dụng: {selSub.subjectName}</div><X className="w-5 h-5 cursor-pointer" onClick={() => setSelSub(null)} /></div>
+                            <Table headers={["Lớp HP", "Lớp dự kiến", "Giảng viên", "Sĩ số", "Lịch học", "Thao tác"]}>
+                                {classes.map(c => (
+                                    <tr key={c.id} className="hover:bg-emerald-50/40">
+                                        <td className="p-3 border font-black text-blue-900">{c.code}</td>
+                                        <td className="p-3 border italic text-gray-400">{c.adminClasses.map(ac => ac.code).join(", ")}</td>
+                                        <td className="p-3 border">{c.lecturer?.fullName || "—"}</td>
+                                        <td className="p-3 border text-center"><span className={c.currentSlots >= c.maxSlots ? "text-red-500" : "text-emerald-700 font-bold"}>{c.currentSlots}/{c.maxSlots}</span></td>
+                                        <td className="p-3 border"><Schedule list={c.schedules} /></td>
+                                        <td className="p-3 border"><button disabled={reg === c.id || c.currentSlots >= c.maxSlots} onClick={() => handle(c.id)} className="w-full bg-emerald-600 text-white py-1.5 rounded-lg px-4 font-black text-[10px] uppercase shadow-sm active:scale-95">Đăng ký</button></td>
+                                    </tr>
                                 ))}
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Class Selection Drawer-like Sidebar */}
-                <div className="lg:col-span-1">
-                    <div className="bg-white rounded-2xl border shadow-sm sticky top-6">
-                        <div className="px-6 py-4 border-b bg-gray-50/50">
-                            <h2 className="font-bold text-gray-800 flex items-center gap-2">
-                                <Search className="w-5 h-5 text-[#003366]" />
-                                Lớp học phần
-                            </h2>
+                            </Table>
                         </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
-                        <div className="p-6">
-                            {!selectedSubject ? (
-                                <div className="text-center py-12 space-y-4">
-                                    <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto">
-                                        <Info className="w-8 h-8 text-gray-300" />
-                                    </div>
-                                    <div>
-                                        <p className="text-gray-800 font-semibold">Chưa chọn môn học</p>
-                                        <p className="text-gray-400 text-xs mt-1">Vui lòng chọn môn học bên trái để xem danh sách lớp đang mở</p>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="space-y-6">
-                                    <div>
-                                        <h3 className="text-lg font-bold text-gray-900 leading-tight">{selectedSubject.subjectName}</h3>
-                                        <p className="text-xs text-gray-500 mt-1 font-medium">{selectedSubject.subjectCode} • {selectedSubject.credits} tín chỉ</p>
-                                    </div>
+            <Table headers={["Mã lớp", "Môn học đã đăng ký", "TC", "Học phí", "Lịch học", "Đổi lịch"]} footer={<tr className="font-black text-blue-900 h-14 uppercase text-sm italic"><td colSpan={2} className="px-5 text-right tracking-widest">Tổng kết đăng ký</td><td className="text-center text-xl bg-white/50">{totals.cr}</td><td className="px-5 text-right text-emerald-700 bg-emerald-50">{totals.fee.toLocaleString()} đ</td><td colSpan={2}></td></tr>}>
+                {uniqueEnrolls.map((e: any) => (
+                    <tr key={e.id} className="hover:bg-gray-100 transition-colors">
+                        <td className="p-3 border font-black text-[#003366] bg-gray-50/30">{e.courseClass.code}</td>
+                        <td className="p-3 border">
+                            <div className="font-black italic uppercase leading-tight text-gray-800">{e.courseClass.subject.name}</div>
+                            <div className="text-[9px] text-gray-400 font-black italic tracking-tighter">Dự kiến: {e.courseClass.adminClasses.map(ac => ac.code).join(", ")}</div>
+                        </td>
+                        <td className="p-3 border text-center font-black text-gray-600">{e.courseClass.subject.credits}</td>
+                        <td className="p-3 border text-right font-black text-emerald-600">{(Number(e.tuitionFee)).toLocaleString()}</td>
+                        <td className="p-3 border"><Schedule list={e.courseClass.schedules} /></td>
+                        <td className="p-3 border text-center"><button onClick={() => { setSwTarget(e); api.get(`/api/enrollments/subject/${e.courseClass.subject.id}/classes?semesterId=${semId}`).then(r => setSwClasses(r.data.filter((x: any) => x.id !== e.courseClass.id))); }} className="p-2.5 bg-amber-50 rounded-full text-amber-600 shadow-sm border border-amber-100 active:rotate-180 transition-all"><ArrowRightLeft className="w-4 h-4" /></button></td>
+                    </tr>
+                ))}
+            </Table>
 
-                                    {loadingClasses ? (
-                                        <div className="py-20 flex flex-col items-center justify-center gap-3">
-                                            <div className="w-8 h-8 border-3 border-[#003366]/20 border-t-[#003366] rounded-full animate-spin"></div>
-                                            <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">Đang tìm lớp...</p>
-                                        </div>
-                                    ) : classes.length === 0 ? (
-                                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
-                                            <AlertCircle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
-                                            <p className="text-amber-800 text-sm font-bold">Không có lớp mở</p>
-                                            <p className="text-amber-700/60 text-xs mt-1">Hiện tại không có lớp học phần nào đang mở cho môn học này.</p>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-4">
-                                            {classes.map((cls) => (
-                                                <div key={cls.id} className="group relative rounded-xl border border-gray-100 bg-gray-50/30 p-4 transition-all hover:bg-white hover:border-blue-200 hover:shadow-md">
-                                                    <div className="flex justify-between items-start mb-3">
-                                                        <div>
-                                                            <div className="text-xs font-black text-[#003366] mb-0.5 tracking-tight">{cls.code}</div>
-                                                            <div className="flex items-center gap-2 text-xs text-gray-600 font-medium">
-                                                                <User className="w-3 h-3" />
-                                                                {cls.lecturer?.fullName || 'Chưa xếp GV'}
-                                                            </div>
-                                                        </div>
-                                                        <div className="text-right">
-                                                            <div className={`text-xs font-bold ${cls.currentSlots >= cls.maxSlots ? 'text-red-600' : 'text-emerald-600'}`}>
-                                                                {cls.currentSlots}/{cls.maxSlots}
-                                                            </div>
-                                                            <div className="text-[9px] text-gray-400 font-bold uppercase tracking-tighter">Số lượng</div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="space-y-2 mb-4 bg-white rounded-lg p-2 border border-gray-100/50">
-                                                        {cls.schedules.map((sch, idx) => (
-                                                            <div key={idx} className="flex items-center gap-3 text-xs">
-                                                                <div className="w-12 py-0.5 bg-gray-100 rounded text-center font-bold text-gray-600">Thứ {sch.dayOfWeek}</div>
-                                                                <div className="flex-1 text-gray-500 font-medium">
-                                                                    Tiết {sch.startShift}-{sch.endShift} • {sch.room?.name || 'TBA'}
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-
-                                                    <button
-                                                        onClick={() => handleRegister(cls.id)}
-                                                        disabled={registering !== null || cls.currentSlots >= cls.maxSlots}
-                                                        className={`w-full py-2 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-2 ${cls.currentSlots >= cls.maxSlots
-                                                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                                                : 'bg-[#003366] text-white hover:bg-[#004488] active:scale-[0.98]'
-                                                            }`}
-                                                    >
-                                                        {registering === cls.id ? (
-                                                            <>
-                                                                <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                                                ĐANG ĐĂNG KÝ...
-                                                            </>
-                                                        ) : cls.currentSlots >= cls.maxSlots ? (
-                                                            'LỚP ĐÃ ĐẦY'
-                                                        ) : (
-                                                            <>
-                                                                <Plus className="w-3 h-3" />
-                                                                ĐĂNG KÝ NGAY
-                                                            </>
-                                                        )}
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
+            <AnimatePresence>
+                {swTarget && (
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-[#003366]/40 backdrop-blur-md" onClick={() => setSwTarget(null)} />
+                        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-5xl rounded-3xl shadow-3xl relative overflow-hidden flex flex-col max-h-[90vh]">
+                            <div className="bg-[#003366] p-6 flex justify-between text-white items-center"><div className="space-y-1"><h2 className="font-black text-sm uppercase italic tracking-widest">Trung tâm điều chuyển lịch học</h2><p className="text-[9px] font-bold text-gray-300 uppercase leading-none">Phân tích chéo dữ liệu danh nghĩa & học phần</p></div><X className="w-6 h-6 cursor-pointer" onClick={() => setSwTarget(null)} /></div>
+                            <div className="p-4 bg-gray-50 flex gap-4 text-[10px] font-black uppercase text-blue-900 border-b shadow-inner italic"><div>Môn: {swTarget.courseClass.subject.name}</div><div className="h-4 w-px bg-gray-300" /><div>Hiện tại: <span className="bg-[#003366] text-white px-2 py-0.5 rounded ml-1">{swTarget.courseClass.code}</span></div></div>
+                            <div className="p-6 overflow-y-auto"><Table headers={["Thao tác", "Mã lớp HP", "Lớp dự kiến", "Giảng viên", "Sĩ số", "Lịch học chi tiết"]}>{swClasses.map(c => (
+                                <tr key={c.id} className="hover:bg-blue-50/40">
+                                    <td className="p-3 border w-24 align-middle"><button onClick={() => handle(c.id, true)} disabled={reg === c.id || c.status !== 'OPEN'} className={`w-full py-2 rounded-xl text-[10px] font-black tracking-widest uppercase shadow-sm transition-all ${c.status === 'OPEN' ? 'bg-[#003366] text-white hover:bg-emerald-600' : 'bg-gray-100 text-gray-400'}`}>{c.status === 'OPEN' ? "Đổi" : "Bị khóa"}</button></td>
+                                    <td className="p-3 border font-black text-blue-900 bg-gray-50/10 text-center">{c.code}</td>
+                                    <td className="p-3 border italic font-black text-gray-300">{c.adminClasses.map(ac => ac.code).join(", ")}</td>
+                                    <td className="p-3 border font-black uppercase">{c.lecturer?.fullName || "—"}</td>
+                                    <td className="p-3 border text-center font-bold tracking-widest">{c.currentSlots}/{c.maxSlots}</td>
+                                    <td className="p-3 border"><Schedule list={c.schedules} /></td>
+                                </tr>
+                            ))}</Table></div>
+                        </motion.div>
                     </div>
-                </div>
-            </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

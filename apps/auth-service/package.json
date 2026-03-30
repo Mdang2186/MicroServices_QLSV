@@ -23,7 +23,7 @@
         "@nestjs/microservices": "^10.0.0",
         "@nestjs/passport": "^10.0.3",
         "@nestjs/platform-express": "^10.0.0",
-        "@nestjs/swagger": "^11.2.6",
+        "@nestjs/swagger": "^7.4.2",
         "@repo/database": "0.0.0",
         "@repo/shared-dto": "0.0.0",
         "bcryptjs": "^3.0.3",
