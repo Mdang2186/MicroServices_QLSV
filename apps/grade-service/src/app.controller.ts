@@ -60,6 +60,11 @@ export class AppController {
     return this.appService.unlockClassGrades(classId);
   }
 
+  @Post('class/:classId/sync-attendance')
+  syncAttendanceScores(@Param('classId') classId: string) {
+    return this.appService.syncAttendanceScores(classId);
+  }
+
   @Get('student/:studentId/gpa/:semesterId')
   getSemesterGPA(@Param('studentId') studentId: string, @Param('semesterId') semesterId: string) {
     return this.gpaService.calculateSemesterGPA(studentId, semesterId);

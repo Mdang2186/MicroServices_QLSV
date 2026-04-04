@@ -69,23 +69,36 @@ export class GpaService {
     const gpa = await this.calculateSemesterGPA(studentId, semesterId);
     const cpa = await this.calculateCPA(studentId);
 
-    let warningLevel = 0;
-    let statusText = "Bình thường";
+    // Get total earned credits for IT major (155 target)
+    const grades = await this.prisma.grade.findMany({
+      where: { studentId, isPassed: true },
+      include: { subject: true }
+    });
 
-    // Academic Warning Thresholds
-    if (gpa < 1.0) warningLevel = 1; // Basic Level 1: GPA < 1.0
-    
-    // Level 2/3 for extremely low scores
+    const uniquePassedSubjects = new Map<string, number>();
+    for (const g of grades) {
+      uniquePassedSubjects.set(g.subjectId, g.subject.credits);
+    }
+    const totalCredits = Array.from(uniquePassedSubjects.values()).reduce((a, b) => a + b, 0);
+
+    let warningLevel = 0;
+    if (gpa < 1.0) warningLevel = 1;
     if (gpa < 0.5) warningLevel = 2;
+
+    const isEligibleForGraduation = totalCredits >= 155 && cpa >= 2.0;
 
     return {
       studentId,
       semesterId,
       gpa: Math.round(gpa * 100) / 100,
       cpa: Math.round(cpa * 100) / 100,
+      totalCredits,
+      isEligibleForGraduation,
       warningLevel,
       statusText: warningLevel > 0 ? 'WARNING' : 'NORMAL',
-      recommendation: warningLevel > 0 ? "Cần tập trung cải thiện kết quả học tập." : "Kết quả tốt."
+      recommendation: isEligibleForGraduation 
+        ? "Đủ điều kiện xét tốt nghiệp." 
+        : (totalCredits < 155 ? `Cần tích lũy thêm ${155 - totalCredits} tín chỉ.` : "Cần cải thiện CPA >= 2.0.")
     };
   }
 }

@@ -240,6 +240,7 @@ model Semester {
   isRegistering     Boolean         @default(false)
   registerStartDate DateTime?
   registerEndDate   DateTime?
+  midtermGradeDeadline DateTime?
   classes           CourseClass[]
   studentFees       StudentFee[]
   trainingScores    TrainingScore[]
@@ -301,7 +302,7 @@ model ClassSession {
   date          DateTime    @db.Date
   startShift    Int
   endShift      Int
-  type          String      @default("LECTURE") @db.VarChar(50)
+  type          String      @default("LECTURE") @db.VarChar(50) // LECTURE, EXAM, MAKEUP, CANCELLED
   note          String?     @db.NVarChar(255)
   courseClass   CourseClass @relation(fields: [courseClassId], references: [id], onDelete: Cascade)
   room          Room?       @relation(fields: [roomId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -333,8 +334,8 @@ model Attendance {
   date         DateTime      @db.Date
   status       String        @default("PRESENT") @db.VarChar(50)
   note         String?       @db.NVarChar(255)
-  enrollment   Enrollment    @relation(fields: [enrollmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  session      ClassSession? @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  enrollment   Enrollment    @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  session      ClassSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
 
   @@unique([enrollmentId, date])
 }
@@ -387,7 +388,7 @@ model StudentFee {
   dueDate        DateTime?        @db.Date
   transactions   FeeTransaction[]
   semester       Semester         @relation(fields: [semesterId], references: [id], onUpdate: NoAction)
-  student       Student          @relation(fields: [studentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  student        Student          @relation(fields: [studentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 model FeeTransaction {

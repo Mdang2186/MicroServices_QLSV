@@ -9,38 +9,22 @@ import {
     Trash2,
     ChevronRight,
     CheckCircle2,
-    AlertCircle,
-    X,
-    Filter
+    X
 } from "lucide-react";
-import Modal from "@/components/modal";
 import DataTable from "@/components/DataTable";
+import { SubjectFormModal } from "@/components/SubjectFormModal";
 
 export default function StaffSubjectsPage() {
     const [subjects, setSubjects] = useState<any[]>([]);
     const [majors, setMajors] = useState<any[]>([]);
+    const [departments, setDepartments] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     
     // Modal states
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingSubject, setEditingSubject] = useState<any>(null);
     
-    // Form states
-    const [form, setForm] = useState({
-        name: "",
-        code: "",
-        majorId: "",
-        credits: 3,
-        theoryHours: 30,
-        practiceHours: 15,
-        selfStudyHours: 0,
-        department: "",
-        description: ""
-    });
-    
-    const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [successMsg, setSuccessMsg] = useState<string | null>(null);
-    const [actionLoading, setActionLoading] = useState(false);
 
     const TOKEN = Cookies.get("admin_accessToken");
     const headers = useMemo(() => ({
@@ -55,12 +39,14 @@ export default function StaffSubjectsPage() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [subRes, majRes] = await Promise.all([
+            const [subRes, majRes, deptRes] = await Promise.all([
                 fetch("/api/subjects", { headers }),
-                fetch("/api/majors", { headers })
+                fetch("/api/majors", { headers }),
+                fetch("/api/departments", { headers })
             ]);
             if (subRes.ok) setSubjects(await subRes.json());
             if (majRes.ok) setMajors(await majRes.json());
+            if (deptRes.ok) setDepartments(await deptRes.json());
         } catch (error) {
             console.error("Failed to fetch data", error);
         } finally {
@@ -68,30 +54,9 @@ export default function StaffSubjectsPage() {
         }
     };
 
-    const handleSubmit = async () => {
-        setActionLoading(true);
-        setErrorMsg(null);
-        try {
-            const url = editingSubject ? `/api/subjects/${editingSubject.id}` : "/api/subjects";
-            const method = editingSubject ? "PUT" : "POST";
-            const res = await fetch(url, {
-                method,
-                headers,
-                body: JSON.stringify(form)
-            });
-            if (res.ok) {
-                setSuccessMsg(editingSubject ? "Cập nhật Môn học thành công!" : "Thêm Môn học mới thành công!");
-                setIsModalOpen(false);
-                fetchData();
-            } else {
-                const data = await res.json();
-                setErrorMsg(data.message || "Có lỗi xảy ra");
-            }
-        } catch (error) {
-            setErrorMsg("Lỗi kết nối");
-        } finally {
-            setActionLoading(false);
-        }
+    const handleModalSuccess = (msg: string) => {
+        setSuccessMsg(msg);
+        fetchData();
     };
 
     const handleDelete = async (id: string) => {
@@ -119,6 +84,11 @@ export default function StaffSubjectsPage() {
             cell: (item: any) => majors.find(m => m.id === item.majorId)?.name || "N/A"
         },
         { header: "Tín chỉ", accessorKey: "credits" },
+        { 
+            header: "Bộ môn", 
+            accessorKey: "departmentId",
+            cell: (item: any) => departments.find(d => d.id === item.departmentId)?.name || "—"
+        },
         { 
             header: "Thời lượng (LT/TH)", 
             accessorKey: "theoryHours",
@@ -152,11 +122,6 @@ export default function StaffSubjectsPage() {
                     <button
                         onClick={() => {
                             setEditingSubject(null);
-                            setForm({
-                                name: "", code: "", majorId: majors[0]?.id || "",
-                                credits: 3, theoryHours: 30, practiceHours: 15,
-                                selfStudyHours: 0, department: "", description: ""
-                            });
                             setIsModalOpen(true);
                         }}
                         className="flex items-center gap-2 px-6 py-2.5 bg-uneti-blue text-white rounded-xl text-[12px] font-black hover:shadow-xl hover:shadow-uneti-blue/20 transition-all shadow-lg shadow-uneti-blue/10 uppercase tracking-wider"
@@ -188,17 +153,6 @@ export default function StaffSubjectsPage() {
                             <button
                                 onClick={() => {
                                     setEditingSubject(item);
-                                    setForm({
-                                        name: item.name,
-                                        code: item.code,
-                                        majorId: item.majorId,
-                                        credits: item.credits,
-                                        theoryHours: item.theoryHours,
-                                        practiceHours: item.practiceHours,
-                                        selfStudyHours: item.selfStudyHours,
-                                        department: item.department || "",
-                                        description: item.description || ""
-                                    });
                                     setIsModalOpen(true);
                                 }}
                                 className="p-2 text-slate-400 hover:text-uneti-blue transition-colors"
@@ -216,131 +170,15 @@ export default function StaffSubjectsPage() {
                 />
             </div>
 
-            {/* Modal */}
-            <Modal
+            <SubjectFormModal 
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
-                title={editingSubject ? "Cập nhật Môn học" : "Thêm Môn học mới"}
-                footer={
-                    <div className="flex items-center justify-end gap-3 w-full px-2">
-                        <button onClick={() => setIsModalOpen(false)} className="px-6 py-2.5 text-[12px] font-black text-slate-400 uppercase">Hủy bỏ</button>
-                        <button 
-                            onClick={handleSubmit}
-                            disabled={actionLoading}
-                            className="px-8 py-3 bg-uneti-blue text-white rounded-[20px] text-[12px] font-black hover:bg-slate-900 transition-all shadow-lg shadow-uneti-blue/10 disabled:opacity-50"
-                        >
-                            {actionLoading ? "ĐANG XỬ LÝ..." : "LƯU THÔNG TIN"}
-                        </button>
-                    </div>
-                }
-            >
-                <div className="py-6 space-y-6 px-2 overflow-y-auto max-h-[70vh] custom-scrollbar">
-                    {errorMsg && (
-                        <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600">
-                            <AlertCircle size={18} />
-                            <p className="text-xs font-bold">{errorMsg}</p>
-                        </div>
-                    )}
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Mã môn học</label>
-                            <input 
-                                type="text" 
-                                className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none font-mono" 
-                                placeholder="Ví dụ: IT101" 
-                                value={form.code}
-                                onChange={e => setForm(f => ({ ...f, code: e.target.value }))}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Số tín chỉ</label>
-                            <input 
-                                type="number" 
-                                className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none" 
-                                value={form.credits}
-                                onChange={e => setForm(f => ({ ...f, credits: parseInt(e.target.value) }))}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tên môn học</label>
-                        <input 
-                            type="text" 
-                            className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none" 
-                            placeholder="Ví dụ: Lập trình C++" 
-                            value={form.name}
-                            onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                        />
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Ngành học</label>
-                        <select 
-                            className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold outline-none appearance-none cursor-pointer"
-                            value={form.majorId}
-                            onChange={e => setForm(f => ({ ...f, majorId: e.target.value }))}
-                        >
-                            <option value="">-- Chọn ngành chủ quản --</option>
-                            {majors.map(m => (
-                                <option key={m.id} value={m.id}>{m.name}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Số tiết LT</label>
-                            <input 
-                                type="number" 
-                                className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none" 
-                                value={form.theoryHours}
-                                onChange={e => setForm(f => ({ ...f, theoryHours: parseInt(e.target.value) }))}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Số tiết TH</label>
-                            <input 
-                                type="number" 
-                                className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none" 
-                                value={form.practiceHours}
-                                onChange={e => setForm(f => ({ ...f, practiceHours: parseInt(e.target.value) }))}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Số tiết TH</label>
-                            <input 
-                                type="number" 
-                                className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none" 
-                                value={form.selfStudyHours}
-                                onChange={e => setForm(f => ({ ...f, selfStudyHours: parseInt(e.target.value) }))}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Bộ môn phụ trách</label>
-                        <input 
-                            type="text" 
-                            className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none" 
-                            placeholder="Ví dụ: Kỹ thuật phần mềm" 
-                            value={form.department}
-                            onChange={e => setForm(f => ({ ...f, department: e.target.value }))}
-                        />
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Mô tả học phần</label>
-                        <textarea 
-                            className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold outline-none h-32 resize-none" 
-                            placeholder="Nhập mô tả tóm tắt về môn học..."
-                            value={form.description}
-                            onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                        />
-                    </div>
-                </div>
-            </Modal>
+                editingSubject={editingSubject}
+                majors={majors}
+                departments={departments}
+                headers={headers}
+                onSuccess={handleModalSuccess}
+            />
         </div>
     );
 }

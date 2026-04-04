@@ -94,6 +94,7 @@ export class AppModule {
             "^/api/semesters": "/semesters",
             "^/api/lecturers": "/lecturers",
             "^/api/rooms": "/rooms",
+            "^/api/departments": "/departments",
           },
         }),
       )
@@ -113,7 +114,9 @@ export class AppModule {
         { path: "/api/lecturers", method: RequestMethod.ALL },
         { path: "/api/lecturers/(.*)", method: RequestMethod.ALL },
         { path: "/api/rooms", method: RequestMethod.ALL },
-        { path: "/api/rooms/(.*)", method: RequestMethod.ALL }
+        { path: "/api/rooms/(.*)", method: RequestMethod.ALL },
+        { path: "/api/departments", method: RequestMethod.ALL },
+        { path: "/api/departments/(.*)", method: RequestMethod.ALL }
       );
 
     // Proxy grade requests

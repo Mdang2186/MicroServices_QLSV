@@ -8,6 +8,8 @@ import {
     Calendar,
     ChevronRight,
     ArrowLeft,
+    Activity,
+    BookMarked,
     Clock,
     MapPin,
     GraduationCap,
@@ -20,13 +22,12 @@ import {
     TrendingUp,
     MoreVertical,
     CheckCircle2,
-    XCircle,
-    UserCircle,
-    Mail,
-    Phone,
-    ArrowUpRight
+    ArrowUpRight,
+    Zap,
+    Users2,
+    CalendarDays
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -36,50 +37,77 @@ export default function LecturerCourseDetailPage() {
     const [user, setUser] = useState<any>(null);
     const [courseClass, setCourseClass] = useState<any>(null);
     const [enrollments, setEnrollments] = useState<any[]>([]);
+    const [grades, setGrades] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isSyncing, setIsSyncing] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
 
     const TOKEN = Cookies.get("admin_accessToken");
 
-    useEffect(() => {
-        const c = Cookies.get("admin_user");
-        if (c) try { setUser(JSON.parse(c)); } catch { }
-    }, []);
-
-    useEffect(() => {
+    const fetchData = async () => {
         if (!classId || !TOKEN) return;
+        setLoading(true);
+        try {
+            const [classRes, enrollmentRes, gradeRes] = await Promise.all([
+                fetch(`/api/courses/classes/${classId}`, {
+                    headers: { Authorization: `Bearer ${TOKEN}` }
+                }),
+                fetch(`/api/enrollments/admin/classes/${classId}/enrollments`, {
+                    headers: { Authorization: `Bearer ${TOKEN}` }
+                }),
+                fetch(`/api/grades/class/${classId}`, {
+                    headers: { Authorization: `Bearer ${TOKEN}` }
+                })
+            ]);
 
-        const fetchData = async () => {
-            try {
-                const [classRes, enrollmentRes] = await Promise.all([
-                    fetch(`/api/courses/classes/${classId}`, {
-                        headers: { Authorization: `Bearer ${TOKEN}` }
-                    }),
-                    fetch(`/api/enrollments/admin/classes/${classId}/enrollments`, {
-                        headers: { Authorization: `Bearer ${TOKEN}` }
-                    })
-                ]);
-
-                if (classRes.ok && enrollmentRes.ok) {
-                    const classData = await classRes.json();
-                    const enrollmentData = await enrollmentRes.json();
-                    setCourseClass(classData);
-                    setEnrollments(enrollmentData);
-                }
-            } catch (error) {
-                console.error("Failed to fetch course details:", error);
-            } finally {
-                setLoading(false);
+            if (classRes.ok && enrollmentRes.ok) {
+                const classData = await classRes.json();
+                const enrollmentData = await enrollmentRes.json();
+                setCourseClass(classData);
+                setEnrollments(enrollmentData);
             }
-        };
+            if (gradeRes.ok) {
+                setGrades(await gradeRes.json());
+            }
+        } catch (error) {
+            console.error("Failed to fetch course details:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
-        fetchData();
-    }, [classId, TOKEN]);
+    useEffect(() => { fetchData(); }, [classId, TOKEN]);
 
     const calculateAttendanceRate = (attendances: any[]) => {
-        if (!attendances || attendances.length === 0) return 100;
-        const present = attendances.filter(a => a.status === "PRESENT" || a.status === "EXCUSED").length;
-        return Math.round((present / attendances.length) * 100);
+        // Quy ước: 1 buổi = 3 tiết. Tổng số buổi = (Lý thuyết + Thực hành) / 3
+        const subject = courseClass?.subject || {};
+        const totalPlannedHours = (subject.theoryHours ?? 30) + (subject.practiceHours ?? 15);
+        const totalEstimatedSessions = Math.ceil(totalPlannedHours / 3);
+        const total = totalEstimatedSessions > 0 ? totalEstimatedSessions : (courseClass?.sessions?.length || 15);
+
+        if (!attendances || attendances.length === 0) return 0;
+        const absent = attendances.filter(a => a.status === "ABSENT").length;
+        const presentRate = ((total - absent) / total) * 100;
+        return Math.max(0, Math.min(100, Math.round(presentRate)));
+    };
+
+    const handleSyncAttendance = async () => {
+        if (!classId || !TOKEN) return;
+        setIsSyncing(true);
+        try {
+            const res = await fetch(`/api/grades/class/${classId}/sync-attendance`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${TOKEN}` }
+            });
+            if (res.ok) {
+                await fetchData();
+                alert("Đã đồng bộ điểm chuyên cần thành công!");
+            }
+        } catch (err) {
+            console.error("Sync failed:", err);
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const filtered = enrollments.filter(e =>
@@ -89,8 +117,8 @@ export default function LecturerCourseDetailPage() {
 
     if (loading) {
         return (
-            <div className="flex min-h-screen items-center justify-center bg-[#f8fafc]">
-                <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-600"></div>
+            <div className="flex min-h-[80vh] items-center justify-center bg-[#fbfcfd]">
+                <div className="w-10 h-10 border-[4px] border-uneti-blue/10 border-t-uneti-blue rounded-full animate-spin"></div>
             </div>
         );
     }
@@ -99,247 +127,176 @@ export default function LecturerCourseDetailPage() {
         ? Math.round(enrollments.reduce((acc, curr) => acc + calculateAttendanceRate(curr.attendances), 0) / enrollments.length)
         : 100;
 
+    // Map student ID to grade
+    const gradeMap = new Map(grades.map(g => [g.studentId, g]));
+
+    // Split nominal name
+    const nominalName = courseClass?.name?.includes(" - ") 
+        ? courseClass?.name?.split(" - ")[1] 
+        : courseClass?.name;
+    const subjectName = courseClass?.name?.includes(" - ")
+        ? courseClass?.name?.split(" - ")[0]
+        : courseClass?.subject?.name;
+
     return (
-        <div className="min-h-screen space-y-8 pb-20 max-w-7xl mx-auto px-4 sm:px-6">
-            {/* Nav & Action Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-6">
-                <div className="space-y-1">
+        <div className="min-h-screen space-y-6 pb-20 max-w-7xl mx-auto px-4 md:px-8 py-6 animate-in fade-in duration-700 bg-[#fbfcfd]">
+            
+            {/* Header & Actions */}
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-100 pb-6">
+                <div className="space-y-2">
                     <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                        <Link href="/lecturer/courses" className="hover:text-indigo-600">Lớp học phần</Link>
+                        <Link href="/lecturer/courses" className="hover:text-uneti-blue transition-colors">Lớp học phần</Link>
                         <ChevronRight size={10} />
-                        <span className="text-indigo-600 px-2 py-0.5 bg-indigo-50 rounded-lg">Chi tiết quản lý</span>
+                        <span className="text-uneti-blue">{courseClass?.code}</span>
                     </div>
-                    <h1 className="text-3xl font-black text-slate-800 tracking-tight mt-2">
-                        Dashboard Lớp học
+                    <h1 className="text-4xl font-black text-slate-800 tracking-tighter uppercase leading-none">
+                        {nominalName}
                     </h1>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">
+                        {subjectName} • {courseClass?.semester?.name}
+                    </p>
                 </div>
 
                 <div className="flex items-center gap-3">
                     <Button
-                        variant="ghost"
-                        onClick={() => router.push('/lecturer/courses')}
-                        className="h-12 rounded-2xl px-6 text-xs font-bold text-slate-500 hover:bg-slate-50 border border-transparent hover:border-slate-100"
-                    >
-                        <ArrowLeft className="mr-2 h-4 w-4" /> Quay lại
-                    </Button>
-                    <div className="h-8 w-px bg-slate-100 mx-1"></div>
-                    <Button
                         onClick={() => router.push(`/lecturer/courses/${classId}/attendance`)}
-                        className="h-12 rounded-2xl px-8 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all uppercase tracking-widest"
+                        className="h-11 rounded-xl px-8 text-[10px] font-black text-white bg-uneti-blue hover:bg-uneti-blue/90 shadow-lg shadow-uneti-blue/10 transition-all uppercase tracking-widest"
                     >
-                        <ClipboardCheck className="mr-2 h-4 w-4" /> Điểm danh ngay
+                        <ClipboardCheck className="mr-2 h-4 w-4" /> Điểm danh
+                    </Button>
+                    <Button
+                        variant="outline"
+                        onClick={() => router.push(`/lecturer/courses/${classId}/grades`)}
+                        className="h-11 rounded-xl px-6 text-[10px] font-black text-slate-600 border-slate-200 hover:bg-slate-50 transition-all uppercase tracking-widest"
+                    >
+                        <FileText size={16} className="mr-2" /> Nhập điểm
                     </Button>
                 </div>
             </div>
 
-            {/* Main Stats & Course Info */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Course Card */}
-                <div className="lg:col-span-2 bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm relative overflow-hidden flex flex-col justify-between min-h-[320px]">
-                    <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-50/50 rounded-full blur-3xl -mr-40 -mt-40"></div>
-
-                    <div className="relative z-10 space-y-6">
-                        <div className="space-y-2">
-                            <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full uppercase tracking-[0.2em]">
-                                {courseClass?.code}
-                            </span>
-                            <h2 className="text-4xl font-black text-slate-800 leading-tight tracking-tighter">
-                                {courseClass?.subject?.name}
-                            </h2>
+            {/* Stats Row */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[
+                    { label: "Sĩ số lớp", value: `${enrollments.length} SV`, sub: "Hiện tại", icon: Users },
+                    { label: "Chuyên cần", value: `${avgAttendance}%`, sub: "Trung bình", icon: Activity },
+                    { label: "Tín chỉ", value: courseClass?.subject?.credits, sub: "Định mức", icon: BookMarked },
+                    { label: "Phòng học", value: courseClass?.schedules?.[0]?.room?.name || "TBA", sub: "Cố định", icon: MapPin },
+                ].map((s, i) => (
+                    <div key={i} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
+                        <div className="p-3 rounded-xl bg-slate-50 text-uneti-blue/60">
+                            <s.icon size={20} />
                         </div>
-
-                        <div className="flex flex-wrap gap-8">
-                            <div className="space-y-1">
-                                <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Học kỳ</p>
-                                <p className="text-sm font-extrabold text-slate-700 uppercase">{courseClass?.semester?.name}</p>
-                            </div>
-                            <div className="space-y-1">
-                                <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Tín chỉ</p>
-                                <p className="text-sm font-extrabold text-slate-700">{courseClass?.subject?.credits} TC</p>
-                            </div>
-                            <div className="space-y-1">
-                                <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Loại HP</p>
-                                <p className="text-sm font-extrabold text-indigo-600 uppercase">Bắt buộc</p>
-                            </div>
+                        <div>
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">{s.label}</p>
+                            <p className="text-sm font-black text-slate-800 uppercase tracking-tight">{s.value}</p>
                         </div>
                     </div>
-
-                    <div className="relative z-10 pt-10 border-t border-slate-50 flex flex-wrap items-center gap-6">
-                        {courseClass?.schedules?.map((s: any, idx: number) => (
-                            <div key={idx} className="flex items-center gap-3 bg-slate-50 px-5 py-3 rounded-2xl border border-slate-100">
-                                <Calendar size={16} className="text-indigo-400" />
-                                <div>
-                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Lịch học</p>
-                                    <p className="text-xs font-black text-slate-700">Thứ {s.dayOfWeek}: Tiết {s.startShift}-{s.endShift} (P. {s.room?.name})</p>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Performance Card */}
-                <div className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm flex flex-col justify-between relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-40 h-40 bg-emerald-50 rounded-full blur-3xl -mr-20 -mt-20"></div>
-
-                    <div className="relative z-10 space-y-1">
-                        <TrendingUp size={24} className="text-emerald-500 mb-4" />
-                        <h4 className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Tỷ lệ chuyên cần lớp</h4>
-                        <div className="flex items-end gap-2">
-                            <span className="text-6xl font-black text-slate-800 tracking-tighter">{avgAttendance}%</span>
-                            <span className="text-xs font-bold text-emerald-600 pb-2">+2.4% vs tuần trước</span>
-                        </div>
-                    </div>
-
-                    <div className="relative z-10 space-y-4 pt-8">
-                        <div className="w-full h-3 bg-slate-50 rounded-full overflow-hidden border border-slate-100">
-                            <motion.div
-                                initial={{ width: 0 }}
-                                animate={{ width: `${avgAttendance}%` }}
-                                transition={{ duration: 1, ease: "easeOut" }}
-                                className="h-full bg-gradient-to-r from-emerald-400 to-teal-500 rounded-full"
-                            />
-                        </div>
-                        <div className="flex justify-between items-center text-[10px] font-black uppercase text-slate-400 tracking-widest">
-                            <span>Mục tiêu: 85%</span>
-                            <Link href={`/lecturer/courses/${classId}/attendance`} className="text-emerald-600 hover:underline">Chi tiết báo cáo</Link>
-                        </div>
-                    </div>
-                </div>
+                ))}
             </div>
 
-            {/* Quick Actions & Search */}
-            <div className="bg-white rounded-[2.5rem] p-4 border border-slate-100 shadow-sm flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-3 pl-4">
-                    <Users size={20} className="text-indigo-400" />
-                    <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">Danh sách sinh viên ({enrollments.length})</h3>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3">
+            {/* Main Section */}
+            <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-slate-50 flex items-center justify-between bg-slate-50/30">
+                    <div className="flex items-center gap-6">
+                        <div className="flex items-center gap-3">
+                            <Users2 size={18} className="text-uneti-blue" />
+                            <h2 className="text-xs font-black text-slate-800 uppercase tracking-widest">Danh sách ({enrollments.length})</h2>
+                        </div>
+                        <Button 
+                            variant="ghost" 
+                            size="sm"
+                            disabled={isSyncing}
+                            onClick={handleSyncAttendance}
+                            className="h-8 rounded-lg text-[9px] font-black uppercase tracking-widest text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 gap-2 border border-emerald-100"
+                        >
+                            <Zap size={12} className={cn(isSyncing && "animate-pulse")} />
+                            {isSyncing ? "Đang đồng bộ..." : "Đồng bộ chuyên cần"}
+                        </Button>
+                    </div>
                     <div className="relative w-64">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={12} />
                         <input
                             type="text"
                             placeholder="Tìm sinh viên..."
-                            className="bg-slate-50 border-none rounded-xl pl-10 pr-4 py-2 text-[10px] font-black text-slate-700 tracking-widest focus:ring-2 focus:ring-indigo-100 w-full transition-all"
+                            className="bg-white border border-slate-200 rounded-lg pl-9 pr-3 py-2 text-[10px] font-bold text-slate-800 w-full outline-none focus:ring-2 focus:ring-uneti-blue/5 transition-all"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
                     </div>
-                    <Button
-                        variant="ghost"
-                        onClick={() => router.push(`/lecturer/courses/${classId}/grades`)}
-                        className="h-10 rounded-xl px-4 text-[10px] font-black text-indigo-600 bg-indigo-50/50 hover:bg-indigo-600 hover:text-white transition-all uppercase tracking-widest"
-                    >
-                        <FileText size={16} className="mr-2" /> Nhập điểm học phần
-                    </Button>
                 </div>
-            </div>
 
-            {/* Student List Table */}
-            <div className="bg-white rounded-[3rem] border border-slate-100 shadow-sm overflow-hidden min-h-[500px]">
                 <div className="overflow-x-auto">
                     <table className="w-full border-collapse">
                         <thead>
-                            <tr className="bg-slate-50/50">
-                                <th className="py-6 px-10 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Sinh viên</th>
-                                <th className="py-6 px-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Mã SV</th>
-                                <th className="py-6 px-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Lớp HC</th>
-                                <th className="py-6 px-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Chuyên cần</th>
-                                <th className="py-6 px-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Điểm TK</th>
-                                <th className="py-6 px-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Trạng thái</th>
-                                <th className="py-6 px-10 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Thao tác</th>
+                            <tr className="text-left bg-white">
+                                <th className="py-4 px-8 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">#</th>
+                                <th className="py-4 px-4 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">Sinh viên</th>
+                                <th className="py-4 px-4 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">Mã SV</th>
+                                <th className="py-4 px-4 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50 text-center">Chuyên cần</th>
+                                <th className="py-4 px-4 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50 text-center">Điểm TK</th>
+                                <th className="py-4 px-8 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50 text-right">Chi tiết</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody className="divide-y divide-slate-50">
                             {filtered.map((enr, idx) => {
                                 const rate = calculateAttendanceRate(enr.attendances);
+                                const studentGrade = gradeMap.get(enr.studentId);
+                                const isBanned = studentGrade && !studentGrade.isEligibleForExam;
+
                                 return (
-                                    <tr key={enr.id} className="border-t border-slate-50 hover:bg-slate-50/50 transition-colors group">
-                                        <td className="py-6 px-10">
-                                            <div className="flex items-center gap-4">
-                                                <div className="h-12 w-12 rounded-2xl bg-slate-100 border-2 border-white flex items-center justify-center text-slate-400 font-bold shadow-sm transition-all group-hover:bg-indigo-600 group-hover:text-white group-hover:scale-105">
-                                                    {enr.student?.fullName?.charAt(0)}
-                                                </div>
-                                                <div className="space-y-0.5">
-                                                    <p className="text-sm font-black text-slate-800 tracking-tight">{enr.student?.fullName}</p>
-                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{enr.student?.email || 'Chưa cung cấp email'}</p>
-                                                </div>
-                                            </div>
+                                    <tr key={enr.id} className="hover:bg-slate-50/50 transition-colors group">
+                                        <td className="py-4 px-8 text-[10px] font-bold text-slate-300">{(idx + 1).toString().padStart(2, '0')}</td>
+                                        <td className="py-4 px-4">
+                                            <p className="text-xs font-black text-slate-700 uppercase group-hover:text-uneti-blue transition-colors flex items-center gap-2">
+                                                {enr.student?.fullName}
+                                                {isBanned && (
+                                                    <span className="px-1.5 py-0.5 rounded-md bg-rose-50 text-[7px] text-rose-500 border border-rose-100 tracking-tighter">CẤM THI</span>
+                                                )}
+                                            </p>
+                                            <p className="text-[9px] font-bold text-slate-400 uppercase opacity-60">{enr.student?.adminClass?.code}</p>
                                         </td>
-                                        <td className="py-6 px-6">
-                                            <span className="text-[10px] font-black text-indigo-600 bg-indigo-50/50 px-2 py-1 rounded-md">
-                                                {enr.student?.studentCode}
-                                            </span>
-                                        </td>
-                                        <td className="py-6 px-6 text-[10px] font-black text-slate-400 uppercase tracking-tighter">
-                                            {enr.student?.adminClass?.code || "N/A"}
-                                        </td>
-                                        <td className="py-6 px-6 text-center">
-                                            <div className="flex items-center justify-center gap-2">
+                                        <td className="py-4 px-4 text-[10px] font-black text-slate-500">{enr.student?.studentCode}</td>
+                                        <td className="py-4 px-4">
+                                            <div className="flex flex-col items-center gap-1">
                                                 <span className={cn(
                                                     "text-[11px] font-black tabular-nums",
                                                     rate >= 80 ? "text-emerald-500" : rate >= 50 ? "text-amber-500" : "text-rose-500"
-                                                )}>
-                                                    {rate}%
-                                                </span>
-                                                <div className="w-16 h-1 bg-slate-100 rounded-full overflow-hidden hidden sm:block">
-                                                    <div
-                                                        className={cn(
-                                                            "h-full rounded-full transition-all duration-500",
-                                                            rate >= 80 ? "bg-emerald-500" : rate >= 50 ? "bg-amber-500" : "bg-rose-500"
-                                                        )}
-                                                        style={{ width: `${rate}%` }}
-                                                    />
+                                                )}>{rate}%</span>
+                                                <div className="w-12 h-1 bg-slate-100 rounded-full overflow-hidden">
+                                                    <div className={cn("h-full", rate >= 80 ? "bg-emerald-500" : rate >= 50 ? "bg-amber-500" : "bg-rose-500")} style={{ width: `${rate}%` }} />
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="py-6 px-6 text-center">
-                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-[10px] font-black uppercase tracking-widest">
-                                                <CheckCircle2 size={12} /> Đang học
+                                        <td className="py-4 px-4 text-center">
+                                            <span className="text-[11px] font-black text-slate-700 tabular-nums">
+                                                {studentGrade?.totalScore10 !== null ? studentGrade?.totalScore10 : "---"}
                                             </span>
                                         </td>
-                                        <td className="py-6 px-10 text-right">
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-10 w-10 rounded-xl hover:bg-white hover:shadow-md transition-all text-slate-300 hover:text-indigo-600"
-                                            >
-                                                <MoreVertical size={18} />
-                                            </Button>
+                                        <td className="py-4 px-8 text-right">
+                                            <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="icon" 
+                                                    title="Chi tiết điểm"
+                                                    className="h-8 w-8 rounded-lg text-slate-400 hover:text-uneti-blue hover:bg-white border border-transparent hover:border-slate-100"
+                                                >
+                                                    <TrendingUp size={14} />
+                                                </Button>
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="icon" 
+                                                    title="Lịch sử điểm danh"
+                                                    className="h-8 w-8 rounded-lg text-slate-400 hover:text-uneti-blue hover:bg-white border border-transparent hover:border-slate-100"
+                                                >
+                                                    <CalendarDays size={14} />
+                                                </Button>
+                                            </div>
                                         </td>
                                     </tr>
                                 );
                             })}
                         </tbody>
                     </table>
-                    {filtered.length === 0 && (
-                        <div className="py-32 flex flex-col items-center justify-center grayscale opacity-30">
-                            <Users size={64} className="text-slate-200 mb-6" />
-                            <p className="text-sm font-black uppercase tracking-widest text-slate-400">Không tìm thấy sinh viên</p>
-                        </div>
-                    )}
-                </div>
-
-                {/* Footer Legend */}
-                <div className="px-10 py-6 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    <div className="flex items-center gap-6">
-                        <div className="flex items-center gap-2">
-                            <div className="h-2 w-2 rounded-full bg-emerald-500"></div>
-                            <span>Tốt ({'>'}80%)</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="h-2 w-2 rounded-full bg-amber-500"></div>
-                            <span>Cảnh báo (50-80%)</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="h-2 w-2 rounded-full bg-rose-500"></div>
-                            <span>Nguy cơ học lại ({'<'}50%)</span>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Info size={14} className="text-indigo-400" />
-                        <span>Dữ liệu cập nhật thời gian thực</span>
-                    </div>
                 </div>
             </div>
         </div>

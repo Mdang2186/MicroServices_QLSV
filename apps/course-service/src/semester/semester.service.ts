@@ -13,4 +13,15 @@ export class SemesterService {
             this.prisma.semester.findMany({ orderBy: { year: 'desc' } })
         );
     }
+
+    async update(id: string, data: any) {
+        const semester = await this.prisma.semester.update({
+            where: { id },
+            data: {
+                midtermGradeDeadline: data.midtermGradeDeadline ? new Date(data.midtermGradeDeadline) : (data.midtermGradeDeadline === null ? null : undefined),
+            }
+        });
+        await this.cache.del('semesters:all');
+        return semester;
+    }
 }

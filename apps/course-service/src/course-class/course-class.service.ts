@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
+import { SessionGenerator } from './session-generator.util';
 
 const TTL_30MIN = 30 * 60 * 1000;
 const TTL_10MIN = 10 * 60 * 1000;
@@ -195,6 +196,7 @@ export class CourseClassService {
                 semester: true,
                 adminClasses: { include: { _count: { select: { students: true } } } },
                 schedules: { include: { room: true } },
+                sessions: { include: { room: true } },
                 _count: {
                     select: { enrollments: true }
                 }
@@ -275,13 +277,30 @@ export class CourseClassService {
                 semesterId,
                 courseClass: { 
                     lecturerId,
-                    id: excludeId ? { not: excludeId } : undefined
+                    id: excludeId ? { not: excludeId } : undefined,
+                    status: { not: 'CANCELLED' } // Bỏ qua các lớp bị hủy
                 }
             },
             include: {
                 courseClass: { include: { subject: true } },
                 room: true
             }
+        });
+    }
+
+    async getLecturerSessions(lecturerId: string, startDate: Date, endDate: Date) {
+        return this.prisma.classSession.findMany({
+            where: {
+                date: { gte: startDate, lte: endDate },
+                courseClass: { lecturerId }
+            },
+            include: {
+                courseClass: {
+                    include: { subject: true }
+                },
+                room: true
+            },
+            orderBy: [{ date: 'asc' }, { startShift: 'asc' }]
         });
     }
 
@@ -316,15 +335,23 @@ export class CourseClassService {
         });
     }
 
-    async findByLecturerId(lecturerId: string) {
+    async findByLecturerId(lecturerId: string, semesterId?: string) {
+        const where: any = { lecturerId };
+        if (semesterId) where.semesterId = semesterId;
+
         return this.prisma.courseClass.findMany({
-            where: { lecturerId },
+            where,
             include: {
                 lecturer: true,
                 subject: true,
                 semester: true,
                 adminClasses: true,
                 schedules: {
+                    include: {
+                        room: true
+                    }
+                },
+                sessions: {
                     include: {
                         room: true
                     }
@@ -356,14 +383,22 @@ export class CourseClassService {
             // Semester term mapping: HK1 -> HK1, HK2 -> HK2, HKH -> HKH
             const term = semester.code.includes('HK1') ? 'HK1' : semester.code.includes('HK2') ? 'HK2' : 'HKH';
 
+            let adminClassCode = '';
+            if (adminClassIds && adminClassIds.length > 0) {
+                const ac = await tx.adminClass.findUnique({ where: { id: adminClassIds[0] } });
+                adminClassCode = ac?.code || '';
+            }
+
             const generatedCode = `CCLASS_${subject.code}_${term}_${sequence}_${yearSuffix}`;
-            const generatedName = `${subject.name} - Nhóm ${sequence}`;
+            const generatedName = adminClassCode 
+                ? `${subject.name} - ${adminClassCode}` 
+                : `${subject.name} - Nhóm ${sequence}`;
 
             await this.checkConflicts(null, semesterId, schedules, lecturerId, adminClassIds, tx);
 
             const created = await tx.courseClass.create({
                 data: {
-                    id: generatedCode, // Use generated code as ID for consistency with screenshot
+                    id: generatedCode,
                     code: generatedCode,
                     name: generatedName,
                     maxSlots: maxSlots ? Number(maxSlots) : 60,
@@ -394,10 +429,125 @@ export class CourseClassService {
                 }
             });
 
+            // Auto-generate discrete sessions
+            if (schedules && schedules.length > 0) {
+                const sessionsData = SessionGenerator.generateSessionsData(
+                    created.id,
+                    semesterId,
+                    semester.startDate,
+                    semester.endDate,
+                    schedules
+                );
+                await tx.classSession.createMany({ data: sessionsData });
+            }
+
             // Invalidate cache
             this.cache.invalidatePrefix('subjects:');
             this.cache.invalidatePrefix('adminClasses:');
             return created;
+        });
+    }
+
+    async getSessions(courseClassId: string) {
+        return this.prisma.classSession.findMany({
+            where: { courseClassId },
+            include: { room: true },
+            orderBy: [{ date: 'asc' }, { startShift: 'asc' }]
+        });
+    }
+
+    async rescheduleSession(sessionId: string, data: { date: Date, roomId: string, startShift: number, endShift: number, note?: string }) {
+        return this.prisma.$transaction(async (tx) => {
+            const session = await tx.classSession.findUnique({ 
+                where: { id: sessionId },
+                include: { courseClass: true }
+            });
+            if (!session) throw new BadRequestException("Không tìm thấy buổi học.");
+
+            await this.checkSemesterLock(session.semesterId, tx);
+
+            // Simple conflict check for manual reschedule (Only checking room for now)
+            const conflict = await tx.classSession.findFirst({
+                where: {
+                    id: { not: sessionId },
+                    semesterId: session.semesterId,
+                    roomId: data.roomId,
+                    date: data.date,
+                    OR: [
+                        { startShift: { lte: data.startShift }, endShift: { gte: data.startShift } },
+                        { startShift: { lte: data.endShift }, endShift: { gte: data.endShift } }
+                    ]
+                }
+            });
+            if (conflict) {
+                throw new BadRequestException(`Phòng học đã bị trùng lịch với lớp khác tại thời điểm này.`);
+            }
+
+            return tx.classSession.update({
+                where: { id: sessionId },
+                data: {
+                    date: data.date,
+                    roomId: data.roomId,
+                    startShift: data.startShift,
+                    endShift: data.endShift,
+                    note: data.note || session.note
+                }
+            });
+        });
+    }
+
+    async addManualSession(courseClassId: string, data: { date: Date, roomId: string, startShift: number, endShift: number, type: string, note: string }) {
+        const courseClass = await this.prisma.courseClass.findUnique({ where: { id: courseClassId } });
+        if (!courseClass) throw new BadRequestException("Lớp học phần không tồn tại.");
+
+        return this.prisma.classSession.create({
+            data: {
+                courseClassId,
+                semesterId: courseClass.semesterId,
+                date: data.date,
+                roomId: data.roomId,
+                startShift: data.startShift,
+                endShift: data.endShift,
+                type: data.type,
+                note: data.note
+            }
+        });
+    }
+
+    async deleteSession(sessionId: string) {
+        const session = await this.prisma.classSession.findUnique({ where: { id: sessionId } });
+        if (session) {
+            await this.checkSemesterLock(session.semesterId);
+        }
+        return this.prisma.classSession.delete({
+            where: { id: sessionId }
+        });
+    }
+
+    async generateSessionsInRange(courseClassId: string, data: { startDate: Date, endDate: Date, schedules: any[], clearExisting: boolean }) {
+        const courseClass = await this.prisma.courseClass.findUnique({ where: { id: courseClassId } });
+        if (!courseClass) throw new BadRequestException("Lớp học phần không tồn tại.");
+
+        await this.checkSemesterLock(courseClass.semesterId);
+
+        const sessionsData = SessionGenerator.generateSessionsData(
+            courseClassId,
+            courseClass.semesterId,
+            data.startDate,
+            data.endDate,
+            data.schedules
+        );
+
+        return this.prisma.$transaction(async (tx) => {
+            if (data.clearExisting) {
+                await tx.classSession.deleteMany({
+                    where: { 
+                        courseClassId,
+                        date: { gte: data.startDate, lte: data.endDate }
+                    }
+                });
+            }
+            return tx.classSession.createMany({ data: sessionsData });
         });
     }
 
@@ -442,6 +592,41 @@ export class CourseClassService {
             this.cache.invalidatePrefix('subjects:');
             this.cache.invalidatePrefix('adminClasses:');
             return results;
+        });
+    }
+
+    async bulkImportByCode(data: { items: any[], semesterId: string }) {
+        const { items, semesterId } = data;
+        
+        return this.prisma.$transaction(async (tx) => {
+            const results = [];
+            for (const item of items) {
+                const { subjectCode, lecturerCode, adminClassCodes, maxSlots, schedules } = item;
+
+                const subject = await tx.subject.findUnique({ where: { code: subjectCode } });
+                const lecturer = lecturerCode ? await tx.lecturer.findUnique({ where: { lectureCode: lecturerCode } }) : null;
+                const adminClasses = adminClassCodes ? await tx.adminClass.findMany({ where: { code: { in: adminClassCodes } } }) : [];
+
+                // Resolve rooms by name if possible
+                const enrichedSchedules = await Promise.all(schedules.map(async (s: any) => {
+                    if (s.roomName) {
+                        const room = await tx.room.findUnique({ where: { name: s.roomName } });
+                        return { ...s, roomId: room?.id || null };
+                    }
+                    return s;
+                }));
+
+                const created = await this.create({
+                    subjectId: subject?.id,
+                    semesterId,
+                    lecturerId: lecturer?.id,
+                    adminClassIds: adminClasses.map(ac => ac.id),
+                    maxSlots,
+                    schedules: enrichedSchedules
+                });
+                results.push(created);
+            }
+            return { count: results.length };
         });
     }
 
@@ -509,11 +694,12 @@ export class CourseClassService {
 
     async pushStudentsFromAdminClasses(courseClassId: string) {
         return this.prisma.$transaction(async (tx) => {
-            // 1. Get Course Class with Subject and Associated Admin Classes
+            // 1. Get Course Class details with Subject, Associated Admin Classes, and its Schedules
             const courseClass = await tx.courseClass.findUnique({
                 where: { id: courseClassId },
                 include: {
                     subject: true,
+                    schedules: true,
                     adminClasses: {
                         include: {
                             students: {
@@ -538,7 +724,7 @@ export class CourseClassService {
             const totalNominalCount = allNominalStudents.length;
             const studentIds = allNominalStudents.map(s => s.id);
 
-            // 3. Filter out those who are already enrolled in this class OR any class of the same subject in this semester
+            // 3. Filter out those who are already enrolled in this subject in this semester
             const existingEnrollments = await tx.enrollment.findMany({
                 where: {
                     studentId: { in: studentIds },
@@ -546,42 +732,80 @@ export class CourseClassService {
                         subjectId: courseClass.subjectId,
                         semesterId: courseClass.semesterId
                     }
-                },
-                select: { studentId: true }
+                }
             });
 
             const existingStudentIds = new Set(existingEnrollments.map(e => e.studentId));
-            const newStudentIds = studentIds.filter(id => !existingStudentIds.has(id));
+            let potentialStudentIds = studentIds.filter(id => !existingStudentIds.has(id));
 
-            if (newStudentIds.length === 0) {
+            if (potentialStudentIds.length === 0) {
                 return { 
                     message: `Lớp danh nghĩa có ${totalNominalCount} SV. Toàn bộ đã chuyển lớp hoặc đã ghi danh vào môn học này.`,
-                    stats: {
-                        totalNominal: totalNominalCount,
-                        alreadyEnrolled: existingStudentIds.size,
-                        addedCount: 0,
-                        availableSlots: courseClass.maxSlots - courseClass._count.enrollments
-                    }
+                    stats: { totalNominal: totalNominalCount, alreadyEnrolled: existingStudentIds.size, addedCount: 0, conflictedCount: 0 }
                 };
             }
 
-            // 4. Check available slots and auto-expand if necessary
-            const currentEnrolled = courseClass._count.enrollments;
-            const availableSlots = courseClass.maxSlots - currentEnrolled;
-            
-            let updatedMaxSlots = courseClass.maxSlots;
+            // 4. PERFORM SCHEDULE CONFLICT CHECK
+            // Fetch all schedules of other classes these students are currently in
+            const otherSchedules = await tx.enrollment.findMany({
+                where: {
+                    studentId: { in: potentialStudentIds },
+                    courseClass: {
+                        semesterId: courseClass.semesterId,
+                        id: { not: courseClassId }
+                    }
+                },
+                select: {
+                    studentId: true,
+                    courseClass: {
+                        select: {
+                            schedules: true
+                        }
+                    }
+                }
+            });
 
-            if (newStudentIds.length > availableSlots) {
-                // Auto-expand maxSlots to fit all nominal students
-                updatedMaxSlots = currentEnrolled + newStudentIds.length;
+            // Map student to their schedules
+            const studentSchedulesMap: Record<string, any[]> = {};
+            otherSchedules.forEach(os => {
+                if (!studentSchedulesMap[os.studentId]) studentSchedulesMap[os.studentId] = [];
+                studentSchedulesMap[os.studentId].push(...os.courseClass.schedules);
+            });
+
+            const finalStudentIds = [];
+            let conflictedCount = 0;
+
+            for (const studentId of potentialStudentIds) {
+                const existingSchedules = studentSchedulesMap[studentId] || [];
+                const isConflicted = this.checkConflictInternal(courseClass.schedules, existingSchedules);
+                
+                if (isConflicted) {
+                    conflictedCount++;
+                } else {
+                    finalStudentIds.push(studentId);
+                }
             }
 
-            // 5. Create Enrollments with Tuition Fee
-            const creditPrice = 500000; // Standard price per credit
+            if (finalStudentIds.length === 0) {
+                return {
+                    message: `Đã xử lý lớp danh nghĩa. Không có sinh viên nào được thêm mới (Do trùng lịch: ${conflictedCount}, Đã đăng ký: ${existingStudentIds.size}).`,
+                    stats: { totalNominal: totalNominalCount, alreadyEnrolled: existingStudentIds.size, addedCount: 0, conflictedCount }
+                };
+            }
+
+            // 5. Expand Slots if needed
+            const currentEnrolledSize = courseClass._count.enrollments;
+            let updatedMaxSlots = courseClass.maxSlots;
+            if (currentEnrolledSize + finalStudentIds.length > courseClass.maxSlots) {
+                updatedMaxSlots = currentEnrolledSize + finalStudentIds.length;
+            }
+
+            // 6. Create Enrollments with Tuition Fee
+            const creditPrice = 500000; 
             const tuitionFee = (courseClass.subject.credits || 0) * creditPrice;
 
             await tx.enrollment.createMany({
-                data: newStudentIds.map(studentId => ({
+                data: finalStudentIds.map(studentId => ({
                     studentId,
                     courseClassId: courseClassId,
                     status: 'REGISTERED',
@@ -590,28 +814,81 @@ export class CourseClassService {
                 }))
             });
 
-            // 6. Update currentSlots for the course class
-            const totalEnrolled = currentEnrolled + newStudentIds.length;
+            // 7. Update currentSlots and potentially maxSlots
             await tx.courseClass.update({
                 where: { id: courseClassId },
                 data: { 
-                    currentSlots: totalEnrolled,
-                    maxSlots: updatedMaxSlots // Override maxSlots if needed
+                    currentSlots: currentEnrolledSize + finalStudentIds.length,
+                    maxSlots: updatedMaxSlots 
                 }
             });
+
+            // 8. PERSIST TUITION FEES (Reactive Updates)
+            for (const studentId of finalStudentIds) {
+                await this.syncTuitionInternal(studentId, courseClass.semesterId, tx);
+            }
 
             // Invalidate cache
             this.cache.invalidatePrefix('subjects:');
 
             return {
-                message: `Đã đẩy thành công ${newStudentIds.length} sinh viên vào lớp học phần.`,
+                message: `Đã đẩy thành công ${finalStudentIds.length} sinh viên. (Bỏ qua ${conflictedCount} SV do trùng lịch).`,
                 stats: {
                     totalNominal: totalNominalCount,
                     alreadyEnrolled: existingStudentIds.size,
-                    addedCount: newStudentIds.length,
-                    availableSlots: courseClass.maxSlots - totalEnrolled
+                    addedCount: finalStudentIds.length,
+                    conflictedCount
                 }
             };
+        });
+    }
+
+    // Helper to check conflict without throwing
+    private checkConflictInternal(newSchedules: any[], existingSchedules: any[]) {
+        for (const ns of newSchedules) {
+            for (const es of existingSchedules) {
+                if (Number(ns.dayOfWeek) === Number(es.dayOfWeek)) {
+                    const hasOverlap = Math.max(Number(ns.startShift), Number(es.startShift)) <= Math.min(Number(ns.endShift), Number(es.endShift));
+                    if (hasOverlap) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private async syncTuitionInternal(studentId: string, semesterId: string, tx: any) {
+        const enrollments = await tx.enrollment.findMany({
+            where: { studentId, courseClass: { semesterId } },
+            include: { courseClass: { include: { subject: true } } }
+        });
+
+        const totalTuition = enrollments.reduce((sum, enr) => sum + Number(enr.tuitionFee), 0);
+        const paidTuition = enrollments.filter(e => e.status === 'PAID').reduce((sum, enr) => sum + Number(enr.tuitionFee), 0);
+        
+        const semester = await tx.semester.findUnique({ where: { id: semesterId } });
+        const feeName = `Học phí ${semester?.name || semesterId}`;
+
+        await tx.studentFee.upsert({
+            where: { id: `tuition-${studentId}-${semesterId}` },
+            update: {
+                totalAmount: totalTuition,
+                finalAmount: totalTuition,
+                paidAmount: paidTuition,
+                status: paidTuition >= totalTuition ? 'PAID' : (paidTuition > 0 ? 'PARTIAL' : 'DEBT')
+            },
+            create: {
+                id: `tuition-${studentId}-${semesterId}`,
+                studentId,
+                semesterId,
+                feeType: 'TUITION',
+                name: feeName,
+                totalAmount: totalTuition,
+                discountAmount: 0,
+                finalAmount: totalTuition,
+                paidAmount: paidTuition,
+                status: paidTuition >= totalTuition ? 'PAID' : (paidTuition > 0 ? 'PARTIAL' : 'DEBT'),
+                isMandatory: true
+            }
         });
     }
 

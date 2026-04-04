@@ -149,11 +149,11 @@ export default function StudentDashboard() {
                             <p className="text-[10px] text-slate-400 font-bold uppercase">MSSV: <span className="text-slate-700 ml-1">{student?.studentCode}</span></p>
                             <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Họ tên: <span className="text-slate-700 ml-1 font-black">{student?.fullName}</span></p>
                             <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Giới tính: <span className="text-slate-700 ml-1">Nam</span></p>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Ngày sinh: <span className="text-slate-700 ml-1">{new Date(student?.dateOfBirth || "2004-10-29").toLocaleDateString('vi-VN')}</span></p>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Nơi sinh: <span className="text-slate-700 ml-1">Lào Cai</span></p>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Ngày sinh: <span className="text-slate-700 ml-1">{new Date(student?.dob || "2004-10-29").toLocaleDateString('vi-VN')}</span></p>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Nơi sinh: <span className="text-slate-700 ml-1">{student?.birthPlace || "Lào Cai"}</span></p>
                         </div>
                         <div>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase">Lớp học: <span className="text-slate-700 ml-1">{student?.class?.name || "K17-HTTT"}</span></p>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase">Lớp học: <span className="text-slate-700 ml-1">{student?.adminClass?.code || "Chưa xếp lớp"}</span></p>
                             <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Khóa học: <span className="text-slate-700 ml-1">2023 - 2027</span></p>
                             <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Bậc đào tạo: <span className="text-slate-700 ml-1">Đại học</span></p>
                             <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Loại hình đào tạo: <span className="text-slate-700 ml-1">Chính quy</span></p>
@@ -320,9 +320,11 @@ export default function StudentDashboard() {
                                 />
                             </BarChart>
                         </ResponsiveContainer>
-                        <div className="flex items-center justify-center h-full -mt-64 relative z-10 pointer-events-none">
-                            <p className="text-slate-400 text-xs font-bold bg-white/50 px-4 py-2 rounded-lg backdrop-blur-sm">Chưa có dữ liệu hiển thị</p>
-                        </div>
+                        {lastSemesterChartData.length === 0 && (
+                            <div className="flex items-center justify-center h-full -mt-64 relative z-10 pointer-events-none">
+                                <p className="text-slate-400 text-xs font-bold bg-white/50 px-4 py-2 rounded-lg backdrop-blur-sm">Chưa có dữ liệu hiển thị</p>
+                            </div>
+                        )}
                     </div>
                 </div>
 

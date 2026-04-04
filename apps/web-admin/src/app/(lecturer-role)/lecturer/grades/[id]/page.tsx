@@ -77,18 +77,38 @@ export default function LecturerGradeEntryPage() {
                         }
                     }
 
-                    // Merge attendance info into grades
+                    // Merge attendance info into grades + auto-calculate CC score
                     const merged = gradeData.map((g: any) => {
                         const enr = enrollmentData.find((e: any) => e.studentId === g.studentId);
                         const attendances = enr?.attendances || [];
-                        const unexcusedAbsences = attendances.filter((a: any) => a.status === 'ABSENT_UNEXCUSED').length;
-                        // Rule: Ineligible if > 3 unexcused absences
-                        const isIneligible = unexcusedAbsences > 3;
+                        const totalPeriods = attendances.length;
+                        const absentPeriods = attendances.filter((a: any) =>
+                            a.status === 'ABSENT' || a.status === 'ABSENT_UNEXCUSED'
+                        ).length;
+
+                        // Tính % vắng và điểm CC theo quy chế UNETI
+                        const missedPct = totalPeriods > 0 ? (absentPeriods / totalPeriods) * 100 : 0;
+                        let autoCC: number | null = null;
+                        let isIneligible = false;
+                        if (totalPeriods > 0) {
+                            if (missedPct === 0)       autoCC = 10;
+                            else if (missedPct < 10)   autoCC = 8;
+                            else if (missedPct < 20)   autoCC = 6;
+                            else if (missedPct < 35)   autoCC = 4;
+                            else if (missedPct < 50)   autoCC = 2;
+                            else { autoCC = 0; isIneligible = true; } // >= 50%: cấm thi
+                        }
+
                         return { 
-                            ...g, 
-                            isIneligible, 
-                            unexcusedAbsences,
-                            isLocked: g.status !== 'DRAFT' // Locked if not in DRAFT
+                            ...g,
+                            // Override CC với giá trị tự động nếu có dữ liệu điểm danh
+                            attendanceScore: autoCC !== null ? autoCC : (g.attendanceScore ?? null),
+                            attendanceAutoCalc: autoCC !== null,
+                            isLocked: g.status !== 'DRAFT',
+                            isIneligible,
+                            totalPeriods,
+                            absentPeriods,
+                            missedPct: Math.round(missedPct * 10) / 10
                         };
                     });
                     
@@ -104,6 +124,19 @@ export default function LecturerGradeEntryPage() {
         fetchData();
     }, [classId, TOKEN]);
 
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+    const mapGradeLetter = (score: number): string => {
+        if (score >= 8.5) return 'A';
+        if (score >= 7.8) return 'B+';
+        if (score >= 7.0) return 'B';
+        if (score >= 6.3) return 'C+';
+        if (score >= 5.5) return 'C';
+        if (score >= 4.8) return 'D+';
+        if (score >= 4.0) return 'D';
+        if (score >= 3.0) return 'F+';
+        return 'F';
+    };
+
     const handleGradeChange = (gradeId: string, field: string, value: string) => {
         const numValue = value === "" ? null : parseFloat(value);
         if (numValue !== null && (numValue < 0 || numValue > 10)) return;
@@ -113,30 +146,40 @@ export default function LecturerGradeEntryPage() {
                 if (g.isLocked) return g;
                 const updated = { ...g, [field]: numValue };
                 
-                // UNETI Standard Weighting:
-                // RegularAvg = (Att + Reg1 + 2*Reg2) / 4
-                // FinalTotal = RegularAvg * 0.4 + FinalScore * 0.6
-                const att = updated.attendanceScore ?? 0;
-                const tx1 = updated.regularScore1 ?? 0;
-                const tx2 = updated.regularScore2 ?? 0;
-                const fin = updated.finalScore ?? 0;
-                
-                const regularAvg = Math.round(((att + tx1 + 2 * tx2) / 4) * 10) / 10;
-                const total10 = Math.round((regularAvg * 0.4 + fin * 0.6) * 10) / 10;
-                
-                updated.midtermScore = regularAvg;
-                updated.totalScore10 = total10;
+                const credits = courseClass?.subject?.credits ?? 3;
+                const isTheory = (courseClass?.subject?.theoryHours ?? 0) > 0
+                    || (courseClass?.subject?.practiceHours ?? 0) === 0;
 
-                // Letter grade mapping
-                let letter = 'F';
-                if (total10 >= 8.5) letter = 'A';
-                else if (total10 >= 8.0) letter = 'B+';
-                else if (total10 >= 7.0) letter = 'B';
-                else if (total10 >= 6.5) letter = 'C+';
-                else if (total10 >= 5.5) letter = 'C';
-                else if (total10 >= 5.0) letter = 'D+';
-                else if (total10 >= 4.0) letter = 'D';
-                updated.letterGrade = letter;
+                const cc  = updated.attendanceScore ?? 0;  // Chuyên cần (hệ số = credits)
+                const dkd = updated.regularScore1   ?? 0;  // ĐKĐ        (hệ số 2)
+                const tx  = updated.regularScore2   ?? 0;  // TX         (hệ số 1)
+                const fin = updated.finalScore       ?? 0;  // Thi kết thúc
+
+                let processAvg = 0;
+                let total10    = 0;
+
+                const effectiveFin = updated.isIneligible ? 0 : fin;
+
+                if (isTheory) {
+                    /**
+                     * Điều 1a - LT: QT = (CC×TC + ĐKĐ×2 + TX×1) / (TC+3)
+                     *              HP = QT×0.4 + Thi×0.6
+                     */
+                    const qt = (cc * credits + dkd * 2 + tx * 1) / (credits + 3);
+                    processAvg = Math.round(qt * 10) / 10;
+                    total10    = Math.round((processAvg * 0.4 + effectiveFin * 0.6) * 10) / 10;
+                } else {
+                    /**
+                     * Điều 2a - TH: HP = (CC×1 + ĐKĐ×1) / 2
+                     */
+                    total10    = Math.round(((cc + dkd) / 2) * 10) / 10;
+                    processAvg = total10;
+                }
+
+                updated.midtermScore  = processAvg;
+                updated.totalScore10  = total10;
+                updated.letterGrade   = mapGradeLetter(total10);
+                updated.isPassed      = total10 >= 5.5;
 
                 return updated;
             }
@@ -281,8 +324,11 @@ export default function LecturerGradeEntryPage() {
                     <div>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Cơ cấu điểm</p>
                         <h3 className="text-2xl font-black text-blue-600 tabular-nums">
-                            40% - 60% <span className="text-xs text-slate-400 font-bold ml-1">(Thường kỳ - Thi)</span>
+                            40% – 60% <span className="text-xs text-slate-400 font-bold ml-1">(QT – Thi)</span>
                         </h3>
+                        <p className="text-[9px] text-slate-400 font-bold mt-1">
+                            QT = (CC×{courseClass?.subject?.credits ?? 3} + ĐKĐ×2 + TX×1) / {(courseClass?.subject?.credits ?? 3) + 3}
+                        </p>
                     </div>
                     <div className="h-12 w-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-300">
                         <FileText size={24} />
@@ -297,7 +343,7 @@ export default function LecturerGradeEntryPage() {
                         <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight">Bảng ghi điểm học phần</h2>
                         <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400">
                             <Info size={12} className="text-blue-500" />
-                            <span>Trọng số Thường kỳ: CC (x1), TX1 (x1), TX2 (x2). Tổng kết = TK*0.4 + Thi*0.6</span>
+                            <span>Trọng số: CC(×{courseClass?.subject?.credits ?? 3}) + ĐKĐ(×2) + TX(×1) · ĐHP = QT×40% + Thi×60%</span>
                         </div>
                     </div>
                     <div className="relative w-80">
@@ -318,11 +364,21 @@ export default function LecturerGradeEntryPage() {
                             <tr className="bg-slate-50/50">
                                 <th className="py-4 px-8 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">STT</th>
                                 <th className="py-4 px-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Sinh viên</th>
-                                <th className="py-4 px-2 text-center text-[9px] font-black text-blue-600 uppercase tracking-widest bg-blue-50/30">CC (10%)</th>
-                                <th className="py-4 px-2 text-center text-[9px] font-black text-emerald-600 uppercase tracking-widest bg-emerald-50/30">TX1 (10%)</th>
-                                <th className="py-4 px-2 text-center text-[9px] font-black text-emerald-600 uppercase tracking-widest bg-emerald-50/30">TX2 (10%)</th>
-                                <th className="py-4 px-2 text-center text-[9px] font-black text-amber-600 uppercase tracking-widest bg-amber-50/30">GK (20%)</th>
-                                <th className="py-4 px-2 text-center text-[9px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50/30">Thi (50%)</th>
+                                <th className="py-4 px-2 text-center text-[9px] font-black text-blue-600 uppercase tracking-widest bg-blue-50/30" title="Chuyên cần — tự động tính từ % vắng — hệ số bằng số tín chỉ">
+                                    CC (×{courseClass?.subject?.credits ?? 3})
+                                </th>
+                                <th className="py-4 px-2 text-center text-[9px] font-black text-emerald-600 uppercase tracking-widest bg-emerald-50/30" title="Kiểm tra Định kỳ — hệ số 2">
+                                    ĐKĐ (×2)
+                                </th>
+                                <th className="py-4 px-2 text-center text-[9px] font-black text-teal-600 uppercase tracking-widest bg-teal-50/30" title="Kiểm tra Thường xuyên — hệ số 1">
+                                    TX (×1)
+                                </th>
+                                <th className="py-4 px-2 text-center text-[9px] font-black text-amber-600 uppercase tracking-widest bg-amber-50/30" title="Điểm Quá trình tự tính — chiếm 40%">
+                                    ĐQT (40%)
+                                </th>
+                                <th className="py-4 px-2 text-center text-[9px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50/30" title="Điểm thi kết thúc học phần — chiếm 60%">
+                                    Thi (60%)
+                                </th>
                                 <th className="py-4 px-8 text-center text-[10px] font-black text-slate-800 uppercase tracking-widest border-l border-slate-100">Tổng kết</th>
                                 <th className="py-4 px-8 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Ghi chú</th>
                             </tr>
@@ -349,19 +405,33 @@ export default function LecturerGradeEntryPage() {
                                             )}
                                         </div>
                                     </td>
+                                    {/* CC — Chuyên cần: tự động nếu có dữ liệu điểm danh */}
                                     <td className="py-5 px-2 bg-blue-50/10">
-                                        <input
-                                            type="number"
-                                            step="0.1"
-                                            disabled={g.isLocked}
-                                            className={cn(
-                                                "w-14 mx-auto bg-white border border-slate-200 rounded-lg text-center text-xs font-black py-1.5 focus:ring-2 focus:ring-blue-400 outline-none transition-all shadow-sm",
-                                                g.isLocked && "bg-slate-50 text-slate-400 border-dashed shadow-none"
+                                        <div className="flex flex-col items-center gap-0.5">
+                                            <input
+                                                type="number"
+                                                step="1"
+                                                readOnly={g.attendanceAutoCalc}
+                                                disabled={g.isLocked}
+                                                className={cn(
+                                                    "w-14 mx-auto text-center text-xs font-black py-1.5 outline-none border rounded-lg transition-all shadow-sm",
+                                                    g.attendanceAutoCalc
+                                                        ? "bg-blue-50 border-blue-200 text-blue-700 cursor-not-allowed shadow-none"
+                                                        : "bg-white border-slate-200 focus:ring-2 focus:ring-blue-400",
+                                                    g.isLocked && "bg-slate-50 text-slate-400 border-dashed shadow-none"
+                                                )}
+                                                value={g.attendanceScore ?? ""}
+                                                onChange={(e) => !g.attendanceAutoCalc && handleGradeChange(g.id, 'attendanceScore', e.target.value)}
+                                                title={g.attendanceAutoCalc
+                                                    ? `Tự động: vắng ${g.absentPeriods}/${g.totalPeriods} buổi (${g.missedPct}%)`
+                                                    : "Nhập điểm chuyên cần"}
+                                            />
+                                            {g.attendanceAutoCalc && (
+                                                <span className="text-[8px] text-blue-400 font-bold">Tự động</span>
                                             )}
-                                            value={g.attendanceScore ?? ""}
-                                            onChange={(e) => handleGradeChange(g.id, 'attendanceScore', e.target.value)}
-                                        />
+                                        </div>
                                     </td>
+                                    {/* ĐKĐ — Kiểm tra Định kỳ (hệ số 2) */}
                                     <td className="py-5 px-2 bg-emerald-50/10">
                                         <input
                                             type="number"
@@ -375,43 +445,42 @@ export default function LecturerGradeEntryPage() {
                                             onChange={(e) => handleGradeChange(g.id, 'regularScore1', e.target.value)}
                                         />
                                     </td>
-                                    <td className="py-5 px-2 bg-emerald-50/10">
+                                    {/* TX — Kiểm tra Thường xuyên (hệ số 1) */}
+                                    <td className="py-5 px-2 bg-teal-50/10">
                                         <input
                                             type="number"
                                             step="0.1"
                                             disabled={g.isLocked}
                                             className={cn(
-                                                "w-14 mx-auto bg-white border border-slate-200 rounded-lg text-center text-xs font-black py-1.5 focus:ring-2 focus:ring-emerald-400 outline-none transition-all shadow-sm",
+                                                "w-14 mx-auto bg-white border border-slate-200 rounded-lg text-center text-xs font-black py-1.5 focus:ring-2 focus:ring-teal-400 outline-none transition-all shadow-sm",
                                                 g.isLocked && "bg-slate-50 text-slate-400 border-dashed shadow-none"
                                             )}
                                             value={g.regularScore2 ?? ""}
                                             onChange={(e) => handleGradeChange(g.id, 'regularScore2', e.target.value)}
                                         />
                                     </td>
+                                    {/* ĐQT — Điểm Quá trình (tự tính, chỉ đọc) */}
                                     <td className="py-5 px-2 bg-amber-50/10">
-                                        <input
-                                            type="number"
-                                            step="0.1"
-                                            disabled={g.isLocked}
-                                            className={cn(
-                                                "w-14 mx-auto bg-white border border-slate-200 rounded-lg text-center text-xs font-black py-1.5 focus:ring-2 focus:ring-amber-400 outline-none transition-all shadow-sm",
-                                                g.isLocked && "bg-slate-50 text-slate-400 border-dashed shadow-none"
-                                            )}
-                                            value={g.midtermScore ?? ""}
-                                            onChange={(e) => handleGradeChange(g.id, 'midtermScore', e.target.value)}
-                                        />
+                                        <div className="flex flex-col items-center gap-0.5">
+                                            <span className="text-[13px] font-black text-amber-700 tabular-nums">
+                                                {g.midtermScore?.toFixed(1) ?? "—"}
+                                            </span>
+                                            <span className="text-[8px] text-amber-400 font-bold">Tự tính</span>
+                                        </div>
                                     </td>
+                                    {/* Thi — Giảng viên nhập, khóa nếu cấm thi */}
                                     <td className="py-5 px-2 bg-indigo-50/10">
                                         <input
                                             type="number"
                                             step="0.1"
                                             disabled={g.isLocked || g.isIneligible}
                                             className={cn(
-                                                "w-14 mx-auto bg-white border border-slate-200 rounded-lg text-center text-xs font-black py-1.5 focus:ring-2 focus:ring-indigo-400 outline-none transition-all shadow-sm",
-                                                (g.isLocked || g.isIneligible) && "bg-slate-50 text-slate-400 border-dashed shadow-none"
+                                                "w-14 mx-auto bg-white border border-indigo-200 rounded-lg text-center text-xs font-black py-1.5 focus:ring-2 focus:ring-indigo-400 outline-none transition-all shadow-sm",
+                                                (g.isLocked || g.isIneligible) && "bg-slate-50 text-slate-400 border-dashed shadow-none cursor-not-allowed"
                                             )}
                                             value={g.finalScore ?? ""}
                                             onChange={(e) => handleGradeChange(g.id, 'finalScore', e.target.value)}
+                                            title={g.isIneligible ? "SV bị cấm thi (vắng ≥ 50%)" : "Điểm thi kết thúc học phần"}
                                         />
                                     </td>
                                     <td className="py-5 px-8 text-center border-l border-slate-100">
@@ -455,11 +524,15 @@ export default function LecturerGradeEntryPage() {
                     <div className="flex items-center gap-6">
                         <div className="flex items-center gap-2">
                              <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                             Hệ số: 1 - 1 - 1 - 2 - 5
+                             Quy chế: CC(×TC) + ĐKĐ(×2) + TX(×1)
                         </div>
                         <div className="flex items-center gap-2">
-                             <TrendingUp size={14} className="text-emerald-500" />
-                             Tự động tính điểm tổng kết
+                             <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
+                             ĐHP = QT×40% + Thi×60%
+                        </div>
+                        <div className="flex items-center gap-2">
+                             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                             CC tự động tính từ dữ liệu điểm danh
                         </div>
                     </div>
                 </div>

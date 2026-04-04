@@ -103,13 +103,7 @@ export default function LoginPage() {
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                             />
-                            {!isEmail && (
-                                <div className="mt-2 grid grid-cols-3 gap-1 text-[10px] text-white/30">
-                                    <span className={`px-2 py-1 rounded border ${email.startsWith('9') ? 'border-blue-500 text-blue-400' : 'border-white/5'} text-center`}>9... = Admin</span>
-                                    <span className={`px-2 py-1 rounded border ${email.startsWith('8') ? 'border-emerald-500 text-emerald-400' : 'border-white/5'} text-center`}>8... = Phòng ĐT</span>
-                                    <span className={`px-2 py-1 rounded border ${email.startsWith('3') ? 'border-amber-500 text-amber-400' : 'border-white/5'} text-center`}>3... = GV</span>
-                                </div>
-                            )}
+
                         </div>
 
                         <div>
@@ -143,23 +137,6 @@ export default function LoginPage() {
                         </button>
                     </form>
 
-                    {/* Role guide */}
-                    <div className="mt-6 pt-5 border-t border-white/5">
-                        <p className="text-[11px] text-center text-white/30 uppercase tracking-widest mb-3">Phân quyền hệ thống</p>
-                        <div className="grid grid-cols-3 gap-2">
-                            {[
-                                { color: "bg-blue-600", label: "Admin", desc: "9xxxxxxxxxx" },
-                                { color: "bg-emerald-600", label: "ĐT", desc: "8xxxxxxxxxx" },
-                                { color: "bg-amber-500", label: "GV", desc: "3xxxxxxxxxx" },
-                            ].map((r) => (
-                                <div key={r.label} className="flex flex-col items-center gap-1 p-2 rounded-lg bg-white/3">
-                                    <div className={`w-5 h-5 ${r.color} rounded-full`}></div>
-                                    <span className="text-[10px] font-bold text-white/60">{r.label}</span>
-                                    <span className="text-[9px] text-white/30">{r.desc}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
                 </div>
 
                 <p className="mt-6 text-center text-xs text-white/20">

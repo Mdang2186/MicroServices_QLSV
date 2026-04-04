@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Redis } from 'ioredis';
 
 interface CacheEntry<T> {
     data: T;
@@ -6,54 +8,137 @@ interface CacheEntry<T> {
 }
 
 /**
- * Lightweight in-process TTL cache.
- * Designed for read-heavy, write-rarely data (rooms, semesters, faculties, etc.)
- * No external dependency required — works within a single NestJS process.
+ * Hybrid Distributed Cache Service.
+ * L1: In-process Map (Process-local fast access)
+ * L2: Redis (Shared across all Microservices)
+ * Fallback: Automatically falls back to L1 if Redis is unavailable.
  */
 @Injectable()
-export class CacheService {
-    private readonly store = new Map<string, CacheEntry<any>>();
+export class CacheService implements OnModuleInit {
+    private readonly localStore = new Map<string, CacheEntry<any>>();
+    private redisClient: Redis | null = null;
+    private isRedisReady = false;
+
+    constructor(private readonly configService: ConfigService) { }
+
+    onModuleInit() {
+        this.initRedis();
+    }
+
+    private initRedis() {
+        const redisUrl = this.configService.get('REDIS_URL') || 'redis://localhost:6379';
+
+        try {
+            this.redisClient = new Redis(redisUrl, {
+                maxRetriesPerRequest: 1,
+                retryStrategy(times) {
+                    return Math.min(times * 100, 3000);
+                },
+                connectTimeout: 2000,
+            });
+
+            this.redisClient.on('error', (err) => {
+                this.isRedisReady = false;
+                console.warn('[Redis] Connection Issue (Cache):', err.message);
+            });
+
+            this.redisClient.on('connect', () => {
+                this.isRedisReady = true;
+                console.log('[Redis] Connected (Cache) for Distributed Caching.');
+            });
+
+            this.redisClient.on('ready', () => {
+                this.isRedisReady = true;
+            });
+
+        } catch (error) {
+            console.warn('[Redis] Cache initialization failed, using In-Memory mode only.');
+        }
+    }
 
     /**
-     * Returns cached value if found and not expired, otherwise calls loader() and caches the result.
-     * @param key   Unique cache key
-     * @param ttlMs Time-to-live in milliseconds
-     * @param loader Function that fetches fresh data when cache is cold/expired
+     * Hybrid Get-Or-Set.
+     * Priority: L1 (Local) -> L2 (Redis) -> Loader (DB)
      */
     async getOrSet<T>(key: string, ttlMs: number, loader: () => Promise<T>): Promise<T> {
         const now = Date.now();
-        const entry = this.store.get(key);
 
-        if (entry && entry.expiresAt > now) {
-            return entry.data as T;
+        // 1. Try L1 (Memory)
+        const localEntry = this.localStore.get(key);
+        if (localEntry && localEntry.expiresAt > now) {
+            return localEntry.data as T;
         }
 
+        // 2. Try L2 (Redis)
+        if (this.isRedisReady && this.redisClient) {
+            try {
+                const cached = await this.redisClient.get(key);
+                if (cached) {
+                    const data = JSON.parse(cached) as T;
+                    // Seed L1 for next time
+                    this.localStore.set(key, { data, expiresAt: now + ttlMs });
+                    return data;
+                }
+            } catch (err) {
+                console.warn('[Redis] Cache Get Error:', err.message);
+            }
+        }
+
+        // 3. Fallback to Loader (Database)
         const data = await loader();
-        this.store.set(key, { data, expiresAt: now + ttlMs });
+
+        // 4. Update L1
+        this.localStore.set(key, { data, expiresAt: now + ttlMs });
+
+        // 5. Update L2 (Fire and forget)
+        if (this.isRedisReady && this.redisClient) {
+            this.redisClient.set(key, JSON.stringify(data), 'PX', ttlMs).catch(err => {
+                console.warn('[Redis] Cache Set Error:', err.message);
+            });
+        }
+
         return data;
     }
 
-    /** Remove a specific key (use after a write operation to invalidate stale data) */
-    invalidate(key: string): void {
-        this.store.delete(key);
+    /** Invalidate a specific key across L1 and L2 */
+    async invalidate(key: string): Promise<void> {
+        this.localStore.delete(key);
+        if (this.isRedisReady && this.redisClient) {
+            await this.redisClient.del(key).catch(() => { });
+        }
     }
 
-    /** Remove all keys that start with the given prefix */
-    invalidatePrefix(prefix: string): void {
-        for (const key of this.store.keys()) {
+    /** Invalidate by prefix (caution: L2 uses SCAN/KEYS which can be slow) */
+    async invalidatePrefix(prefix: string): Promise<void> {
+        // Clear L1
+        for (const key of this.localStore.keys()) {
             if (key.startsWith(prefix)) {
-                this.store.delete(key);
+                this.localStore.delete(key);
+            }
+        }
+
+        // Clear L2
+        if (this.isRedisReady && this.redisClient) {
+            try {
+                const keys = await this.redisClient.keys(`${prefix}*`);
+                if (keys.length > 0) {
+                    await this.redisClient.del(...keys);
+                }
+            } catch (err) {
+                console.warn('[Redis] InvalidatePrefix Error:', err.message);
             }
         }
     }
 
-    /** Purge all cached entries (use sparingly) */
-    invalidateAll(): void {
-        this.store.clear();
+    /** Purge all cache */
+    async invalidateAll(): Promise<void> {
+        this.localStore.clear();
+        if (this.isRedisReady && this.redisClient) {
+            await this.redisClient.flushdb().catch(() => { });
+        }
     }
 
-    /** Return the number of entries currently in cache (for diagnostics) */
     get size(): number {
-        return this.store.size;
+        return this.localStore.size;
     }
 }

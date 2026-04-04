@@ -42,6 +42,7 @@ async function main() {
     await prisma.prerequisite.deleteMany();
     await prisma.tuitionConfig.deleteMany();
     await prisma.major.deleteMany();
+    await prisma.department.deleteMany();
     await prisma.faculty.deleteMany();
     await prisma.semester.deleteMany();
     await prisma.user.deleteMany();
@@ -141,6 +142,22 @@ async function main() {
         });
     }
 
+    console.log("➤ Creating Departments...");
+    const depts = [
+        { id: "DEPT_KTPM", facultyId: "FAC_CNTT", code: "BM_KTPM", name: "Bộ môn Kỹ thuật phần mềm", headName: "TS. Bùi Văn KTPM" },
+        { id: "DEPT_KHMT", facultyId: "FAC_CNTT", code: "BM_KHMT", name: "Bộ môn Khoa học máy tính", headName: "TS. Đinh Văn KHMT" },
+        { id: "DEPT_QTKD", facultyId: "FAC_KT", code: "BM_QTKD", name: "Bộ môn Quản trị kinh doanh", headName: "TS. Trần QTKD" },
+        { id: "DEPT_KETOAN", facultyId: "FAC_KT", code: "BM_KT", name: "Bộ môn Kế toán", headName: "TS. Lê Kế Toán" },
+        { id: "DEPT_NNA", facultyId: "FAC_NN", code: "BM_NNA", name: "Bộ môn Ngôn ngữ Anh", headName: "TS. Phạm NNA" },
+        { id: "DEPT_NNT", facultyId: "FAC_NN", code: "BM_NNT", name: "Bộ môn Ngôn ngữ Trungực", headName: "TS. Vũ NNT" },
+    ];
+
+    for (const d of depts) {
+        await prisma.department.create({
+            data: { id: d.id, facultyId: d.facultyId, code: d.code, name: d.name, headName: d.headName }
+        });
+    }
+
     const majors = [
         { 
             id: "MAJ_KTPM", facultyId: "FAC_CNTT", code: "KTPM", name: "Kỹ thuật phần mềm", credits: 150, mCode: "103",
@@ -199,8 +216,15 @@ async function main() {
         { id: "SUB_ZH01", majorId: "MAJ_NNT", code: "ZH01", name: "Hán ngữ cơ sở 1", credits: 4 },
         { id: "SUB_ZH02", majorId: "MAJ_NNT", code: "ZH02", name: "Hán ngữ nâng cao", credits: 3 },
     ];
-
+    
     for (const s of subjectData) {
+        let deptId = "DEPT_KTPM";
+        if (s.majorId === "MAJ_KHMT") deptId = "DEPT_KHMT";
+        if (s.majorId === "MAJ_QTKD") deptId = "DEPT_QTKD";
+        if (s.majorId === "MAJ_KETOAN") deptId = "DEPT_KETOAN";
+        if (s.majorId === "MAJ_NNA") deptId = "DEPT_NNA";
+        if (s.majorId === "MAJ_NNT") deptId = "DEPT_NNT";
+
         await prisma.subject.create({
             data: {
                 id: s.id,
@@ -210,7 +234,7 @@ async function main() {
                 credits: s.credits,
                 theoryHours: s.credits * 15,
                 practiceHours: 0,
-                department: "Bộ môn Chuyên ngành",
+                departmentId: deptId,
                 description: `Mô tả môn học ${s.name}`
             }
         });

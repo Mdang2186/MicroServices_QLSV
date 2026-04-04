@@ -1,0 +1,1 @@
+const { PrismaClient } = require('./packages/database/node_modules/@prisma/client'); const db = new PrismaClient(); db.faculty.findMany().then(r => console.log(JSON.stringify(r))).finally(() => db.$disconnect());

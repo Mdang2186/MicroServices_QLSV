@@ -11,13 +11,27 @@ export class EnrollmentController {
         schema: {
             type: 'object',
             properties: {
-                studentId: { type: 'string', example: 'STU12345' },
-                classId: { type: 'string', example: 'CLS67890' }
+                studentId: { type: 'string' },
+                classId: { type: 'string' }
             }
         }
     })
     register(@Body() body: { studentId: string; classId: string }) {
         return this.enrollmentService.registerCourse(body.studentId, body.classId);
+    }
+
+    @Post('drop')
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                studentId: { type: 'string' },
+                classId: { type: 'string' }
+            }
+        }
+    })
+    drop(@Body() body: { studentId: string; classId: string }) {
+        return this.enrollmentService.dropCourse(body.studentId, body.classId);
     }
 
     @Post('switch')

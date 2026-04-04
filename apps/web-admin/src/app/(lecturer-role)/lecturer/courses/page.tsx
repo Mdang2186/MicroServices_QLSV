@@ -20,11 +20,16 @@ import {
     MoreHorizontal,
     ArrowUpRight,
     TrendingUp,
-    ChevronLeft
+    ChevronLeft,
+    Activity,
+    Clock,
+    UserCircle,
+    ArrowRight
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { CompactLecturerHeader } from "@/components/dashboard/CompactLecturerHeader";
 
 export default function LecturerCoursesPage() {
     const router = useRouter();
@@ -32,6 +37,7 @@ export default function LecturerCoursesPage() {
     const [courses, setCourses] = useState<any[]>([]);
     const [filteredCourses, setFilteredCourses] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [selectedSemesterId, setSelectedSemesterId] = useState<string>("");
     const [searchQuery, setSearchQuery] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 8;
@@ -44,11 +50,12 @@ export default function LecturerCoursesPage() {
     }, []);
 
     useEffect(() => {
-        if (!user?.id) return;
+        if (!user?.profileId) return;
+        setLoading(true);
         const headers: any = TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {};
 
-        const lecturerId = user.profileId || user.lecturer?.id || user.id;
-        fetch(`/api/courses/lecturer/${lecturerId}`, { headers })
+        const query = selectedSemesterId ? `?semesterId=${selectedSemesterId}` : "";
+        fetch(`/api/courses/lecturer/${user.profileId}${query}`, { headers })
             .then(r => r.ok ? r.json() : [])
             .then(data => {
                 const fetched = Array.isArray(data) ? data : data?.data || [];
@@ -60,7 +67,7 @@ export default function LecturerCoursesPage() {
                 setFilteredCourses([]);
             })
             .finally(() => setLoading(false));
-    }, [user, TOKEN]);
+    }, [user, TOKEN, selectedSemesterId]);
 
     useEffect(() => {
         const query = searchQuery.toLowerCase();
@@ -73,162 +80,212 @@ export default function LecturerCoursesPage() {
         setCurrentPage(1);
     }, [searchQuery, courses]);
 
+    const totalCredits = filteredCourses.reduce((acc, c) => acc + (c.subject?.credits || 0), 0);
+    const totalStudents = filteredCourses.reduce((acc, c) => acc + (c.currentSlots || 0), 0);
+
     const paginatedCourses = filteredCourses.slice(
         (currentPage - 1) * itemsPerPage,
         currentPage * itemsPerPage
     );
     const totalPages = Math.ceil(filteredCourses.length / itemsPerPage);
 
-    if (loading) {
+    if (loading && courses.length === 0) {
         return (
-            <div className="flex min-h-screen items-center justify-center bg-[#f8fafc]">
-                <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-600"></div>
+            <div className="flex min-h-screen items-center justify-center bg-[#fbfcfd]">
+                <div className="w-10 h-10 border-[3px] border-uneti-blue/10 border-t-uneti-blue rounded-full animate-spin"></div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen space-y-8 pb-20 max-w-7xl mx-auto px-4 sm:px-6 animate-in fade-in duration-700">
-            {/* Nav & Action Header */}
-            <div className="flex border-b border-slate-100 pb-2">
-                <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    <GraduationCap size={14} className="text-slate-400" />
-                    <span>Giảng viên Portal</span>
-                    <ChevronRight size={10} />
-                    <span className="text-slate-800">Quản lý lớp học</span>
-                </div>
-            </div>
+        <div className="space-y-6 animate-in fade-in duration-700 bg-[#fbfcfd] min-h-screen pb-20 px-1 max-w-7xl mx-auto">
+            <CompactLecturerHeader 
+                userName={`${user?.degree || "Giảng viên"} ${user?.fullName || "Cao cấp"}`} 
+                userId={`GV-${user?.username || "UNETI"}`}
+                minimal={true}
+                title="Danh mục học phần"
+                onSemesterChange={setSelectedSemesterId}
+            />
 
-            {/* Title & Search Bar */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <h1 className="text-2xl font-black text-slate-800 tracking-tight">
-                    Danh sách học phần
-                </h1>
-                
-                <div className="flex items-center gap-3 w-full md:w-80 relative">
+            {/* Summary Statistics Bar */}
+            <div className="flex flex-wrap items-center gap-4 px-1">
+                <div className="bg-white px-5 py-3 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600">
+                        <BookMarked size={16} />
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Tổng học phần</span>
+                        <span className="text-sm font-black text-slate-800">{filteredCourses.length} Lớp</span>
+                    </div>
+                </div>
+
+                <div className="bg-white px-5 py-3 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-uneti-blue-light text-uneti-blue">
+                        <TrendingUp size={16} />
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Tổng tín chỉ</span>
+                        <span className="text-sm font-black text-slate-800">{totalCredits} Tín chỉ</span>
+                    </div>
+                </div>
+
+                <div className="bg-white px-5 py-3 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-orange-50 text-orange-600">
+                        <Users size={16} />
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Tổng sinh viên</span>
+                        <span className="text-sm font-black text-slate-800">{totalStudents} SV</span>
+                    </div>
+                </div>
+
+                <div className="ml-auto w-full md:w-80 relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                     <input
                         type="text"
-                        placeholder="Tìm kiếm lớp học..."
-                        className="bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs font-bold text-slate-700 w-full focus:ring-1 focus:ring-slate-300 transition-all outline-none"
+                        placeholder="Tìm kiếm lớp học phần..."
+                        className="bg-white border border-slate-100 rounded-xl pl-10 pr-4 py-2.5 text-[11px] font-bold text-slate-700 w-full focus:ring-2 focus:ring-uneti-blue/10 focus:border-uneti-blue transition-all outline-none shadow-sm"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
                 </div>
             </div>
 
-            {/* Course List Layout */}
-            <div className="space-y-2">
-                <AnimatePresence mode="wait">
-                    {paginatedCourses.map((c, i) => {
-                        return (
-                            <motion.div
-                                key={c.id}
-                                initial={{ opacity: 0, x: -10 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: 10 }}
-                                transition={{ duration: 0.2 }}
-                            >
-                                <div className="bg-white border border-slate-100 p-3 hover:bg-slate-50 transition-all flex items-center justify-between group rounded-xl">
-                                    <div className="flex items-center gap-4 flex-1">
-                                        <div className="h-10 w-10 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400 border border-slate-100">
-                                            <BookOpen size={18} />
-                                        </div>
-                                        <div className="space-y-0.5">
+            {/* Course List Layout - High Density Rows */}
+            <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm space-y-4">
+                <div className="flex items-center justify-between mb-2">
+                    <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                        <LayoutGrid size={18} className="text-uneti-blue" />
+                        Danh mục học phần ({filteredCourses.length})
+                    </h2>
+                </div>
+
+                <div className="space-y-3">
+                    <AnimatePresence mode="wait">
+                        {paginatedCourses.map((c, i) => {
+                            const progress = Math.min(100, Math.round(((c.currentSlots || 0) / (c.maxSlots || 1)) * 100));
+                            return (
+                                <motion.div
+                                    key={c.id}
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -10 }}
+                                    transition={{ duration: 0.3, delay: i * 0.05 }}
+                                >
+                                    <div className="flex flex-col lg:flex-row items-center gap-4 p-4 rounded-xl border border-slate-100 hover:border-uneti-blue hover:bg-slate-50/50 transition-all group">
+                                        <div className="flex-1 min-w-0 space-y-1.5">
                                             <div className="flex items-center gap-2">
-                                                <span className="text-[9px] font-black text-indigo-600 px-1.5 py-0.5 bg-indigo-50 rounded uppercase tracking-wider">
-                                                    {c.code}
-                                                </span>
-                                                <span className="text-[9px] font-bold text-slate-400 uppercase">
-                                                    HK {c.semester?.name?.split(' ').pop()} • {c.subject?.credits || 0} Tín chỉ
-                                                </span>
+                                                <span className="text-[9px] font-black text-uneti-blue uppercase bg-white px-2 py-0.5 rounded-md border border-uneti-blue/10 shadow-sm">{c.code}</span>
+                                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">TC: {c.subject?.credits} • Học kỳ {c.semester?.name?.split(' ').pop()}</span>
                                             </div>
-                                            <h3 className="font-bold text-slate-700 text-sm uppercase tracking-tight line-clamp-1">
+                                            <h3 className="font-bold text-slate-800 text-[13px] truncate uppercase group-hover:text-uneti-blue transition-colors tracking-tight">
                                                 {c.name || c.subject?.name}
                                             </h3>
+                                            <div className="flex items-center gap-4 text-[9px] font-black text-slate-400 uppercase tracking-tight italic">
+                                                <div className="flex items-center gap-1">
+                                                    <Clock size={10} className="text-slate-300" />
+                                                    <span>{c.schedules?.map((s:any)=>`T${s.dayOfWeek}`).join(", ") || "Chưa xếp lịch"}</span>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <UserCircle size={10} className="text-slate-300" />
+                                                    <span>Lớp chính quy: {c.adminClasses?.map((ac: any) => ac.code).join(", ")}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-6 w-full lg:w-auto">
+                                            <div className="flex flex-col gap-1 w-24">
+                                                <div className="flex justify-between text-[9px] font-black text-slate-500 uppercase tracking-widest pl-0.5">
+                                                    <span>SV: {c.currentSlots}</span>
+                                                    <span className="text-slate-300">/ {c.maxSlots}</span>
+                                                </div>
+                                                <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                                    <div className={cn(
+                                                        "h-full rounded-full transition-all duration-1000",
+                                                        progress > 90 ? "bg-red-500" : progress > 70 ? "bg-orange-500" : "bg-uneti-blue"
+                                                    )} style={{ width: `${progress}%` }}></div>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-2 grow lg:grow-0">
+                                                <Button
+                                                    variant="outline"
+                                                    onClick={() => router.push(`/lecturer/attendance/${c.id}`)}
+                                                    className="h-9 px-4 rounded-xl border-slate-100 text-[10px] font-black uppercase text-emerald-600 hover:bg-emerald-50 hover:border-emerald-100 transition-all shadow-sm"
+                                                >
+                                                    <UserCheck size={14} className="mr-2" />
+                                                    Điểm danh
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    onClick={() => router.push(`/lecturer/grades/${c.id}`)}
+                                                    className="h-9 px-4 rounded-xl border-slate-100 text-[10px] font-black uppercase text-uneti-blue hover:bg-uneti-blue-light/50 hover:border-uneti-blue/30 transition-all shadow-sm"
+                                                >
+                                                    <Edit3 size={14} className="mr-2" />
+                                                    Nhập điểm
+                                                </Button>
+                                                <Button
+                                                    size="icon"
+                                                    onClick={() => router.push(`/lecturer/courses/${c.id}`)}
+                                                    className="h-9 w-9 rounded-xl bg-slate-800 text-white hover:bg-slate-900 border-none shadow-sm group-hover:scale-105 transition-transform"
+                                                >
+                                                    <ArrowRight size={16} />
+                                                </Button>
+                                            </div>
                                         </div>
                                     </div>
+                                </motion.div>
+                            );
+                        })}
+                    </AnimatePresence>
+                </div>
 
-                                    <div className="hidden sm:flex items-center gap-8 mr-6">
-                                        <div className="flex flex-col items-end">
-                                            <p className="text-[8px] font-black text-slate-300 uppercase leading-none mb-1">Sinh viên</p>
-                                            <p className="text-xs font-black text-slate-600">{c.currentSlots}/{c.maxSlots}</p>
-                                        </div>
-                                    </div>
+                {/* Pagination UI */}
+                {totalPages > 1 && (
+                    <div className="flex items-center justify-between pt-6 mt-4 border-t border-slate-50">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                            Trang {currentPage} <span className="text-slate-200 mx-2">|</span> {totalPages} (TỔNG {filteredCourses.length} HỌC PHẦN)
+                        </p>
+                        <div className="flex items-center gap-3">
+                            <Button
+                                variant="outline"
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                                className="h-10 w-10 p-0 rounded-2xl border-slate-100 text-slate-400 hover:text-uneti-blue hover:border-uneti-blue shadow-sm"
+                            >
+                                <ChevronLeft size={18} />
+                            </Button>
+                            <Button
+                                variant="outline"
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages}
+                                className="h-10 w-10 p-0 rounded-2xl border-slate-100 text-slate-400 hover:text-uneti-blue hover:border-uneti-blue shadow-sm"
+                            >
+                                <ChevronRight size={18} />
+                            </Button>
+                        </div>
+                    </div>
+                )}
 
-                                    <div className="flex items-center gap-1.5 shrink-0">
-                                        <Button
-                                            variant="outline"
-                                            onClick={() => router.push(`/lecturer/attendance/${c.id}`)}
-                                            className="h-8 rounded-lg border-slate-100 text-[9px] font-black uppercase text-emerald-600 hover:bg-emerald-50 hover:border-emerald-100"
-                                        >
-                                            Điểm danh
-                                        </Button>
-                                        <Button
-                                            variant="outline"
-                                            onClick={() => router.push(`/lecturer/grades/${c.id}`)}
-                                            className="h-8 rounded-lg border-slate-100 text-[9px] font-black uppercase text-blue-600 hover:bg-blue-50 hover:border-blue-100"
-                                        >
-                                            Nhập điểm
-                                        </Button>
-                                        <Button
-                                            onClick={() => router.push(`/lecturer/courses/${c.id}`)}
-                                            className="h-8 w-8 p-0 rounded-lg bg-slate-800 text-white hover:bg-slate-900 border-none"
-                                        >
-                                            <ArrowUpRight size={14} />
-                                        </Button>
-                                    </div>
-                                </div>
-                            </motion.div>
-                        );
-                    })}
-                </AnimatePresence>
+                {filteredCourses.length === 0 && !loading && (
+                    <div className="py-32 flex flex-col items-center justify-center text-center">
+                        <div className="p-6 rounded-full bg-slate-50 text-slate-200 mb-6 border border-slate-100 border-dashed">
+                            <BookOpen size={64} strokeWidth={1} />
+                        </div>
+                        <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Không có dữ liệu giảng dạy</h3>
+                        <p className="text-[10px] font-bold text-slate-400 mt-2 max-w-xs uppercase tracking-widest leading-relaxed">
+                            Không tìm thấy học phần nào khớp với bộ lọc <br/> trong học kỳ hiện tại.
+                        </p>
+                        <Button
+                            variant="ghost"
+                            onClick={() => { setSearchQuery(""); setSelectedSemesterId(""); }}
+                            className="mt-8 text-[10px] font-black text-uneti-blue uppercase tracking-widest hover:bg-uneti-blue-light/50"
+                        >
+                            Đặt lại bộ lọc
+                        </Button>
+                    </div>
+                )}
             </div>
-
-            {/* Pagination UI */}
-            {totalPages > 1 && (
-                <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-2">
-                        Trang {currentPage} / {totalPages} (TỔNG {filteredCourses.length} LỚP)
-                    </p>
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="outline"
-                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                            disabled={currentPage === 1}
-                            className="h-9 w-9 p-0 rounded-xl border-slate-200"
-                        >
-                            <ChevronLeft size={16} />
-                        </Button>
-                        <Button
-                            variant="outline"
-                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                            disabled={currentPage === totalPages}
-                            className="h-9 w-9 p-0 rounded-xl border-slate-200"
-                        >
-                            <ChevronRight size={16} />
-                        </Button>
-                    </div>
-                </div>
-            )}
-
-            {filteredCourses.length === 0 && !loading && (
-                <div className="bg-white rounded-[3rem] py-24 flex flex-col items-center justify-center text-center border border-slate-100 shadow-sm relative overflow-hidden">
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-50 rounded-full blur-[100px] opacity-50"></div>
-                    <div className="relative z-10 scale-125 grayscale opacity-20 mb-8">
-                        <BookOpen size={80} />
-                    </div>
-                    <h3 className="text-xl font-black text-slate-800 relative z-10">Không tìm thấy lớp học nào</h3>
-                    <p className="text-xs font-bold text-slate-400 mt-2 max-w-xs relative z-10 px-4">Chúng tôi đã tìm kiếm khắp nơi nhưng không thấy kết quả khớp với "{searchQuery}".</p>
-                    <Button
-                        variant="ghost"
-                        onClick={() => setSearchQuery("")}
-                        className="mt-8 text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:bg-indigo-50 relative z-10"
-                    >
-                        Xóa tìm kiếm
-                    </Button>
-                </div>
-            )}
         </div>
     );
 }

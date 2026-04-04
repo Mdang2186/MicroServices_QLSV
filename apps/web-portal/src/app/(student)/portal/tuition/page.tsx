@@ -45,8 +45,8 @@ export default function TuitionPage() {
 
     const currentSem = useMemo(() => semesters.find(s => s.id === selectedSemId), [semesters, selectedSemId]);
 
-    const { items, totals } = useMemo(() => {
-        if (!currentSem) return { items: [], totals: { total: 0, paid: 0, debt: 0 } };
+    const { items, totals, totalCredits } = useMemo(() => {
+        if (!currentSem) return { items: [], totals: { total: 0, paid: 0, debt: 0 }, totalCredits: 0 };
 
         const semName = currentSem.name;
         
@@ -87,8 +87,9 @@ export default function TuitionPage() {
         const allItems = [...Object.values(subjectMap), ...otherFees];
         const total = allItems.reduce((acc, it) => acc + it.amount, 0);
         const paid = allItems.reduce((acc, it) => acc + (it.status === "PAID" ? it.amount : 0), 0);
+        const totalCredits = Object.values(subjectMap).reduce((acc, it) => acc + (it.credits || 0), 0);
         
-        return { items: allItems, totals: { total, paid, debt: total - paid } };
+        return { items: allItems, totals: { total, paid, debt: total - paid }, totalCredits };
     }, [selectedSemId, currentSem, enrollments, feeRecords]);
 
     if (!studentId) return <div className="p-20 text-center font-bold text-red-500">Vui lòng đăng nhập lại.</div>;
@@ -96,7 +97,7 @@ export default function TuitionPage() {
 
     return (
         <div className="min-h-screen bg-[#f4f6f8] pb-20 font-sans">
-            <div className="max-w-6xl mx-auto p-6 space-y-4">
+            <div className="max-w-6xl mx-auto p-6 space-y-6">
                 
                 {/* Simple Header */}
                 <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -120,11 +121,31 @@ export default function TuitionPage() {
                     </div>
                 </div>
 
-                <div className="flex flex-col md:flex-row gap-4">
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                        <div className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">Tổng tín chỉ</div>
+                        <div className="text-2xl font-black text-[#003366]">{totalCredits} TC</div>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                        <div className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">Tổng tiền</div>
+                        <div className="text-2xl font-black text-[#003366]">{totals.total.toLocaleString()} ₫</div>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-emerald-100 shadow-sm bg-emerald-50/20">
+                        <div className="text-[10px] text-emerald-600 font-black uppercase tracking-widest mb-1">Đã nộp</div>
+                        <div className="text-2xl font-black text-emerald-600">{totals.paid.toLocaleString()} ₫</div>
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-rose-100 shadow-sm bg-rose-50/20">
+                        <div className="text-[10px] text-rose-600 font-black uppercase tracking-widest mb-1">Số nợ hiện tại</div>
+                        <div className="text-2xl font-black text-rose-600 font-mono italic">{totals.debt.toLocaleString()} ₫</div>
+                    </div>
+                </div>
+
+                <div className="flex flex-col md:flex-row gap-6">
                     {/* Left Panel: Table */}
                     <div className="flex-1 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
                         <div className="bg-[#003366] px-5 py-3 text-white text-[11px] font-black uppercase tracking-widest">
-                            {currentSem?.name}
+                            Chi tiết học phí: {currentSem?.name}
                         </div>
                         <div className="overflow-x-auto">
                             <table className="w-full text-left text-[12px]">
@@ -173,29 +194,28 @@ export default function TuitionPage() {
 
                     {/* Right Panel: Totals Details */}
                     <div className="w-full md:w-72 flex flex-col gap-4">
-                        <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-5 space-y-4">
-                            <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-widest border-b pb-2">Tổng hợp Tài chính</h3>
+                        <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-5 space-y-4 sticky top-4">
+                            <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-widest border-b pb-2">Hành động Tài chính</h3>
                             
                             <div className="space-y-4 pt-2">
-                                <div>
-                                    <div className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Tổng học phí</div>
-                                    <div className="text-xl font-black text-[#003366]">{totals.total.toLocaleString()} ₫</div>
-                                </div>
+                                <button 
+                                    disabled={totals.debt <= 0}
+                                    className={`w-full font-black py-3 rounded-lg text-xs uppercase tracking-widest transition-all ${totals.debt > 0 ? "bg-[#003366] text-white hover:bg-opacity-90 shadow-lg shadow-blue-100" : "bg-slate-100 text-slate-400 cursor-not-allowed"}`}
+                                >
+                                    {totals.debt > 0 ? 'Thanh toán ngay' : 'Đã hoàn thành'}
+                                </button>
                                 
-                                <div>
-                                    <div className="text-[10px] text-emerald-600 uppercase font-black tracking-widest">Đã thanh toán</div>
-                                    <div className="text-xl font-black text-emerald-600">{totals.paid.toLocaleString()} ₫</div>
-                                </div>
-                                
-                                <div className="border-t border-slate-100 pt-4">
-                                    <div className="text-[10px] text-rose-600 uppercase font-black tracking-widest">Số tiền còn nợ</div>
-                                    <div className="text-3xl font-black text-rose-600 tracking-tight">{totals.debt > 0 ? totals.debt.toLocaleString() : '0'} ₫</div>
-                                </div>
+                                <button className="w-full bg-slate-50 text-slate-600 border border-slate-200 font-bold py-2.5 rounded-lg text-[11px] uppercase tracking-widest hover:bg-slate-100 transition-colors">
+                                    Tải biên lai (PDF)
+                                </button>
                             </div>
 
-                            <button className="w-full mt-4 bg-slate-100 text-slate-600 font-bold py-2.5 rounded text-[11px] uppercase tracking-widest hover:bg-slate-200 transition-colors">
-                                Tải biên lai thu tiền
-                            </button>
+                            <div className="mt-6 p-3 bg-blue-50 rounded-lg border border-blue-100 flex gap-3">
+                                <AlertCircle className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                                <span className="text-[10px] text-blue-700 font-medium leading-relaxed italic">
+                                    Sinh viên cần hoàn thành học phí trước thời gian thi học kỳ để được tham gia dự thi (isEligibleForExam).
+                                </span>
+                            </div>
                         </div>
                     </div>
                 </div>

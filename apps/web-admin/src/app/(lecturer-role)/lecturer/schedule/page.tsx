@@ -1,28 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Cookies from "js-cookie";
-import Link from "next/link";
 import {
-    Calendar,
-    ChevronRight,
-    ArrowLeft,
-    Clock,
-    MapPin,
-    GraduationCap,
-    Download,
     ChevronLeft,
-    LayoutGrid,
-    List,
-    BookOpen,
+    ChevronRight,
+    MapPin,
+    Clock,
+    Printer,
+    CalendarCheck,
     Info,
-    Search,
-    Printer
+    CalendarDays,
+    ArrowUpRight
 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
+import { CompactLecturerHeader } from "@/components/dashboard/CompactLecturerHeader";
+
+const SESSIONS = [
+    { label: "Sáng", time: "07:00 - 12:15", value: "morning" },
+    { label: "Chiều", time: "13:00 - 18:15", value: "afternoon" },
+    { label: "Tối", time: "18:30 - 21:00", value: "evening" },
+];
 
 const DAYS = [
     { name: "Thứ Hai", short: "T2", value: 2 },
@@ -34,18 +35,13 @@ const DAYS = [
     { name: "Chủ Nhật", short: "CN", value: 8 },
 ];
 
-const SHIFTS = Array.from({ length: 12 }, (_, i) => ({
-    id: i + 1,
-    label: `Tiết ${i + 1}`,
-    time: i < 6 ? "Sáng" : "Chiều"
-}));
-
 export default function LecturerSchedulePage() {
-    const router = useRouter();
     const [user, setUser] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
+    const [schedule, setSchedule] = useState<any[]>([]);
+    const [selectedSemesterId, setSelectedSemesterId] = useState<string>("");
     const [selectedDate, setSelectedDate] = useState(new Date());
-    const [courses, setCourses] = useState<any[]>([]);
+    const [filter, setFilter] = useState("all");
 
     const TOKEN = Cookies.get("admin_accessToken");
 
@@ -55,161 +51,165 @@ export default function LecturerSchedulePage() {
     }, []);
 
     useEffect(() => {
-        if (!user?.id) return;
-        const lecturerId = user.profileId || user.lecturer?.id || user.id;
-        const headers: any = TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {};
-
-        // Use the confirmed lecturer-specific endpoint
-        fetch(`/api/courses/lecturer/${lecturerId}`, { headers })
+        if (!user?.profileId || !selectedSemesterId) {
+            setLoading(false);
+            return;
+        }
+        
+        setLoading(true);
+        fetch(`/api/courses/schedule/lecturer/${user.profileId}?semesterId=${selectedSemesterId}`, {
+            headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}
+        })
             .then(r => r.ok ? r.json() : [])
-            .then(data => setCourses(Array.isArray(data) ? data : data?.data || []))
-            .catch(() => setCourses([]))
+            .then(data => {
+                setSchedule(Array.isArray(data) ? data : []);
+            })
+            .catch(() => setSchedule([]))
             .finally(() => setLoading(false));
-    }, [user, TOKEN]);
+    }, [user, selectedSemesterId, TOKEN]);
 
-    const startOfWeek = (date: Date) => {
-        const d = new Date(date);
+    const weekDays = useMemo(() => {
+        const d = new Date(selectedDate);
         const day = d.getDay();
         const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-        return new Date(d.setDate(diff));
+        const start = new Date(d.setDate(diff));
+        return Array.from({ length: 7 }, (_, i) => {
+            const date = new Date(start);
+            date.setDate(date.getDate() + i);
+            return date;
+        });
+    }, [selectedDate]);
+
+    const getSchedulesForDayAndSession = (dayValue: number, sessionValue: string) => {
+        return schedule.filter(s => {
+            if (s.dayOfWeek !== dayValue) return false;
+
+            const start = Number(s.startShift);
+            let sessionMatch = false;
+            if (sessionValue === "morning") sessionMatch = start <= 6;
+            else if (sessionValue === "afternoon") sessionMatch = start > 6 && start <= 12;
+            else if (sessionValue === "evening") sessionMatch = start > 12;
+
+            if (!sessionMatch) return false;
+
+            if (filter === "study" && s.type === "EXAM") return false;
+            if (filter === "exam" && s.type !== "EXAM") return false;
+
+            return true;
+        }).sort((a, b) => Number(a.startShift) - Number(b.startShift));
     };
 
-    const addDays = (date: Date, days: number) => {
-        const result = new Date(date);
-        result.setDate(result.getDate() + days);
-        return result;
-    };
-
-    const weekDays = Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(selectedDate), i));
-
-    const navigateDate = (direction: 'next' | 'prev') => {
+    const navigateWeek = (direction: 'next' | 'prev') => {
         const d = new Date(selectedDate);
         d.setDate(d.getDate() + (direction === 'next' ? 7 : -7));
         setSelectedDate(d);
     };
 
-    // Helper to check if a schedule exists at a specific day and shift
-    const getScheduleAtPos = (dayValue: number, shiftId: number) => {
-        for (const c of courses) {
-            for (const s of (c.schedules || [])) {
-                if (s.dayOfWeek === dayValue && s.startShift === shiftId) {
-                    return {
-                        ...s,
-                        courseName: c.title || c.subject?.name,
-                        courseCode: c.code,
-                        classId: c.id,
-                        semesterName: c.semester?.name,
-                        duration: (s.endShift - s.startShift) + 1
-                    };
-                }
-            }
-        }
-        return null;
-    };
-
-    // Helper to check if a shift is covered by a spanning schedule
-    const isShiftCovered = (dayValue: number, shiftId: number) => {
-        for (const c of courses) {
-            for (const s of (c.schedules || [])) {
-                if (s.dayOfWeek === dayValue && shiftId > s.startShift && shiftId <= s.endShift) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    };
-
-    if (loading) {
-        return (
-            <div className="flex min-h-screen items-center justify-center bg-[#f8fafc]">
-                <div className="h-12 w-12 animate-spin rounded-full border-4 border-indigo-100 border-t-indigo-600"></div>
-            </div>
-        );
-    }
-
     return (
-        <div className="min-h-screen space-y-6 pb-20 max-w-7xl mx-auto px-4 sm:px-6">
-            {/* Premium Header */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-2 border-b border-slate-100 pt-4">
-                <div className="space-y-1">
-                    <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 px-3 py-1 rounded-full w-fit mb-2">Teaching Schedule</p>
-                    <h1 className="text-3xl font-black text-slate-800 tracking-tight">Lịch giảng dạy tuần này</h1>
-                    <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
-                        <GraduationCap size={14} className="text-indigo-400" />
-                        <span>Giảng viên: {user?.lecturer?.fullName || user?.fullName}</span>
-                    </div>
-                </div>
+        <div className="min-h-screen space-y-4 pb-20 max-w-7xl mx-auto p-4 md:p-6 animate-in fade-in duration-700 bg-[#fbfcfd]">
+            <CompactLecturerHeader 
+                userName={`${user?.degree || "Giảng viên"} ${user?.fullName || "Cao cấp"}`} 
+                userId={`GV-${user?.username || "UNETI"}`}
+                minimal={true}
+                title="Lịch giảng dạy chi tiết"
+                onSemesterChange={setSelectedSemesterId}
+            />
 
-                <div className="flex items-center gap-2 p-1 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                    <button
-                        onClick={() => navigateDate('prev')}
-                        className="h-10 w-10 flex items-center justify-center rounded-xl hover:bg-slate-50 text-slate-400 hover:text-indigo-600 transition-all"
-                    >
-                        <ChevronLeft size={20} />
-                    </button>
-                    <div className="px-5 py-1.5 text-xs font-black text-slate-700 tracking-tight flex flex-col items-center">
-                        <span>Tuần {weekDays[0].toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })} - {weekDays[6].toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}</span>
+            {/* Compact Toolbar & Navigation */}
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-3 px-5 rounded-2xl border border-slate-100 shadow-sm">
+                <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-3 pr-6 border-r border-slate-100">
+                        <div className="p-2 rounded-lg bg-uneti-blue-light text-uneti-blue">
+                            <CalendarDays size={18} />
+                        </div>
+                        <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight">
+                            {weekDays[0].toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })} - {weekDays[6].toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                        </h2>
                     </div>
-                    <button
-                        onClick={() => navigateDate('next')}
-                        className="h-10 w-10 flex items-center justify-center rounded-xl hover:bg-slate-50 text-slate-400 hover:text-indigo-600 transition-all"
-                    >
-                        <ChevronRight size={20} />
-                    </button>
-                </div>
-            </div>
 
-            {/* Actions Bar */}
-            <div className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                    <Button
-                        variant="ghost"
-                        onClick={() => setSelectedDate(new Date())}
-                        className="h-10 rounded-xl px-4 text-xs font-bold text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 transition-all border border-transparent hover:border-indigo-100"
-                    >
-                        Hôm nay
-                    </Button>
-                    <div className="h-6 w-px bg-slate-100 mx-1 hidden sm:block"></div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest hidden sm:block">
-                        Lịch dạy thời gian thực
-                    </p>
+                    <div className="hidden lg:flex items-center gap-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                        {[
+                            { id: "all", label: "Tất cả" },
+                            { id: "study", label: "Giảng dạy" },
+                            { id: "exam", label: "Lịch thi" }
+                        ].map((f) => (
+                            <button
+                                key={f.id}
+                                onClick={() => setFilter(f.id)}
+                                className={cn(
+                                    "px-3 py-1.5 rounded-lg transition-all",
+                                    filter === f.id ? "bg-slate-100 text-uneti-blue" : "hover:text-uneti-blue"
+                                )}
+                            >
+                                {f.label}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 p-1 bg-slate-50 rounded-xl border border-slate-100">
+                        <button
+                            onClick={() => navigateWeek('prev')}
+                            className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-white hover:shadow-sm text-slate-400 hover:text-uneti-blue transition-all"
+                        >
+                            <ChevronLeft size={18} />
+                        </button>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedDate(new Date())}
+                            className="h-8 px-3 text-[10px] font-black uppercase text-slate-600 hover:bg-white hover:shadow-sm transition-all"
+                        >
+                            <CalendarCheck className="mr-1.5 h-3.5 w-3.5 text-uneti-blue" /> Hôm nay
+                        </Button>
+                        <button
+                            onClick={() => navigateWeek('next')}
+                            className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-white hover:shadow-sm text-slate-400 hover:text-uneti-blue transition-all"
+                        >
+                            <ChevronRight size={18} />
+                        </button>
+                    </div>
+                    
                     <Button
                         variant="ghost"
-                        className="h-10 rounded-xl px-4 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all border border-slate-200"
+                        size="sm"
+                        className="h-10 w-10 p-0 rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-100 shadow-sm"
                     >
-                        <Printer className="mr-2 h-4 w-4" /> In lịch dạy
-                    </Button>
-                    <Button
-                        className="h-10 rounded-xl px-4 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all uppercase tracking-widest"
-                    >
-                        <Download className="mr-2 h-4 w-4" /> Tải về (.xlsx)
+                        <Printer size={16} />
                     </Button>
                 </div>
             </div>
 
-            {/* Schedule Grid - 12 Shift Format */}
-            <div className="bg-white rounded-none border border-slate-200 shadow-sm overflow-hidden relative">
+            {/* Main Schedule Grid */}
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden relative min-h-[600px]">
+                {loading && (
+                    <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] z-50 flex items-center justify-center">
+                        <div className="flex flex-col items-center gap-3">
+                            <div className="w-10 h-10 border-[3px] border-uneti-blue/10 border-t-uneti-blue rounded-full animate-spin"></div>
+                            <span className="text-[10px] font-black text-uneti-blue uppercase tracking-widest">Đang cập nhật...</span>
+                        </div>
+                    </div>
+                )}
+
                 <div className="overflow-x-auto">
-                    <table className="w-full border-collapse min-w-[1000px] table-fixed">
+                    <table className="w-full border-collapse min-w-[1000px]">
                         <thead>
-                            <tr className="bg-slate-50/80">
-                                <th className="w-16 p-3 text-[11px] font-black text-indigo-600 uppercase border border-slate-200">Tiết</th>
+                            <tr className="bg-slate-50/50">
+                                <th className="w-20 p-4 text-[10px] font-black text-uneti-blue/60 uppercase border-b border-r border-slate-100 tracking-widest bg-slate-50/80 sticky left-0 z-20 backdrop-blur-md">Ca</th>
                                 {DAYS.map((day, idx) => {
                                     const isToday = new Date().toDateString() === weekDays[idx].toDateString();
                                     return (
                                         <th
                                             key={day.value}
                                             className={cn(
-                                                "p-3 border border-slate-200 text-center transition-colors",
-                                                isToday && "bg-indigo-50/50"
+                                                "p-4 border-b border-r border-slate-100 text-center transition-colors min-w-[140px]",
+                                                isToday && "bg-uneti-blue/5"
                                             )}
                                         >
                                             <div className="space-y-0.5">
-                                                <p className="text-[11px] font-black uppercase text-indigo-600">{day.short}</p>
-                                                <p className="text-[10px] font-bold text-slate-400">
+                                                <p className={cn("text-[10px] font-black uppercase tracking-widest leading-none", isToday ? "text-uneti-blue" : "text-slate-400")}>{day.name}</p>
+                                                <p className={cn("text-[13px] font-black tabular-nums", isToday ? "text-uneti-blue" : "text-slate-700")}>
                                                     {weekDays[idx].toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
                                                 </p>
                                             </div>
@@ -219,74 +219,82 @@ export default function LecturerSchedulePage() {
                             </tr>
                         </thead>
                         <tbody>
-                            {SHIFTS.map((shift) => (
-                                <tr key={shift.id}>
-                                    <td className="p-2 border border-slate-200 bg-slate-50/30 text-center">
-                                        <span className={cn(
-                                            "text-[10px] font-black",
-                                            shift.id <= 6 ? "text-amber-600" : "text-sky-600"
-                                        )}>{shift.id}</span>
+                            {SESSIONS.map((session) => (
+                                <tr key={session.value} className="group/row">
+                                    <td className="p-0 border-b border-r border-slate-100 bg-slate-50/30 sticky left-0 z-10 backdrop-blur-md">
+                                        <div className="flex flex-col items-center justify-center p-4 min-h-[160px] gap-2">
+                                            <span className="text-[10px] font-black text-slate-800 uppercase [writing-mode:vertical-lr] rotate-180 tracking-[0.3em]">{session.label}</span>
+                                            <Clock size={12} className="text-slate-300" />
+                                        </div>
                                     </td>
                                     {DAYS.map((day, idx) => {
-                                        const schedule = getScheduleAtPos(day.value, shift.id);
-                                        const covered = isShiftCovered(day.value, shift.id);
+                                        const daySchedules = getSchedulesForDayAndSession(day.value, session.value);
                                         const isToday = new Date().toDateString() === weekDays[idx].toDateString();
-
-                                        if (covered) return null; // Skip this cell as it's covered by rowSpan
-
                                         return (
                                             <td
-                                                key={`${day.value}-${shift.id}`}
-                                                rowSpan={schedule?.duration || 1}
+                                                key={`${day.value}-${session.value}`}
                                                 className={cn(
-                                                    "p-1 border border-slate-200 align-top transition-colors min-h-[40px]",
-                                                    isToday && "bg-indigo-50/5"
+                                                    "p-2 border-b border-r border-slate-100 align-top transition-colors",
+                                                    isToday && "bg-uneti-blue/5"
                                                 )}
                                             >
-                                                {schedule && (
-                                                    <motion.div
-                                                        initial={{ opacity: 0, y: 5 }}
-                                                        animate={{ opacity: 1, y: 0 }}
-                                                        className={cn(
-                                                            "h-full p-2 rounded-none border text-left transition-all shadow-sm flex flex-col justify-center relative group/cell cursor-pointer overflow-hidden",
-                                                            schedule.type === 'EXAM' 
-                                                                ? "bg-yellow-50/90 border-yellow-200" 
-                                                                : (schedule.type === 'PRACTICE' || schedule.room?.name?.toLowerCase().includes('lab'))
-                                                                ? "bg-green-50/90 border-green-200"
-                                                                : "bg-white border-slate-200 hover:border-indigo-300"
-                                                        )}
-                                                    >
-                                                        {/* Quick Actions Overlay */}
-                                                        <div className="absolute inset-0 bg-slate-900/90 opacity-0 group-hover/cell:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 z-20">
-                                                            <Link 
-                                                                href={`/lecturer/courses/${schedule.classId}/attendance`}
-                                                                className="w-full py-1 text-[8px] font-black text-white hover:bg-indigo-600 transition-colors text-center uppercase tracking-widest"
-                                                            >
-                                                                Điểm danh
-                                                            </Link>
-                                                            <div className="w-full h-px bg-white/10" />
-                                                            <Link 
-                                                                href={`/lecturer/courses/${schedule.classId}/grades`}
-                                                                className="w-full py-1 text-[8px] font-black text-white hover:bg-blue-600 transition-colors text-center uppercase tracking-widest"
-                                                            >
-                                                                Nhập điểm
-                                                            </Link>
-                                                        </div>
+                                                <div className="space-y-2">
+                                                    {daySchedules.map((s, i) => {
+                                                        // Extract nominal class name (the part after " - ")
+                                                        const nominalName = s.courseClass?.name?.includes(" - ") 
+                                                            ? s.courseClass?.name?.split(" - ")[1] 
+                                                            : s.courseClass?.name;
+                                                        const subjectName = s.courseClass?.name?.includes(" - ")
+                                                            ? s.courseClass?.name?.split(" - ")[0]
+                                                            : s.courseClass?.subject?.name;
 
-                                                        <h4 className="text-[10px] font-black text-indigo-700 leading-tight line-clamp-2 uppercase relative z-10">
-                                                            {schedule.courseName}
-                                                        </h4>
-                                                        <div className="mt-1 space-y-0.5 relative z-10">
-                                                            <p className="text-[9px] font-bold text-slate-600 flex items-center gap-1">
-                                                                <MapPin size={10} className="text-slate-400" />
-                                                                {schedule.room?.name || '---'}
-                                                            </p>
-                                                            <p className="text-[9px] font-medium text-slate-500 italic">
-                                                                Tiết {schedule.startShift}-{schedule.endShift}
-                                                            </p>
-                                                        </div>
-                                                    </motion.div>
-                                                )}
+                                                        return (
+                                                            <Link
+                                                                key={i}
+                                                                href={`/lecturer/courses/${s.courseClassId}`}
+                                                                className={cn(
+                                                                    "block p-3.5 rounded-2xl border text-left transition-all group relative overflow-hidden",
+                                                                    s.type === 'EXAM' 
+                                                                        ? "bg-orange-50 border-orange-100 hover:shadow-orange-100" 
+                                                                        : (s.type === 'PRACTICE')
+                                                                        ? "bg-emerald-50 border-emerald-100 hover:shadow-emerald-100"
+                                                                        : "bg-white border-slate-100 hover:border-uneti-blue hover:shadow-lg active:scale-[0.98]"
+                                                                )}
+                                                            >
+                                                                <div className="space-y-1 relative z-10">
+                                                                    <p className="text-[9px] font-black text-uneti-blue uppercase tracking-widest opacity-60 leading-none">
+                                                                        {subjectName}
+                                                                    </p>
+                                                                    <h4 className="text-[13px] font-black text-slate-800 leading-tight tracking-tight capitalize group-hover:text-uneti-blue transition-colors">
+                                                                        {nominalName || "Lớp học phần"}
+                                                                    </h4>
+                                                                    
+                                                                    <div className="flex items-center gap-2 mt-2">
+                                                                        <span className="text-[9px] font-black text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded leading-none border border-slate-100">{s.courseClass?.code}</span>
+                                                                    </div>
+
+                                                                    <div className="space-y-1 pt-2 border-t border-slate-50/50 mt-2">
+                                                                        <div className="flex items-center gap-2 text-[9px] font-bold text-slate-500 uppercase tracking-tight">
+                                                                            <Clock size={10} className="text-slate-300" />
+                                                                            <span>Tiết {s.startShift} - {s.endShift}</span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2 text-[9px] font-bold text-slate-500 uppercase tracking-tight">
+                                                                            <MapPin size={10} className="text-slate-300" />
+                                                                            <span className="truncate">P. {s.room?.name || '---'} {s.room?.building ? `(${s.room?.building})` : ''}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Minimal hover indicator */}
+                                                                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-all">
+                                                                    <div className="p-1 px-2 rounded-lg bg-uneti-blue text-white text-[8px] font-black flex items-center gap-1 shadow-lg shadow-uneti-blue/20">
+                                                                        CHI TIẾT <ArrowUpRight size={10} />
+                                                                    </div>
+                                                                </div>
+                                                            </Link>
+                                                        );
+                                                    })}
+                                                </div>
                                             </td>
                                         );
                                     })}
@@ -296,25 +304,28 @@ export default function LecturerSchedulePage() {
                     </table>
                 </div>
 
-                {/* Grid Legend & Info */}
-                <div className="px-8 py-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex flex-wrap gap-6">
-                        <div className="flex items-center gap-2">
-                            <div className="h-4 w-12 rounded-sm bg-white border border-slate-300" />
-                            <span className="text-[10px] font-bold text-slate-600">Lịch dạy lý thuyết</span>
+                {/* Legend Area */}
+                <div className="px-8 py-5 bg-slate-50/50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-6">
+                    <div className="flex flex-wrap gap-8 font-black uppercase tracking-widest text-[9px] text-slate-400">
+                        <div className="flex items-center gap-3">
+                            <div className="h-3 w-3 rounded-full bg-white border border-slate-200" />
+                            <span>Lý thuyết</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <div className="h-4 w-12 rounded-sm bg-green-50 border border-green-200" />
-                            <span className="text-[10px] font-bold text-slate-600">Lịch dạy thực hành</span>
+                        <div className="flex items-center gap-3">
+                            <div className="h-3 w-3 rounded-full bg-emerald-100 border border-emerald-200" />
+                            <span>Thực hành</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <div className="h-4 w-12 rounded-sm bg-yellow-50 border border-yellow-200" />
-                            <span className="text-[10px] font-bold text-slate-600">Lịch thi</span>
+                        <div className="flex items-center gap-3">
+                            <div className="h-3 w-3 rounded-full bg-orange-100 border border-orange-200" />
+                            <span>Lịch thi / Chấm</span>
                         </div>
+                    </div>
+                    <div className="flex items-center gap-2.5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                        <Info size={14} className="text-uneti-blue" />
+                        <span>Nhấp vào lịch để xem chi tiết</span>
                     </div>
                 </div>
             </div>
-
         </div>
     );
 }

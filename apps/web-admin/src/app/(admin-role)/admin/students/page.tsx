@@ -136,7 +136,7 @@ export default function AdminStudentsPage() {
         try {
             // Admin can choose to create account or just info
             const endpoint = createAccount ? "/api/auth/students" : "/api/students";
-            
+
             const res = await fetch(endpoint, {
                 method: 'POST',
                 headers: {
@@ -152,7 +152,7 @@ export default function AdminStudentsPage() {
                     partyDate: formData.partyDate ? new Date(formData.partyDate).toISOString() : undefined,
                 })
             });
-            
+
             if (res.ok) {
                 await fetchStudents();
                 setIsAddModalOpen(false);
@@ -218,7 +218,7 @@ export default function AdminStudentsPage() {
 
     const handleCreateAccountForExisting = async (student: any) => {
         if (!confirm(`Tạo tài khoản học viên cho ${student.fullName}?`)) return;
-        
+
         setLoading(true);
         try {
             const res = await fetch("/api/auth/students", {
@@ -626,9 +626,9 @@ export default function AdminStudentsPage() {
                         value={formData.permanentAddress}
                         onChange={(e) => setFormData({ ...formData, permanentAddress: e.target.value })}
                         placeholder="Số nhà, phố, tỉnh..."
-                        />
-                    </div>
+                    />
                 </div>
+            </div>
 
             {/* section: Thông tin Đoàn - Đảng & Chính sách */}
             <div className="space-y-4 pt-4">
@@ -757,9 +757,9 @@ export default function AdminStudentsPage() {
             accessorKey: "status",
             cell: (s: any) => (
                 <span className={`px-3 py-1.5 rounded-xl text-[10px] font-black tracking-widest uppercase shadow-sm flex items-center gap-2 w-fit ${s.status === 'ACTIVE' || s.status === 'STUDYING'
-                        ? 'bg-emerald-500 text-white'
-                        : s.status === 'DROPOUT' ? 'bg-rose-500 text-white'
-                            : 'bg-slate-900 text-white'
+                    ? 'bg-emerald-500 text-white'
+                    : s.status === 'DROPOUT' ? 'bg-rose-500 text-white'
+                        : 'bg-slate-900 text-white'
                     }`}>
                     <div className="w-1.5 h-1.5 rounded-full bg-white"></div>
                     {s.status === 'ACTIVE' || s.status === 'STUDYING' ? 'Đang học' : s.status === 'DROPOUT' ? 'Bỏ học' : s.status}
@@ -788,7 +788,7 @@ export default function AdminStudentsPage() {
     if (loading) {
         return (
             <div className="flex min-h-screen items-center justify-center bg-[#f8fafc]">
-                 <div className="w-10 h-10 border-[3px] border-uneti-blue/10 border-t-uneti-blue rounded-full animate-spin"></div>
+                <div className="w-10 h-10 border-[3px] border-uneti-blue/10 border-t-uneti-blue rounded-full animate-spin"></div>
             </div>
         );
     }
@@ -820,11 +820,10 @@ export default function AdminStudentsPage() {
             </div>
 
             {/* Stats Overview */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {[
                     { label: "Tổng sinh viên", value: stats.total, icon: Users, color: "blue" },
                     { label: "Đang học tập", value: stats.active, icon: CheckCircle2, color: "emerald" },
-                    { label: "Đã tốt nghiệp", value: stats.graduated, icon: GraduationCap, color: "indigo" },
                 ].map((s, i) => (
                     <div key={i} className="bg-white p-6 rounded-[24px] border border-slate-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-24 h-24 bg-slate-50 rounded-full -mr-12 -mt-12 group-hover:scale-110 transition-transform duration-500"></div>
@@ -960,7 +959,7 @@ export default function AdminStudentsPage() {
                         <AlertTriangle size={40} />
                     </div>
                     <p className="text-[15px] font-bold text-slate-600">
-                        Hành động này sẽ xóa vĩnh viễn hồ sơ và tài khoản của <br/> <span className="text-slate-900 font-black">{selectedStudent?.fullName}</span>.
+                        Hành động này sẽ xóa vĩnh viễn hồ sơ và tài khoản của <br /> <span className="text-slate-900 font-black">{selectedStudent?.fullName}</span>.
                     </p>
                 </div>
             </Modal>

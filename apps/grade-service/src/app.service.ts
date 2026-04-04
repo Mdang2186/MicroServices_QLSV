@@ -62,94 +62,138 @@ export class AppService {
   async bulkUpdateGrades(grades: any[], userRole?: string) {
     const isStaff = userRole === 'ACADEMIC_STAFF' || userRole === 'SUPER_ADMIN';
 
+    const uniqueClassIds = [...new Set(grades.map(g => g.courseClassId).filter(Boolean))];
+    const classMap = new Map<string, { credits: number; isTheory: boolean; midtermDeadline: Date | null }>();
+
+    for (const classId of uniqueClassIds) {
+      const courseClass = await this.prisma.courseClass.findUnique({
+        where: { id: classId },
+        include: { 
+          subject: true,
+          semester: true 
+        }
+      });
+      if (courseClass?.subject) {
+        const sub = courseClass.subject as any;
+        classMap.set(classId, {
+          credits: sub.credits ?? 3,
+          isTheory: (sub.theoryHours ?? 0) > 0 || (sub.practiceHours ?? 0) === 0,
+          midtermDeadline: courseClass.semester?.midtermGradeDeadline ?? null
+        });
+      }
+    }
+
+    const now = new Date();
+    const existingGrades = await this.prisma.grade.findMany({
+      where: { id: { in: grades.map(g => g.id).filter(Boolean) } }
+    });
+    const existingGradeMap = new Map(existingGrades.map(g => [g.id, g]));
+
     return await this.prisma.$transaction(
       grades.map(g => {
-        // Fetch current grade to prevent overriding if role is restricted
-        // Ideally we'd combine this but for MVP:
-        const currentFinalScore = g.finalScore; // This comes from input
-        // Fetch course info to check if it's Theory or Practical
-        // (In a real high-traffic app, we should fetch this once before the loop)
-        const isTheory = g.subject?.theoryHours > 0 || !g.subject?.practiceHours;
+        const classInfo = classMap.get(g.courseClassId);
+        const { credits, isTheory, midtermDeadline } = classInfo ?? { credits: 3, isTheory: true, midtermDeadline: null };
 
-        const attendanceScore = g.attendanceScore ?? 0;
-        const tx1 = g.regularScore1 ?? 0;
-        const tx2 = g.regularScore2 ?? 0;
-        const final = g.finalScore ?? 0;
-        const practice = g.practiceScore ?? 0;
+        const isDeadlinePassed = midtermDeadline && now > midtermDeadline;
+        const canUpdateProcess = isStaff || !isDeadlinePassed;
+
+        const existing = existingGradeMap.get(g.id);
+        
+        // Nếu không được phép cập nhật điểm quá trình, dùng giá trị cũ từ DB
+        const cc  = canUpdateProcess ? (g.attendanceScore ?? 0) : (existing?.attendanceScore ?? 0);  
+        const dkd = canUpdateProcess ? (g.regularScore1   ?? 0) : (existing?.regularScore1   ?? 0);  
+        const tx  = canUpdateProcess ? (g.regularScore2   ?? 0) : (existing?.regularScore2   ?? 0);  
+        const fin = g.finalScore      ?? 0;  
 
         let total10 = 0;
         let processAvg = 0;
+        let isEligible = true;
+
+        // Bảng quy đổi chuyên cần & Cấm thi (Banned)
+        // >= 50% vắng => CC=0 => Banned
+        isEligible = cc > 0 || (cc === 0 && (canUpdateProcess ? g.attendanceScore === undefined : existing?.attendanceScore === undefined)); 
 
         if (isTheory) {
-          // Rule 1: Point process = (CC*1 + TX1*2 + TX2*1) / 4
-          processAvg = Math.round(((attendanceScore + 2 * tx1 + tx2) / 4) * 10) / 10;
-          // Rule 2: FinalTotal = ProcessAvg * 0.4 + FinalScore * 0.6
-          total10 = Math.round((processAvg * 0.4 + final * 0.6) * 10) / 10;
+          const qt = (cc * credits + tx * 1 + dkd * 2) / (credits + 3);
+          processAvg = Math.round(qt * 10) / 10;
+          
+          const effectiveFin = isEligible ? fin : 0;
+          total10 = Math.round((processAvg * 0.4 + effectiveFin * 0.6) * 10) / 10;
         } else {
-          // Practical/Essay: Average of components
-          // Implementation depends on which components are provided
-          const components = [attendanceScore, practice, final].filter(v => v !== null);
-          total10 = components.length > 0 
-            ? Math.round((components.reduce((a, b) => a + b, 0) / components.length) * 10) / 10
-            : 0;
+          total10 = Math.round(((cc + dkd * credits) / (1 + credits)) * 10) / 10;
+          processAvg = total10;
         }
 
         const { letter, scale4 } = this.mapGrade10ToLetter(total10);
 
         const updateData: any = {
-          attendanceScore,
-          regularScore1: tx1,
-          regularScore2: tx2,
-          practiceScore: practice,
-          midtermScore: processAvg,
-          totalScore10: total10,
-          totalScore4: scale4,
-          letterGrade: letter,
-          isPassed: total10 >= 5.5,
-          isEligibleForExam: attendanceScore > 0
+          attendanceScore: cc,
+          regularScore1:   dkd,
+          regularScore2:   tx,
+          midtermScore:    processAvg,
+          totalScore10:    total10,
+          totalScore4:     scale4,
+          letterGrade:     letter,
+          isPassed:        total10 >= 4.0 && isEligible, 
+          isEligibleForExam: isEligible,
+          isAbsentFromExam: !isEligible || g.isAbsentFromExam
         };
 
         if (isStaff) {
-          updateData.finalScore = final;
-          if (g.isLocked !== undefined) updateData.isLocked = g.isLocked;
-          if (g.status !== undefined) updateData.status = g.status;
+          updateData.finalScore = isEligible ? fin : 0;
         }
-
-        if (isStaff) {
-          updateData.finalScore = final;
-        }
-
-        // If staff, allow updating final score. If not staff, ONLY allow if finalScore is null or keep current
-        if (isStaff) {
-          updateData.finalScore = final;
-        }
-        // If Lecturer, they cannot change finalScore once it is set 
-        // (Actually, they shouldn't even pass it, but if they do, we ignore it)
 
         return this.prisma.grade.updateMany({
-          where: { 
-            id: g.id,
-            status: 'DRAFT'
-          },
+          where: { id: g.id, isLocked: false },
           data: updateData
         });
       })
     );
   }
 
-  /**
-   * Maps 10-point scale to Letter Grade and 4.0 Scale
-   * Based on UNETI/Standard rules:
-   * 8.5 - 10: A (4.0)
-   * 7.8 - 8.4: B+ (3.5)
-   * 7.0 - 7.7: B (3.0)
-   * 6.3 - 6.9: C+ (2.5)
-   * 5.5 - 6.2: C (2.0)
-   * 4.8 - 5.4: D+ (1.5)
-   * 4.0 - 4.7: D (1.0)
-   * 3.0 - 3.9: F+ (0.5)
-   * 0.0 - 2.9: F (0.0)
+  /** 
+   * Tự động tính điểm chuyên cần từ lịch sử điểm danh 
+   * Dựa trên: [Số buổi vắng] / [Tổng số buổi theo chương trình]
    */
+  async syncAttendanceScores(classId: string) {
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: { courseClassId: classId },
+      include: {
+        attendances: true,
+        courseClass: {
+          include: { 
+            sessions: true,
+            subject: true
+          }
+        }
+      }
+    });
+
+    for (const enr of enrollments) {
+      const subject = enr.courseClass.subject as any;
+      // Quy ước: 1 buổi = 3 tiết. Tổng số buổi = (Lý thuyết + Thực hành) / 3
+      const totalPlannedHours = (subject.theoryHours ?? 30) + (subject.practiceHours ?? 15);
+      const totalEstimatedSessions = Math.ceil(totalPlannedHours / 3);
+      
+      const totalSessions = totalEstimatedSessions > 0 ? totalEstimatedSessions : Math.max(enr.courseClass.sessions.length, 1);
+
+      const absentCount = enr.attendances.filter(a => a.status === 'ABSENT').length;
+      const ccScore = this.calculateAttendancePoints(absentCount, totalSessions);
+
+      await this.prisma.grade.updateMany({
+        where: { studentId: enr.studentId, courseClassId: classId },
+        data: { 
+          attendanceScore: ccScore,
+          isEligibleForExam: ccScore > 0
+        }
+      });
+    }
+
+    // Refresh grades logic after sync
+    const updatedGrades = await this.prisma.grade.findMany({ where: { courseClassId: classId } });
+    return this.bulkUpdateGrades(updatedGrades);
+  }
+
   private mapGrade10ToLetter(score: number): { letter: string, scale4: number } {
     if (score >= 8.5) return { letter: 'A', scale4: 4.0 };
     if (score >= 7.8) return { letter: 'B+', scale4: 3.5 };
@@ -158,23 +202,19 @@ export class AppService {
     if (score >= 5.5) return { letter: 'C', scale4: 2.0 };
     if (score >= 4.8) return { letter: 'D+', scale4: 1.5 };
     if (score >= 4.0) return { letter: 'D', scale4: 1.0 };
-    if (score >= 3.0) return { letter: 'F+', scale4: 0.5 };
     return { letter: 'F', scale4: 0.0 };
   }
 
-  /**
-   * Calculates Attendance Points (0-10) based on missed periods
-   */
-  public calculateAttendancePoints(missedPeriods: number, totalPeriods: number): number {
-    if (totalPeriods === 0) return 10;
-    const missedPercent = (missedPeriods / totalPeriods) * 100;
+  public calculateAttendancePoints(missedSessions: number, totalSessions: number): number {
+    if (totalSessions === 0) return 10;
+    const pct = (missedSessions / totalSessions) * 100;
 
-    if (missedPercent === 0) return 10;
-    if (missedPercent < 10) return 8;
-    if (missedPercent < 20) return 6;
-    if (missedPercent < 35) return 4;
-    if (missedPercent < 50) return 2;
-    return 0; // Banned from exam
+    if (pct === 0)   return 10;
+    if (pct < 10)    return 8;
+    if (pct < 20)    return 6;
+    if (pct < 35)    return 4;
+    if (pct < 50)    return 2;
+    return 0; // >= 50%: cấm thi, điểm thi = 0
   }
 
   async submitGrades(classId: string) {

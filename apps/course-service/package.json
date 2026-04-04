@@ -27,6 +27,8 @@
     "@nestjs/swagger": "^7.4.2",
     "@repo/database": "0.0.0",
     "@repo/shared-dto": "0.0.0",
+    "date-fns": "^4.1.0",
+    "ioredis": "^5.10.0",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.1",
     "swagger-ui-express": "^5.0.1"

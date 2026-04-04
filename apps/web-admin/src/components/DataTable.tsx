@@ -24,6 +24,7 @@ interface DataTableProps<T> {
     toolbar?: React.ReactNode;
     onRowClick?: (item: T) => void;
     pageSize?: number;
+    maxHeight?: string;
 }
 
 export default function DataTable<T extends { id: string | number }>({
@@ -34,7 +35,8 @@ export default function DataTable<T extends { id: string | number }>({
     actions,
     toolbar,
     onRowClick,
-    pageSize = 10
+    pageSize = 10,
+    maxHeight = "calc(100vh - 300px)"
 }: DataTableProps<T>) {
     const [searchQuery, setSearchQuery] = useState("");
     const [visibleColumns, setVisibleColumns] = useState<string[]>(columns.map(c => c.accessorKey as string));
@@ -122,23 +124,23 @@ export default function DataTable<T extends { id: string | number }>({
             </div>
 
             {/* Table */}
-            <div className="overflow-x-auto custom-scrollbar">
-                <table className="w-full border-collapse min-w-full">
-                    <thead>
-                        <tr className="bg-slate-50/50">
+            <div className="overflow-auto custom-scrollbar" style={{ maxHeight }}>
+                <table className="w-full border-collapse min-w-full relative">
+                    <thead className="sticky top-0 z-20 bg-white/95 backdrop-blur-md shadow-sm ring-1 ring-slate-100">
+                        <tr>
                             {columns.filter(c => visibleColumns.includes(c.accessorKey as string)).map((col) => (
-                                <th key={col.accessorKey as string} className="py-3 px-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 whitespace-nowrap">
+                                <th key={col.accessorKey as string} className="py-4 px-6 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
                                     {col.header}
                                 </th>
                             ))}
                             {actions && (
-                                <th className="py-3 px-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 whitespace-nowrap">
+                                <th className="py-4 px-6 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
                                     Thao tác
                                 </th>
                             )}
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-50">
+                    <tbody className="divide-y divide-slate-100">
                         {paginatedData.length > 0 ? paginatedData.map((item) => (
                             <tr 
                                 key={item.id} 

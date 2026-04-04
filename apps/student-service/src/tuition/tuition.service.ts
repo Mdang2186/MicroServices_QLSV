@@ -33,6 +33,7 @@ export class TuitionService {
     facultyId?: string;
     majorId?: string;
     classId?: string;
+    status?: string;
     query?: string;
     page?: number;
     limit?: number;
@@ -42,6 +43,7 @@ export class TuitionService {
       facultyId,
       majorId,
       classId,
+      status,
       query,
       page = 1,
       limit = 20,
@@ -59,6 +61,16 @@ export class TuitionService {
     }
     if (classId) {
       where.AND.push({ adminClassId: classId });
+    }
+    if (params.status === 'DEBT') {
+      where.AND.push({
+        studentFees: {
+          some: {
+            status: 'DEBT',
+            semesterId
+          }
+        }
+      });
     }
     if (semesterId) {
       where.AND.push({
@@ -349,5 +361,81 @@ export class TuitionService {
     });
 
     return studentFees;
+  }
+
+  async syncStudentTuition(studentId: string, semesterId: string) {
+    // 1. Get all enrollments for this student in this semester
+    const student = await this.prisma.student.findUnique({
+      where: { id: studentId },
+      include: {
+        enrollments: {
+          where: { courseClass: { semesterId } },
+          include: { courseClass: { include: { subject: true } } }
+        }
+      }
+    });
+
+    if (!student) return;
+
+    // 2. Sum up total tuition fees
+    const totalTuition = student.enrollments.reduce((sum, enr) => sum + Number(enr.tuitionFee), 0);
+    const paidTuition = student.enrollments
+      .filter(enr => enr.status === 'PAID')
+      .reduce((sum, enr) => sum + Number(enr.tuitionFee), 0);
+    
+    if (totalTuition === 0 && student.enrollments.length === 0) {
+      // If no enrollments, we might want to remove existing tuition fee records
+      await this.prisma.studentFee.deleteMany({
+        where: {
+          studentId,
+          semesterId,
+          feeType: 'TUITION'
+        }
+      });
+      return;
+    }
+
+    const semester = await this.prisma.semester.findUnique({ where: { id: semesterId } });
+    const feeName = `Học phí ${semester?.name || semesterId}`;
+
+    // 3. Upsert into StudentFee
+    await this.prisma.studentFee.upsert({
+      where: {
+        // Since we don't have a unique constraint on (studentId, semesterId, feeType),
+        // we find by these criteria or create.
+        id: `tuition-${studentId}-${semesterId}` 
+      },
+      update: {
+        totalAmount: totalTuition,
+        finalAmount: totalTuition,
+        paidAmount: paidTuition,
+        status: paidTuition >= totalTuition ? 'PAID' : (paidTuition > 0 ? 'PARTIAL' : 'DEBT')
+      },
+      create: {
+        id: `tuition-${studentId}-${semesterId}`,
+        studentId,
+        semesterId,
+        feeType: 'TUITION',
+        name: feeName,
+        totalAmount: totalTuition,
+        discountAmount: 0,
+        finalAmount: totalTuition,
+        paidAmount: paidTuition,
+        status: paidTuition >= totalTuition ? 'PAID' : (paidTuition > 0 ? 'PARTIAL' : 'DEBT'),
+        isMandatory: true
+      }
+    });
+
+    return { total: totalTuition, paid: paidTuition };
+  }
+
+  async toggleExamEligibility(studentId: string, semesterId: string, isEligible: boolean) {
+    return this.prisma.grade.updateMany({
+      where: {
+        studentId,
+        courseClass: { semesterId }
+      },
+      data: { isEligibleForExam: isEligible }
+    });
   }
 }

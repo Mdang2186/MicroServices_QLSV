@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Cookies from "js-cookie";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
     GraduationCap,
     Search,
@@ -10,14 +11,23 @@ import {
     Users,
     BookOpen,
     ArrowLeft,
-    CheckCircle2
+    CheckCircle2,
+    LayoutGrid,
+    SearchX,
+    Filter,
+    ArrowRight,
+    CheckCircle
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { CompactLecturerHeader } from "@/components/dashboard/CompactLecturerHeader";
 
 export default function LecturerGradeSelectionPage() {
+    const router = useRouter();
     const [user, setUser] = useState<any>(null);
     const [courses, setCourses] = useState<any[]>([]);
     const [filteredCourses, setFilteredCourses] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [selectedSemesterId, setSelectedSemesterId] = useState<string>("");
     const [searchQuery, setSearchQuery] = useState("");
 
     const TOKEN = Cookies.get("admin_accessToken");
@@ -28,10 +38,12 @@ export default function LecturerGradeSelectionPage() {
     }, []);
 
     useEffect(() => {
-        if (!user?.id) return;
+        if (!user?.profileId) return;
+        setLoading(true);
         const headers: any = TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {};
 
-        fetch("/api/courses/my-classes", { headers })
+        const query = selectedSemesterId ? `?semesterId=${selectedSemesterId}` : "";
+        fetch(`/api/courses/lecturer/${user.profileId}${query}`, { headers })
             .then(r => r.ok ? r.json() : [])
             .then(data => {
                 const fetched = Array.isArray(data) ? data : data?.data || [];
@@ -43,7 +55,7 @@ export default function LecturerGradeSelectionPage() {
                 setFilteredCourses([]);
             })
             .finally(() => setLoading(false));
-    }, [user, TOKEN]);
+    }, [user, TOKEN, selectedSemesterId]);
 
     useEffect(() => {
         const query = searchQuery.toLowerCase();
@@ -55,99 +67,104 @@ export default function LecturerGradeSelectionPage() {
         setFilteredCourses(filtered);
     }, [searchQuery, courses]);
 
-    if (loading) {
+    if (loading && courses.length === 0) {
         return (
-            <div className="flex min-h-screen items-center justify-center bg-[#f4f7fe]">
-                <div className="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
+            <div className="flex min-h-screen items-center justify-center bg-[#fbfcfd]">
+                <div className="w-10 h-10 border-[3px] border-uneti-blue/10 border-t-uneti-blue rounded-full animate-spin"></div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen p-4 sm:p-6 md:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-500">
-            {/* Header Toolbar */}
-            <div className="flex items-center justify-between pl-1">
-                <div className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-slate-800">
-                    <Link href="/lecturer/dashboard" className="flex items-center gap-1 hover:text-indigo-600 transition-colors">
-                        <ArrowLeft size={16} />
-                        <span className="hidden sm:inline">Quay lại Dashboard</span>
-                    </Link>
-                    <span className="text-slate-300">/</span>
-                    <span className="text-indigo-600">Chọn lớp nhập điểm</span>
-                </div>
-            </div>
-
-            {/* Title Section */}
-            <div className="bg-gradient-to-br from-[#eff3ff] to-[#f4f7fe] rounded-[24px] p-8 sm:p-10 border border-white shadow-sm relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-100 rounded-full blur-3xl opacity-40 -mr-20 -mt-20"></div>
-
-                <div className="relative z-10 space-y-2">
-                    <h1 className="text-3xl sm:text-4xl font-extrabold text-[#111827] tracking-tight">
-                        Quản lý <span className="text-indigo-600">Bảng điểm</span>
-                    </h1>
-                    <p className="text-slate-500 font-medium text-sm flex items-center gap-2">
-                        <GraduationCap size={16} className="text-indigo-400" />
-                        Chọn một lớp học bên dưới để bắt đầu nhập điểm sinh viên
-                    </p>
-                </div>
-            </div>
+        <div className="space-y-6 bg-[#fbfcfd] min-h-screen pb-20 px-4 md:px-8 max-w-7xl mx-auto animate-in fade-in duration-700">
+            <CompactLecturerHeader 
+                userName={`${user?.degree || "Giảng viên"} ${user?.fullName || "Cao cấp"}`} 
+                userId={`GV-${user?.username || "UNETI"}`}
+                minimal={true}
+                title="Quản lý bảng điểm"
+                onSemesterChange={setSelectedSemesterId}
+            />
 
             {/* Filter & Search Bar */}
             <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+                <div className="flex items-center gap-2">
+                    <div className="p-2.5 rounded-xl bg-uneti-blue-light text-uneti-blue">
+                         <Filter size={18} />
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Bộ lọc nhanh</span>
+                        <h2 className="text-xs font-black text-slate-800 uppercase tracking-widest">
+                            {filteredCourses.length} Lớp đang mở
+                        </h2>
+                    </div>
+                </div>
+
                 <div className="relative w-full md:w-96">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                     <input
                         type="text"
-                        placeholder="Tìm kiếm lớp học..."
-                        className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-100 transition-all font-medium"
+                        placeholder="Tìm mã hoặc tên lớp học phần..."
+                        className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-transparent rounded-xl text-[11px] font-bold text-slate-700 outline-none focus:ring-2 focus:ring-uneti-blue/10 focus:bg-white focus:border-uneti-blue transition-all"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
                 </div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest hidden sm:block">
-                    {filteredCourses.length} Kết quả
-                </p>
             </div>
 
-            {/* Selection Grid */}
-            {filteredCourses.length === 0 ? (
-                <div className="bg-white rounded-[24px] p-20 flex flex-col items-center justify-center text-center border border-slate-100 shadow-sm">
-                    <BookOpen className="text-slate-200 mb-4" size={48} />
-                    <h3 className="text-lg font-bold text-slate-800">Không tìm thấy lớp học</h3>
-                    <p className="text-slate-400 text-sm mt-1">Vui lòng kiểm tra lại từ khóa tìm kiếm.</p>
+            {/* Selection Grid - Modern & High Density */}
+            {filteredCourses.length === 0 && !loading ? (
+                <div className="bg-white rounded-[2rem] p-32 flex flex-col items-center justify-center text-center border border-slate-100 border-dashed">
+                    <div className="p-6 rounded-full bg-slate-50 text-slate-200 mb-6">
+                         <BookOpen size={64} strokeWidth={1} />
+                    </div>
+                    <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Không tìm thấy lớp học</h3>
+                    <p className="text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-widest">Vui lòng kiểm tra lại bộ lọc học kỳ hoặc từ khóa tìm kiếm.</p>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                     {filteredCourses.map((c, i) => (
-                        <div key={i} className="bg-white rounded-[24px] border border-slate-100 p-6 flex flex-col justify-between hover:shadow-xl hover:border-indigo-100 transition-all group relative overflow-hidden">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50/30 rounded-full blur-2xl -mr-16 -mt-16 pointer-events-none group-hover:bg-indigo-100/50 transition-colors"></div>
+                        <div key={i} className="bg-white rounded-[2rem] border border-slate-100 p-6 flex flex-col group relative overflow-hidden transition-all hover:border-uneti-blue/30 hover:shadow-xl hover:shadow-uneti-blue/5">
+                            <div className="absolute top-0 right-0 w-24 h-24 bg-uneti-blue/5 rounded-full blur-2xl -mr-12 -mt-12 group-hover:bg-uneti-blue/10 transition-colors"></div>
 
-                            <div className="relative z-10">
-                                <span className="bg-indigo-50 text-indigo-700 font-bold text-[10px] px-3 py-1.5 rounded-lg tracking-widest uppercase ring-1 ring-indigo-100 shadow-sm mb-4 inline-block">
-                                    {c.code}
-                                </span>
-                                <h3 className="text-lg font-extrabold text-[#111827] leading-snug mb-4 group-hover:text-indigo-600 transition-colors line-clamp-2 min-h-[56px]">
-                                    {c.name || c.subject?.name}
-                                </h3>
-
-                                <div className="flex items-center gap-4 text-slate-500 mb-6 font-bold uppercase tracking-tighter text-[10px]">
-                                    <div className="flex items-center gap-1.5">
-                                        <Users size={14} className="text-slate-300" />
-                                        <span>{c.currentSlots} Sinh viên</span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5 text-emerald-600">
-                                        <CheckCircle2 size={14} />
-                                        <span>Sẵn sàng nhập điểm</span>
+                            <div className="relative z-10 flex flex-col flex-1">
+                                <div className="flex items-center justify-between mb-4">
+                                    <span className="bg-white ring-1 ring-uneti-blue/10 shadow-sm text-uneti-blue font-black text-[9px] px-3 py-1.5 rounded-lg tracking-widest uppercase">
+                                        {c.code}
+                                    </span>
+                                    <div className="flex items-center gap-1.5 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
+                                        <CheckCircle size={12} strokeWidth={3} />
+                                        <span className="text-[9px] font-black uppercase">Sẵn sàng</span>
                                     </div>
                                 </div>
 
-                                <Link
-                                    href={`/lecturer/grades/${c.id}`}
-                                    className="w-full flex items-center justify-center gap-2 py-3 bg-[#f8fafc] text-indigo-600 text-sm font-extrabold rounded-xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm group-hover:shadow-indigo-100"
+                                <h3 className="text-[14px] font-black text-slate-800 leading-snug group-hover:text-uneti-blue transition-colors line-clamp-2 min-h-[40px] uppercase tracking-tight mb-4">
+                                    {c.name || c.subject?.name}
+                                </h3>
+
+                                <div className="flex items-center gap-6 mt-auto pb-6 border-b border-slate-50">
+                                    <div className="flex flex-col">
+                                        <p className="text-[8px] font-black text-slate-300 uppercase leading-none mb-1">Sinh viên</p>
+                                        <div className="flex items-center gap-1.5">
+                                            <Users size={12} className="text-slate-400" />
+                                            <span className="text-xs font-black text-slate-600">{c.currentSlots || 0}</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <p className="text-[8px] font-black text-slate-300 uppercase leading-none mb-1">Tín chỉ</p>
+                                        <div className="flex items-center gap-1.5">
+                                            <GraduationCap size={12} className="text-slate-400" />
+                                            <span className="text-xs font-black text-slate-600">{c.subject?.credits || 0} TC</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <button
+                                    onClick={() => router.push(`/lecturer/grades/${c.id}`)}
+                                    className="mt-6 flex items-center justify-center gap-2 py-3.5 bg-slate-50 text-uneti-blue text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-uneti-blue hover:text-white transition-all shadow-sm active:scale-95 group-hover:bg-uneti-blue group-hover:text-white"
                                 >
                                     Bắt đầu nhập điểm
-                                    <ChevronRight size={16} />
-                                </Link>
+                                    <ArrowRight size={16} />
+                                </button>
                             </div>
                         </div>
                     ))}

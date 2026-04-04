@@ -94,6 +94,7 @@ export class StudentService {
             attendances: true,
           },
         },
+        adminClass: true,
         grades: {
           include: {
             subject: true,
@@ -125,6 +126,7 @@ export class StudentService {
             attendances: true,
           },
         },
+        adminClass: true,
         grades: {
           include: {
             subject: true,

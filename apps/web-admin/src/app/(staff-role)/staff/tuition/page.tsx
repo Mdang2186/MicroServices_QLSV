@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { CreditCard, CheckCircle2, AlertCircle, X, Save, RefreshCw } from "lucide-react";
+import { CreditCard, CheckCircle2, AlertCircle, X, Save, RefreshCw, Ban, UserCheck, Download } from "lucide-react";
 import DataTable from "@/components/DataTable";
 import { cn } from "@/lib/utils";
+import * as XLSX from "xlsx";
 
 export default function TuitionManagementPage() {
     const [students, setStudents] = useState<any[]>([]);
@@ -18,6 +19,7 @@ export default function TuitionManagementPage() {
     const [selectedFacultyId, setSelectedFacultyId] = useState("");
     const [selectedMajorId, setSelectedMajorId] = useState("");
     const [selectedClassId, setSelectedClassId] = useState("");
+    const [debtOnly, setDebtOnly] = useState(false);
 
     const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
     const [pendingChanges, setPendingChanges] = useState<Record<string, string>>({});
@@ -61,6 +63,7 @@ export default function TuitionManagementPage() {
         if (selectedFacultyId) params.append("facultyId", selectedFacultyId);
         if (selectedMajorId) params.append("majorId", selectedMajorId);
         if (selectedClassId) params.append("classId", selectedClassId);
+        if (debtOnly) params.append("status", "DEBT");
         params.append("page", "1");
         params.append("limit", "1000");
 
@@ -70,7 +73,35 @@ export default function TuitionManagementPage() {
             .finally(() => setLoading(false));
     };
 
-    useEffect(() => { loadData(); }, [selectedSemesterId, selectedFacultyId, selectedMajorId, selectedClassId]);
+    useEffect(() => { loadData(); }, [selectedSemesterId, selectedFacultyId, selectedMajorId, selectedClassId, debtOnly]);
+
+    const handleExportExcel = () => {
+        const sem = activeSemesters.find(s => s.id === selectedSemesterId)?.name || 'Học kỳ';
+        const data = students.map(s => ({
+            "Mã Sinh Viên": s.studentCode,
+            "Họ Tên": s.fullName,
+            "Lớp": s.className,
+            "Ngành": s.majorName,
+            "Tổng Học Phí": s.totalFee,
+            "Đã Thu": s.totalFee - s.debt,
+            "Còn Nợ": s.debt,
+            "Trạng Thái": s.status === 'PAID' ? "Hoàn tất" : "Nợ phí"
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Tuition");
+        XLSX.writeFile(wb, `Danh_Sach_Hoc_Phi_${sem}.xlsx`);
+    };
+
+    const handleToggleExamEligibility = async (studentId: string, currentStatus: boolean) => {
+        try {
+            await fetch(`/api/students/tuition/toggle-exam-eligibility?studentId=${studentId}&semesterId=${selectedSemesterId}&isEligible=${!currentStatus}`, { method: 'POST' });
+            loadData();
+        } catch (e) {
+            console.error("Không thể thực hiện thao tác");
+        }
+    };
 
     const handleSavePayment = async () => {
         if (!selectedStudent || isSaving) return;
@@ -88,7 +119,9 @@ export default function TuitionManagementPage() {
             setPendingChanges({});
             setSelectedStudent(null);
             loadData();
-        } catch (e) {} finally { setIsSaving(false); }
+        } catch (e) {
+            console.error(e);
+        } finally { setIsSaving(false); }
     };
 
     const columns = [
@@ -107,6 +140,20 @@ export default function TuitionManagementPage() {
             r.status === 'PAID' ? 
                 <span className="bg-emerald-50 border border-emerald-200 text-emerald-600 px-2 py-1 uppercase text-[9px] font-black tracking-widest rounded-lg">Hoàn Tất</span> :
                 <span className="bg-rose-50 border border-rose-200 text-rose-600 px-2 py-1 uppercase text-[9px] font-black tracking-widest rounded-lg">Nợ Phí</span>
+        )},
+        { header: "Hành động", accessorKey: "id", cell: (r: any) => (
+            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                <button 
+                    onClick={() => handleToggleExamEligibility(r.id, r.isEligibleForExam ?? true)}
+                    className={cn(
+                        "p-2 rounded-lg transition-all border",
+                        (r.isEligibleForExam ?? true) ? "text-slate-400 border-slate-100 hover:text-rose-600 hover:bg-rose-50" : "text-rose-600 border-rose-200 bg-rose-50 hover:bg-rose-100"
+                    )}
+                    title={r.isEligibleForExam ? "Cấm thi" : "Hủy cấm thi"}
+                >
+                    {r.isEligibleForExam ? <Ban size={14} /> : <UserCheck size={14} />}
+                </button>
+            </div>
         )}
     ];
 
@@ -148,8 +195,11 @@ export default function TuitionManagementPage() {
                     >
                         {activeSemesters.map(s => <option key={s.id} value={s.id}>{s.name} ({s.year})</option>)}
                     </select>
-                    <button className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white text-[11px] uppercase tracking-widest font-black rounded-xl shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-colors">
-                        <CreditCard size={14} /> Phiếu Thu / Báo Cáo
+                    <button 
+                        onClick={handleExportExcel}
+                        className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white text-[11px] uppercase tracking-widest font-black rounded-xl shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-colors"
+                    >
+                        <Download size={14} /> Xuất Báo Cáo Excel
                     </button>
                 </div>
             </div>
@@ -195,6 +245,16 @@ export default function TuitionManagementPage() {
                                 <option value="">Lớp học</option>
                                 {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
+                            <div className="flex items-center gap-2 ml-2 px-4 py-2 bg-rose-50 rounded-xl border border-rose-100">
+                                <input 
+                                    type="checkbox" 
+                                    id="debtOnly" 
+                                    checked={debtOnly} 
+                                    onChange={e => setDebtOnly(e.target.checked)}
+                                    className="w-4 h-4 rounded border-rose-300 text-rose-600 focus:ring-rose-600"
+                                />
+                                <label htmlFor="debtOnly" className="text-[10px] font-black text-rose-600 uppercase tracking-widest cursor-pointer">Chỉ nợ phí</label>
+                            </div>
                         </div>
                     }
                 />

@@ -25,7 +25,7 @@ const DAYS = [
     { value: 8, label: "Chủ nhật" },
 ];
 
-const SHIFTS = Array.from({ length: 12 }, (_, i) => i + 1);
+const SHIFTS = Array.from({ length: 16 }, (_, i) => i + 1);
 
 // Validate shift boundary rules:
 // Lunch break: after shift 5 (11:30) → shift 6 starts at 13:00
@@ -45,6 +45,9 @@ interface ScheduleRowProps {
     rooms: Array<{ id: string; name: string; code?: string }>;
     disabled?: boolean;
     conflict?: string | null;
+    availabilityMap?: {
+        rooms: Record<string, Record<number, Record<number, string>>>;
+    };
     onChange: (index: number, field: keyof ScheduleEntry, value: any) => void;
     onRemove: (index: number) => void;
 }
@@ -58,6 +61,7 @@ export function ScheduleRow({
     rooms,
     disabled = false,
     conflict = null,
+    availabilityMap,
     onChange,
     onRemove,
 }: ScheduleRowProps) {
@@ -164,11 +168,18 @@ export function ScheduleRow({
                         onChange={(e) => onChange(index, "roomId", e.target.value)}
                     >
                         <option value="">-- Chưa xếp phòng --</option>
-                        {rooms.map((r) => (
-                            <option key={r.id} value={r.id}>
-                                {r.code ?? r.name}
-                            </option>
-                        ))}
+                        {rooms.map((r) => {
+                            const day = Number(schedule.dayOfWeek);
+                            const occupiedBy = Array.from({ length: schedule.endShift - schedule.startShift + 1 }, (_, i) => schedule.startShift + i)
+                                .map(t => availabilityMap?.rooms?.[r.id]?.[day]?.[t])
+                                .find(name => !!name);
+
+                            return (
+                                <option key={r.id} value={r.id} className={occupiedBy ? "text-rose-500 font-bold" : ""}>
+                                    {r.code ?? r.name} {occupiedBy ? `(Bận: ${occupiedBy})` : ""}
+                                </option>
+                            );
+                        })}
                     </select>
                 </div>
 
@@ -230,6 +241,10 @@ function getShiftTimeLabel(shift: number): string {
         10: "16:20",
         11: "18:00",
         12: "18:50",
+        13: "19:40",
+        14: "20:30",
+        15: "21:20",
+        16: "22:10",
     };
     return times[shift] ?? `T${shift}`;
 }

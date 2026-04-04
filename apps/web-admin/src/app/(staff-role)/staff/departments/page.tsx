@@ -17,20 +17,24 @@ import Modal from "@/components/modal";
 import DataTable from "@/components/DataTable";
 
 export default function StaffDepartmentsPage() {
-    const [activeTab, setActiveTab] = useState<"faculties" | "majors">("faculties");
+    const [activeTab, setActiveTab] = useState<"faculties" | "majors" | "departments">("faculties");
     const [faculties, setFaculties] = useState<any[]>([]);
     const [majors, setMajors] = useState<any[]>([]);
+    const [departments, setDepartments] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     
     // Modal states
     const [isFacultyModalOpen, setIsFacultyModalOpen] = useState(false);
     const [isMajorModalOpen, setIsMajorModalOpen] = useState(false);
+    const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
     const [editingFaculty, setEditingFaculty] = useState<any>(null);
     const [editingMajor, setEditingMajor] = useState<any>(null);
+    const [editingDept, setEditingDept] = useState<any>(null);
     
     // Form states
     const [facultyForm, setFacultyForm] = useState({ name: "", code: "", deanName: "" });
     const [majorForm, setMajorForm] = useState({ name: "", code: "", facultyId: "", totalCreditsRequired: 120 });
+    const [deptForm, setDeptForm] = useState({ name: "", code: "", facultyId: "", headName: "" });
     
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -49,12 +53,14 @@ export default function StaffDepartmentsPage() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [facRes, majRes] = await Promise.all([
+            const [facRes, majRes, deptRes] = await Promise.all([
                 fetch("/api/faculties", { headers }),
-                fetch("/api/majors", { headers })
+                fetch("/api/majors", { headers }),
+                fetch("/api/departments", { headers })
             ]);
             if (facRes.ok) setFaculties(await facRes.json());
             if (majRes.ok) setMajors(await majRes.json());
+            if (deptRes.ok) setDepartments(await deptRes.json());
         } catch (error) {
             console.error("Failed to fetch data", error);
         } finally {
@@ -148,26 +154,65 @@ export default function StaffDepartmentsPage() {
         }
     };
 
+    // Department Handlers
+    const handleDeptSubmit = async () => {
+        setActionLoading(true);
+        setErrorMsg(null);
+        try {
+            const url = editingDept ? `/api/departments/${editingDept.id}` : "/api/departments";
+            const method = editingDept ? "PUT" : "POST";
+            const res = await fetch(url, { method, headers, body: JSON.stringify(deptForm) });
+            if (res.ok) {
+                setSuccessMsg(editingDept ? "Cập nhật Bộ môn thành công!" : "Thêm Bộ môn mới thành công!");
+                setIsDeptModalOpen(false);
+                fetchData();
+            } else {
+                const data = await res.json();
+                setErrorMsg(data.message || "Có lỗi xảy ra");
+            }
+        } catch (error) {
+            setErrorMsg("Lỗi kết nối");
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleDeptDelete = async (id: string) => {
+        if (!confirm("Bạn có chắc chắn muốn xóa Bộ môn này?")) return;
+        try {
+            const res = await fetch(`/api/departments/${id}`, { method: "DELETE", headers });
+            if (res.ok) {
+                setSuccessMsg("Đã xóa Bộ môn thành công!");
+                fetchData();
+            } else {
+                const data = await res.json();
+                alert(data.message || "Không thể xóa Bộ môn");
+            }
+        } catch (error) {
+            alert("Lỗi kết nối");
+        }
+    };
+
     const facultyColumns = [
         { header: "Mã Khoa", accessorKey: "code" },
         { header: "Tên Khoa", accessorKey: "name" },
         { header: "Trưởng Khoa", accessorKey: "deanName" },
-        { 
-            header: "Số Ngành", 
-            accessorKey: "_count", 
-            cell: (item: any) => item._count?.majors || 0 
-        },
+        { header: "Số Ngành", accessorKey: "_count", cell: (item: any) => item._count?.majors || 0 },
     ];
 
     const majorColumns = [
         { header: "Mã Ngành", accessorKey: "code" },
         { header: "Tên Ngành", accessorKey: "name" },
-        { 
-            header: "Thuộc Khoa", 
-            accessorKey: "facultyId", 
-            cell: (item: any) => faculties.find(f => f.id === item.facultyId)?.name || "N/A"
-        },
+        { header: "Thuộc Khoa", accessorKey: "facultyId", cell: (item: any) => faculties.find(f => f.id === item.facultyId)?.name || "N/A" },
         { header: "Số tín chỉ", accessorKey: "totalCreditsRequired" },
+    ];
+
+    const deptColumns = [
+        { header: "Mã Bộ môn", accessorKey: "code" },
+        { header: "Tên Bộ môn", accessorKey: "name" },
+        { header: "Trưởng Bộ môn", accessorKey: "headName", cell: (item: any) => item.headName || "—" },
+        { header: "Khoa", accessorKey: "facultyId", cell: (item: any) => item.faculty?.name || faculties.find(f => f.id === item.facultyId)?.name || "N/A" },
+        { header: "Số môn học", accessorKey: "_count", cell: (item: any) => item._count?.subjects || 0 },
     ];
 
     if (loading) {
@@ -199,16 +244,20 @@ export default function StaffDepartmentsPage() {
                                 setEditingFaculty(null);
                                 setFacultyForm({ name: "", code: "", deanName: "" });
                                 setIsFacultyModalOpen(true);
-                            } else {
+                            } else if (activeTab === "majors") {
                                 setEditingMajor(null);
                                 setMajorForm({ name: "", code: "", facultyId: faculties[0]?.id || "", totalCreditsRequired: 120 });
                                 setIsMajorModalOpen(true);
+                            } else {
+                                setEditingDept(null);
+                                setDeptForm({ name: "", code: "", facultyId: faculties[0]?.id || "", headName: "" });
+                                setIsDeptModalOpen(true);
                             }
                         }}
                         className="flex items-center gap-2 px-6 py-2.5 bg-uneti-blue text-white rounded-xl text-[12px] font-black hover:shadow-xl hover:shadow-uneti-blue/20 transition-all shadow-lg shadow-uneti-blue/10 uppercase tracking-wider"
                     >
                         <Plus size={18} />
-                        Thêm {activeTab === "faculties" ? "Khoa" : "Ngành"} mới
+                        Thêm {activeTab === "faculties" ? "Khoa" : activeTab === "majors" ? "Ngành" : "Bộ môn"} mới
                     </button>
                 </div>
             </div>
@@ -237,6 +286,13 @@ export default function StaffDepartmentsPage() {
                 >
                     <Layers size={14} />
                     Danh sách Ngành
+                </button>
+                <button
+                    onClick={() => setActiveTab("departments")}
+                    className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === "departments" ? "bg-white text-uneti-blue shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+                >
+                    <Layers size={14} />
+                    Danh sách Bộ môn
                 </button>
             </div>
 
@@ -269,7 +325,7 @@ export default function StaffDepartmentsPage() {
                             </div>
                         )}
                     />
-                ) : (
+                ) : activeTab === "majors" ? (
                     <DataTable
                         data={majors}
                         columns={majorColumns}
@@ -301,8 +357,36 @@ export default function StaffDepartmentsPage() {
                             </div>
                         )}
                     />
+                ) : (
+                    <DataTable
+                        data={departments}
+                        columns={deptColumns}
+                        searchKey="name"
+                        searchPlaceholder="Tìm kiếm tên bộ môn..."
+                        actions={(item) => (
+                            <div className="flex justify-end gap-2">
+                                <button
+                                    onClick={() => {
+                                        setEditingDept(item);
+                                        setDeptForm({ name: item.name, code: item.code, facultyId: item.facultyId, headName: item.headName || "" });
+                                        setIsDeptModalOpen(true);
+                                    }}
+                                    className="p-2 text-slate-400 hover:text-uneti-blue transition-colors"
+                                >
+                                    <Edit2 size={16} />
+                                </button>
+                                <button
+                                    onClick={() => handleDeptDelete(item.id)}
+                                    className="p-2 text-slate-400 hover:text-rose-500 transition-colors"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
+                        )}
+                    />
                 )}
             </div>
+
 
             {/* Faculty Modal */}
             <Modal
@@ -424,6 +508,79 @@ export default function StaffDepartmentsPage() {
                             className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold outline-none appearance-none cursor-pointer"
                             value={majorForm.facultyId}
                             onChange={e => setMajorForm(f => ({ ...f, facultyId: e.target.value }))}
+                        >
+                            <option value="">-- Chọn Khoa chủ quản --</option>
+                            {faculties.map(f => (
+                                <option key={f.id} value={f.id}>{f.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Department Modal */}
+            <Modal
+                isOpen={isDeptModalOpen}
+                onClose={() => setIsDeptModalOpen(false)}
+                title={editingDept ? "Cập nhật Bộ môn" : "Thêm Bộ môn mới"}
+                footer={
+                    <div className="flex items-center justify-end gap-3 w-full px-2">
+                        <button onClick={() => setIsDeptModalOpen(false)} className="px-6 py-2.5 text-[12px] font-black text-slate-400 uppercase">Hủy bỏ</button>
+                        <button 
+                            onClick={handleDeptSubmit}
+                            disabled={actionLoading}
+                            className="px-8 py-3 bg-uneti-blue text-white rounded-[20px] text-[12px] font-black hover:bg-slate-900 transition-all shadow-lg shadow-uneti-blue/10 disabled:opacity-50"
+                        >
+                            {actionLoading ? "ĐANG XỬ LÝ..." : "LƯU THÔNG TIN"}
+                        </button>
+                    </div>
+                }
+            >
+                <div className="space-y-6">
+                    {errorMsg && (
+                        <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600">
+                            <AlertCircle size={18} />
+                            <p className="text-xs font-bold">{errorMsg}</p>
+                        </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Mã Bộ môn</label>
+                            <input 
+                                type="text" 
+                                className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none font-mono" 
+                                placeholder="Ví dụ: KT_PM" 
+                                value={deptForm.code}
+                                onChange={e => setDeptForm(f => ({ ...f, code: e.target.value }))}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Trưởng Bộ môn</label>
+                            <input 
+                                type="text" 
+                                className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none" 
+                                placeholder="Ví dụ: TS. Nguyễn Văn A" 
+                                value={deptForm.headName}
+                                onChange={e => setDeptForm(f => ({ ...f, headName: e.target.value }))}
+                            />
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tên Bộ môn</label>
+                        <input 
+                            type="text" 
+                            className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none" 
+                            placeholder="Ví dụ: Kỹ thuật phần mềm" 
+                            value={deptForm.name}
+                            onChange={e => setDeptForm(f => ({ ...f, name: e.target.value }))}
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Thuộc Khoa</label>
+                        <select 
+                            className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold outline-none appearance-none cursor-pointer"
+                            value={deptForm.facultyId}
+                            onChange={e => setDeptForm(f => ({ ...f, facultyId: e.target.value }))}
                         >
                             <option value="">-- Chọn Khoa chủ quản --</option>
                             {faculties.map(f => (

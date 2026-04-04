@@ -43,7 +43,6 @@ export function LecturerSidebar() {
         { href: "/lecturer/dashboard", icon: LayoutDashboard, label: "Bảng điều khiển" },
         { href: "/lecturer/courses", icon: BookOpen, label: "Lớp học phần" },
         { href: "/lecturer/schedule", icon: Calendar, label: "Lịch giảng dạy" },
-        { href: "/lecturer/attendance", icon: ClipboardCheck, label: "Điểm danh SV" },
     ];
 
     return (
@@ -61,7 +60,7 @@ export function StaffSidebar() {
     const navItems: NavItem[] = [
         { href: "/staff/dashboard", icon: LayoutDashboard, label: "Bảng điều khiển" },
         { href: "/staff/students", icon: GraduationCap, label: "Quản lý Sinh viên" },
-        { href: "/staff/courses", icon: BookOpen, label: "Xếp lịch học phần" },
+        { href: "/staff/courses", icon: BookOpen, label: "Quản lý Học phần" },
         { href: "/staff/departments", icon: Building2, label: "Khoa - Ngành" },
         { href: "/staff/lecturers", icon: Users, label: "Hồ sơ Giảng viên" },
         { href: "/staff/tuition", icon: Calculator, label: "Quản lý Học phí" },

@@ -8,6 +8,7 @@ import {
     Filter, Lock, AlertTriangle
 } from "lucide-react";
 import { ScheduleRow, type ScheduleEntry } from "@/components/CourseScheduleEditor";
+import { SubjectFormModal } from "@/components/SubjectFormModal";
 
 const API = (path: string) => `/api${path}`;
 
@@ -36,6 +37,7 @@ export default function AdminCoursesPage() {
     const [adminClasses, setAdminClasses] = useState<any[]>([]);
     const [rooms, setRooms] = useState<any[]>([]);
     const [courses, setCourses] = useState<any[]>([]);
+    const [departments, setDepartments] = useState<any[]>([]);
 
     // ── Navigation state
     const [selectedSemesterId, setSelectedSemesterId] = useState<string>("");
@@ -57,6 +59,7 @@ export default function AdminCoursesPage() {
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [successMsg, setSuccessMsg] = useState<string | null>(null);
     const [deleteConfirm, setDeleteConfirm] = useState(false);
+    const [isSubjectModalOpen, setIsSubjectModalOpen] = useState(false);
 
     // ── Additional schedule previews
     const [lecturerSchedule, setLecturerSchedule] = useState<any[]>([]);
@@ -133,6 +136,7 @@ export default function AdminCoursesPage() {
             safeFetch("/admin-classes", setAdminClasses),
             safeFetch("/rooms", setRooms),
             safeFetch("/courses", setCourses),
+            safeFetch("/departments", setDepartments),
         ]);
         if (!isRefresh) setLoading(false);
     }, [headers, selectedSemesterId]);
@@ -322,19 +326,28 @@ export default function AdminCoursesPage() {
                 </div>
             </div>
 
-            <div className="flex-1 flex gap-5 min-h-0">
+            <div className="flex-1 flex flex-col md:flex-row gap-5 min-h-0 items-stretch">
                 {/* Sidebar */}
-                <div className={`w-80 flex-shrink-0 flex flex-col bg-white border border-${THEME.border} rounded-2xl overflow-hidden shadow-sm`}>
+                <div className={`w-full md:w-80 flex-shrink-0 flex flex-col bg-white border border-${THEME.border} rounded-2xl overflow-hidden shadow-sm`}>
                     <div className={`p-4 border-b border-${THEME.bg} space-y-3`}>
-                        <div className="relative">
-                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                            <input
-                                type="text"
-                                placeholder="Tìm tên môn học..."
-                                className={`w-full pl-9 pr-3 py-2 bg-${THEME.bg} border-transparent rounded-lg text-xs font-medium outline-none focus:bg-white focus:border-${THEME.primary}/20 transition-all`}
-                                value={searchTerm}
-                                onChange={e => setSearchTerm(e.target.value)}
-                            />
+                        <div className="flex gap-2">
+                            <div className="relative flex-1">
+                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Tìm môn học..."
+                                    className={`w-full pl-9 pr-3 py-2 bg-${THEME.bg} border-transparent rounded-lg text-xs font-medium outline-none focus:bg-white focus:border-${THEME.primary}/20 transition-all`}
+                                    value={searchTerm}
+                                    onChange={e => setSearchTerm(e.target.value)}
+                                />
+                            </div>
+                            <button 
+                                onClick={() => setIsSubjectModalOpen(true)}
+                                className={`w-9 h-9 bg-${THEME.primaryLight} text-${THEME.primary} rounded-lg flex items-center justify-center hover:bg-${THEME.primary} hover:text-white transition-all shrink-0`}
+                                title="Thêm môn học mới"
+                            >
+                                <Plus size={16} />
+                            </button>
                         </div>
                         <div className="flex gap-2">
                             <select
@@ -356,7 +369,7 @@ export default function AdminCoursesPage() {
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
                         {filteredSubjects.map(s => {
                             const isActive = selectedSubjectId === s.id;
                             const count = s.classCountInSemester || 0;
@@ -384,7 +397,7 @@ export default function AdminCoursesPage() {
                 </div>
 
                 {/* Main */}
-                <div className={`flex-1 bg-white border border-${THEME.border} rounded-2xl overflow-hidden flex flex-col shadow-sm`}>
+                <div className={`flex-1 w-full bg-white border border-${THEME.border} rounded-2xl overflow-hidden flex flex-col shadow-sm min-h-full`}>
                     {showDetail ? (
                         <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in slide-in-from-right-4 duration-300">
                             <div className={`px-6 py-4 border-b border-${THEME.bg} flex items-center justify-between gap-4`}>
@@ -417,7 +430,7 @@ export default function AdminCoursesPage() {
                                 </div>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
+                            <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-8">
                                 {errorMsg && (
                                     <div className="p-4 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-3 text-rose-600 animate-in fade-in zoom-in-95">
                                         <AlertTriangle size={18} />
@@ -527,7 +540,7 @@ export default function AdminCoursesPage() {
 
                                 <div>
                                     <label className={labelCls}>Lớp hành chính hỗ trợ ({form.adminClassIds.length})</label>
-                                    <div className={`p-4 bg-${THEME.bg} rounded-xl border border-${THEME.border} flex flex-wrap gap-2`}>
+                                    <div className={`p-4 bg-${THEME.bg} rounded-xl border border-${THEME.border} flex flex-wrap gap-2 shadow-inner`}>
                                         {filteredAdminClasses.map(ac => (
                                             <button
                                                 key={ac.id}
@@ -605,7 +618,7 @@ export default function AdminCoursesPage() {
                                     </button>
                                 )}
                             </div>
-                            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+                            <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                     {coursesForSubject.map(c => (
                                         <button key={c.id} onClick={() => setSelectedCourseId(c.id)} className={`p-4 bg-white border border-${THEME.border} rounded-xl text-left hover:border-${THEME.primary}/30 hover:shadow-md transition-all group`}>
@@ -652,6 +665,19 @@ export default function AdminCoursesPage() {
                     </div>
                 </div>
             )}
+
+            {/* Subject Creation Modal */}
+            <SubjectFormModal 
+                isOpen={isSubjectModalOpen}
+                onClose={() => setIsSubjectModalOpen(false)}
+                majors={majors}
+                departments={departments}
+                headers={headers}
+                onSuccess={(msg) => {
+                    setSuccessMsg(msg);
+                    fetchAll(true);
+                }}
+            />
         </div>
     );
 }

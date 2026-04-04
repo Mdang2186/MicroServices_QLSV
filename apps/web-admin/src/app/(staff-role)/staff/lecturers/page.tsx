@@ -14,16 +14,17 @@ import {
     AlertTriangle,
     Check,
     Mail,
-    UserCircle,
-    ChevronRight,
-    MapPin,
-    Phone,
+    UserCheck,
+    Filter,
+    Calendar,
+    Clock,
+    Book,
     Building2,
     GraduationCap,
-    UserCheck,
-    Filter
+    ChevronRight
 } from "lucide-react";
 import Modal from "@/components/modal";
+import ScheduleGrid from "@/components/ScheduleGrid";
 
 export default function StaffLecturersPage() {
     const [lecturers, setLecturers] = useState<any[]>([]);
@@ -36,6 +37,13 @@ export default function StaffLecturersPage() {
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [selectedLecturer, setSelectedLecturer] = useState<any>(null);
     const [formLoading, setFormLoading] = useState(false);
+
+    // Schedule states
+    const [semesters, setSemesters] = useState<any[]>([]);
+    const [selectedSemesterId, setSelectedSemesterId] = useState<string>("");
+    const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+    const [lecturerSchedule, setLecturerSchedule] = useState<any[]>([]);
+    const [scheduleLoading, setScheduleLoading] = useState(false);
 
     // Form states
     const [formData, setFormData] = useState({
@@ -51,7 +59,24 @@ export default function StaffLecturersPage() {
 
     useEffect(() => {
         fetchLecturers();
+        fetchSemesters();
     }, []);
+
+    const fetchSemesters = async () => {
+        try {
+            const res = await fetch("/api/semesters", {
+                headers: { Authorization: `Bearer ${TOKEN}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setSemesters(data);
+                const current = data.find((s: any) => s.isCurrent);
+                if (current) setSelectedSemesterId(current.id);
+            }
+        } catch (error) {
+            console.error("Failed to fetch semesters", error);
+        }
+    };
 
     const fetchLecturers = async () => {
         setLoading(true);
@@ -182,6 +207,32 @@ export default function StaffLecturersPage() {
         withDegree: lecturers.filter(l => l.degree).length,
     };
 
+    const handleViewSchedule = async (lecturer: any) => {
+        setSelectedLecturer(lecturer);
+        setIsScheduleModalOpen(true);
+        setScheduleLoading(true);
+        try {
+            const semId = selectedSemesterId || semesters.find(s => s.isCurrent)?.id;
+            const res = await fetch(`/api/courses/schedule/lecturer/${lecturer.id}${semId ? `?semesterId=${semId}` : ""}`, {
+                headers: { Authorization: `Bearer ${TOKEN}` }
+            });
+            if (res.ok) {
+                setLecturerSchedule(await res.json());
+            }
+        } catch (error) {
+            console.error("Failed to fetch schedule", error);
+        } finally {
+            setScheduleLoading(false);
+        }
+    };
+
+    // Re-fetch schedule if semester changes while modal is open
+    useEffect(() => {
+        if (isScheduleModalOpen && selectedLecturer) {
+            handleViewSchedule(selectedLecturer);
+        }
+    }, [selectedSemesterId]);
+
     const filteredLecturers = lecturers.filter(l =>
         l.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         l.lectureCode?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -216,6 +267,20 @@ export default function StaffLecturersPage() {
                     <p className="text-[13px] font-medium text-slate-500 italic">"Quản lý thông tin giảng dạy và trình độ chuyên môn của giảng viên"</p>
                 </div>
                 <div className="flex items-center gap-3">
+                    {/* Semester Selector */}
+                    <div className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl shadow-sm">
+                        <Calendar size={16} className="text-uneti-blue" />
+                        <select 
+                            className="bg-transparent text-[12px] font-black outline-none text-slate-600 uppercase tracking-wider cursor-pointer"
+                            value={selectedSemesterId}
+                            onChange={(e) => setSelectedSemesterId(e.target.value)}
+                        >
+                            {semesters.map(s => (
+                                <option key={s.id} value={s.id}>{s.name} {s.isCurrent ? "(Hiện tại)" : ""}</option>
+                            ))}
+                        </select>
+                    </div>
+
                     <button className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-[12px] font-black hover:bg-slate-50 transition-all shadow-sm uppercase tracking-wider">
                         <Download size={16} />
                         Xuất danh sách
@@ -326,6 +391,13 @@ export default function StaffLecturersPage() {
                                                     <CheckCircle2 size={18} />
                                                 </button>
                                             )}
+                                            <button
+                                                onClick={() => handleViewSchedule(l)}
+                                                className="p-3 text-amber-500 hover:bg-amber-50 rounded-2xl transition-all"
+                                                title="Xem lịch dạy"
+                                            >
+                                                <Calendar size={18} />
+                                            </button>
                                             <button
                                                 onClick={() => openEditModal(l)}
                                                 className="p-3 text-uneti-blue hover:bg-uneti-blue-light rounded-2xl transition-all"
@@ -548,6 +620,81 @@ export default function StaffLecturersPage() {
                             Dữ liệu liên quan đến <span className="text-slate-900 font-black">{selectedLecturer?.fullName}</span> sẽ bị gỡ bỏ vĩnh viễn khỏi hệ thống quản lý học vụ.
                         </p>
                     </div>
+                </div>
+            </Modal>
+
+            {/* SCHEDULE MODAL */}
+            <Modal
+                isOpen={isScheduleModalOpen}
+                onClose={() => setIsScheduleModalOpen(false)}
+                title={`Lịch giảng dạy: ${selectedLecturer?.fullName}`}
+                footer={
+                    <div className="flex items-center justify-end w-full px-2">
+                        <button onClick={() => setIsScheduleModalOpen(false)} className="px-8 py-3 bg-slate-900 text-white rounded-[22px] text-[12px] font-black hover:bg-slate-800 transition-all shadow-lg uppercase tracking-widest">Đóng biểu đồ</button>
+                    </div>
+                }
+            >
+                <div className="py-6 px-2 space-y-6">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-500">
+                                <Clock size={20} />
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Thời khóa biểu</p>
+                                <p className="text-[14px] font-black text-slate-900 tracking-tight">{semesters.find(s => s.id === selectedSemesterId)?.name}</p>
+                            </div>
+                        </div>
+                        {scheduleLoading && (
+                            <div className="flex items-center gap-2 text-uneti-blue">
+                                <div className="w-4 h-4 border-2 border-uneti-blue/20 border-t-uneti-blue rounded-full animate-spin"></div>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Đang tải...</span>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="bg-slate-50 p-4 rounded-[28px] border border-slate-100">
+                        <ScheduleGrid schedules={lecturerSchedule} color="indigo" />
+                    </div>
+
+                    {lecturerSchedule.length > 0 ? (
+                        <div className="space-y-3">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Chi tiết các lớp đang dạy</p>
+                            <div className="grid grid-cols-1 gap-2">
+                                {Array.from(new Set(lecturerSchedule.map(s => s.courseClassId))).map(classId => {
+                                    const classInfo = lecturerSchedule.find(s => s.courseClassId === classId)?.courseClass;
+                                    const schedules = lecturerSchedule.filter(s => s.courseClassId === classId);
+                                    return (
+                                        <div key={classId} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl shadow-sm hover:border-uneti-blue/20 transition-all group">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-uneti-blue group-hover:text-white transition-all">
+                                                    <Book size={18} />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[13px] font-black text-slate-800 leading-tight">{classInfo?.name}</p>
+                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">{classInfo?.code} • {schedules.length} buổi/tuần</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-wrap gap-1">
+                                                {schedules.map((s, idx) => (
+                                                    <span key={idx} className="px-2 py-1 bg-slate-50 text-[9px] font-black text-slate-500 rounded-lg border border-slate-100 uppercase">
+                                                        {s.dayOfWeek === 8 ? 'Chủ nhật' : `Thứ ${s.dayOfWeek}`}: T{s.startShift}-{s.endShift} {s.room?.name ? `(${s.room.name})` : ''}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ) : !scheduleLoading && (
+                        <div className="py-12 text-center bg-slate-50 rounded-[28px] border border-dashed border-slate-200">
+                            <div className="w-12 h-12 bg-white rounded-2xl shadow-sm mx-auto flex items-center justify-center text-slate-200 mb-3">
+                                <Calendar size={24} />
+                            </div>
+                            <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Không có lịch dạy trong học kỳ này</p>
+                        </div>
+                    )}
                 </div>
             </Modal>
         </div>
