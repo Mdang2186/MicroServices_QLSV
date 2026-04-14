@@ -130,13 +130,20 @@ export default function LecturerCourseDetailPage() {
     // Map student ID to grade
     const gradeMap = new Map(grades.map(g => [g.studentId, g]));
 
-    // Split nominal name
-    const nominalName = courseClass?.name?.includes(" - ") 
-        ? courseClass?.name?.split(" - ")[1] 
-        : courseClass?.name;
-    const subjectName = courseClass?.name?.includes(" - ")
-        ? courseClass?.name?.split(" - ")[0]
-        : courseClass?.subject?.name;
+    const adminClassLabel =
+        courseClass?.adminClasses?.map((adminClass: any) => adminClass.code).join(", ") ||
+        "Chưa gắn lớp";
+    const majorLabel =
+        courseClass?.subject?.major?.name ||
+        courseClass?.adminClasses?.[0]?.major?.name ||
+        "Chưa rõ ngành";
+    const primaryRoom =
+        courseClass?.sessions?.[0]?.room?.building
+            ? `${courseClass?.sessions?.[0]?.room?.name} - ${courseClass?.sessions?.[0]?.room?.building}`
+            : courseClass?.sessions?.[0]?.room?.name || "Chưa xếp phòng";
+    const subjectName = courseClass?.subject?.name || courseClass?.name || "Lớp học phần";
+    const nominalName = courseClass?.name || adminClassLabel;
+    const semesterLabel = courseClass?.semester?.name || "Chưa rõ học kỳ";
 
     return (
         <div className="min-h-screen space-y-6 pb-20 max-w-7xl mx-auto px-4 md:px-8 py-6 animate-in fade-in duration-700 bg-[#fbfcfd]">
@@ -150,11 +157,16 @@ export default function LecturerCourseDetailPage() {
                         <span className="text-uneti-blue">{courseClass?.code}</span>
                     </div>
                     <h1 className="text-4xl font-black text-slate-800 tracking-tighter uppercase leading-none">
-                        {nominalName}
+                        {subjectName}
                     </h1>
                     <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">
-                        {subjectName} • {courseClass?.semester?.name}
+                        {nominalName} • {semesterLabel} • {majorLabel}
                     </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                        <span className="rounded-lg border border-slate-200 bg-white px-3 py-1">Lớp: {adminClassLabel}</span>
+                        <span className="rounded-lg border border-slate-200 bg-white px-3 py-1">Mã lớp HP: {courseClass?.code}</span>
+                        <span className="rounded-lg border border-slate-200 bg-white px-3 py-1">Ngành: {majorLabel}</span>
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -180,7 +192,9 @@ export default function LecturerCourseDetailPage() {
                     { label: "Sĩ số lớp", value: `${enrollments.length} SV`, sub: "Hiện tại", icon: Users },
                     { label: "Chuyên cần", value: `${avgAttendance}%`, sub: "Trung bình", icon: Activity },
                     { label: "Tín chỉ", value: courseClass?.subject?.credits, sub: "Định mức", icon: BookMarked },
-                    { label: "Phòng học", value: courseClass?.schedules?.[0]?.room?.name || "TBA", sub: "Cố định", icon: MapPin },
+                    { label: "Phòng học", value: primaryRoom, sub: "Cố định", icon: MapPin },
+                    { label: "Lớp danh nghĩa", value: adminClassLabel, sub: "Theo quản lý", icon: GraduationCap },
+                    { label: "Ngành học", value: majorLabel, sub: "Phụ trách", icon: BookOpen },
                 ].map((s, i) => (
                     <div key={i} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
                         <div className="p-3 rounded-xl bg-slate-50 text-uneti-blue/60">

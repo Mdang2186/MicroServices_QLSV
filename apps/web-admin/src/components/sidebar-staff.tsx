@@ -3,19 +3,20 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, BookOpen, Settings, LogOut, GraduationCap, Building2, UserCog, Menu, X, UserCheck, CreditCard } from "lucide-react";
+import { LayoutDashboard, Users, BookOpen, Settings, LogOut, GraduationCap, Building2, UserCog, Menu, X, UserCheck, CreditCard, Layers } from "lucide-react";
 
 export default function StaffSidebar() {
     const pathname = usePathname();
     const [isOpen, setIsOpen] = useState(false);
 
     const navItems = [
-        { href: "/staff/dashboard", icon: LayoutDashboard, label: "Bảng điều khiển" },
+        { href: "/staff/ems", icon: LayoutDashboard, label: "Hệ thống EMS (Đào tạo)" },
+        { href: "/staff/semester-plan", icon: LayoutDashboard, label: "Lập kế hoạch Học kỳ" },
         { href: "/staff/students", icon: GraduationCap, label: "Quản lý Sinh viên" },
         { href: "/staff/courses", icon: BookOpen, label: "Học phần - Lớp" },
         { href: "/staff/academic-review", icon: UserCheck, label: "Duyệt điểm & Học vụ" },
         { href: "/staff/subjects", icon: BookOpen, label: "Quản lý Môn học" },
-        { href: "/staff/departments", icon: Building2, label: "Khoa - Ngành" },
+        { href: "/staff/curriculum", icon: Layers, label: "Khung chương trình" },
         { href: "/staff/lecturers", icon: Users, label: "Hồ sơ Giảng viên" },
         { href: "/staff/tuition", icon: CreditCard, label: "Quản lý Học phí" },
     ];

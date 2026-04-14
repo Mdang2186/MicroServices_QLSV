@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Cookies from "js-cookie";
 import api from "@/lib/api";
+import { getStudentUserId, readStudentSessionUser } from "@/lib/student-session";
 
 export default function ChangePasswordPage() {
     const router = useRouter();
@@ -16,15 +16,8 @@ export default function ChangePasswordPage() {
     const [userId, setUserId] = useState<string | null>(null);
 
     useEffect(() => {
-        const userStr = Cookies.get("student_user");
-        if (userStr) {
-            try {
-                const user = JSON.parse(userStr);
-                setUserId(user.id);
-            } catch (e) {
-                console.error("Failed to parse user cookie");
-            }
-        }
+        const user = readStudentSessionUser();
+        setUserId(getStudentUserId(user));
     }, []);
 
     const handleChange = async (e: React.FormEvent) => {

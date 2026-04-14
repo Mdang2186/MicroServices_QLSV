@@ -48,7 +48,10 @@ export class GpaService {
     const bestGradesMap = new Map<string, any>();
     for (const g of grades) {
       const subjectId = g.courseClass.subjectId;
-      if (!bestGradesMap.has(subjectId) || g.totalScore10 > bestGradesMap.get(subjectId).totalScore10) {
+      if (
+        !bestGradesMap.has(subjectId) ||
+        g.totalScore10 > bestGradesMap.get(subjectId).totalScore10
+      ) {
         bestGradesMap.set(subjectId, g);
       }
     }
@@ -72,14 +75,17 @@ export class GpaService {
     // Get total earned credits for IT major (155 target)
     const grades = await this.prisma.grade.findMany({
       where: { studentId, isPassed: true },
-      include: { subject: true }
+      include: { subject: true },
     });
 
     const uniquePassedSubjects = new Map<string, number>();
     for (const g of grades) {
       uniquePassedSubjects.set(g.subjectId, g.subject.credits);
     }
-    const totalCredits = Array.from(uniquePassedSubjects.values()).reduce((a, b) => a + b, 0);
+    const totalCredits = Array.from(uniquePassedSubjects.values()).reduce(
+      (a, b) => a + b,
+      0,
+    );
 
     let warningLevel = 0;
     if (gpa < 1.0) warningLevel = 1;
@@ -96,9 +102,11 @@ export class GpaService {
       isEligibleForGraduation,
       warningLevel,
       statusText: warningLevel > 0 ? 'WARNING' : 'NORMAL',
-      recommendation: isEligibleForGraduation 
-        ? "Đủ điều kiện xét tốt nghiệp." 
-        : (totalCredits < 155 ? `Cần tích lũy thêm ${155 - totalCredits} tín chỉ.` : "Cần cải thiện CPA >= 2.0.")
+      recommendation: isEligibleForGraduation
+        ? 'Đủ điều kiện xét tốt nghiệp.'
+        : totalCredits < 155
+          ? `Cần tích lũy thêm ${155 - totalCredits} tín chỉ.`
+          : 'Cần cải thiện CPA >= 2.0.',
     };
   }
 }

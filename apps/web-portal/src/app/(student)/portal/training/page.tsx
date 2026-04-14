@@ -3,7 +3,6 @@
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { StudentService } from "@/services/student.service";
-import Cookies from "js-cookie";
 import {
     Award,
     ChevronRight,
@@ -15,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { getStudentProfileId, getStudentUserId, readStudentSessionUser } from "@/lib/student-session";
 
 import {
     Table,
@@ -32,10 +32,15 @@ export default function TrainingResultsPage() {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const userCookie = Cookies.get("student_user");
-                if (!userCookie) return;
-                const user = JSON.parse(userCookie);
-                const studentId = user.student?.id || user.id;
+                const user = readStudentSessionUser();
+                const userId = getStudentUserId(user);
+                if (!userId) return;
+
+                const studentId =
+                    getStudentProfileId(user) ||
+                    (await StudentService.getProfile(userId))?.id;
+
+                if (!studentId) return;
 
                 const data = await StudentService.getTrainingResults(studentId);
                 if (data && data.length > 0) {

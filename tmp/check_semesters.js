@@ -1,21 +1,26 @@
-
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-async function main() {
-    const cc = await prisma.courseClass.findUnique({
-        where: { id: 'CCLASS_CS02_HKH_01_2526' },
-        include: { semester: true }
-    });
-    const cc2 = await prisma.courseClass.findUnique({
-        where: { id: 'CCLASS_CS01_HK1_01_2627' },
-        include: { semester: true }
-    });
+async function checkSemesters() {
+  console.log('--- SEMESTER & SESSION STATUS ---');
+  const semesters = await prisma.semester.findMany({
+    orderBy: { startDate: 'asc' },
+    include: {
+      _count: {
+        select: { sessions: true }
+      }
+    }
+  });
 
-    console.log('Class 1:', cc.id, cc.semester.name);
-    console.log('Class 2:', cc2.id, cc2.semester.name);
+  semesters.forEach(s => {
+    console.log(`ID: ${s.id}`);
+    console.log(`Code: ${s.code} | Name: ${s.name}`);
+    console.log(`Dates: ${s.startDate.toISOString().split('T')[0]} to ${s.endDate.toISOString().split('T')[0]}`);
+    console.log(`Sessions: ${s._count.sessions}`);
+    console.log('---');
+  });
+
+  await prisma.$disconnect();
 }
 
-main()
-    .catch(e => console.error(e))
-    .finally(async () => await prisma.$disconnect());
+checkSemesters().catch(console.error);

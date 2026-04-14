@@ -5,7 +5,6 @@ import {
     Bell, 
     Lock, 
     Globe, 
-    Display, 
     Save,
     UserCog,
     Languages,

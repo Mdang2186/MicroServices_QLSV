@@ -6,7 +6,7 @@ import { Trash2 } from "lucide-react";
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export interface ScheduleEntry {
-    dayOfWeek: number;   // 2 = Monday … 7 = Saturday, 8 = Sunday
+    dayOfWeek: number;   // 2 = Monday … 8 = Sunday
     startShift: number;  // 1–12
     endShift: number;    // 1–12
     roomId: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Cookies from "js-cookie";
 import {
     Users,
@@ -12,7 +12,8 @@ import {
     AlertTriangle,
     Check,
     Building2,
-    UserPlus
+    UserPlus,
+    Loader2
 } from "lucide-react";
 import Modal from "@/components/modal";
 import DataTable from "@/components/DataTable";
@@ -20,8 +21,16 @@ import DataTable from "@/components/DataTable";
 export default function StaffStudentsPage() {
     const [students, setStudents] = useState<any[]>([]);
     const [majors, setMajors] = useState<any[]>([]);
+    const [faculties, setFaculties] = useState<any[]>([]);
+    const [cohorts, setCohorts] = useState<any[]>([]);
     const [adminClasses, setAdminClasses] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isExporting, setIsExporting] = useState(false);
+
+    // Filter states
+    const [selectedFacultyId, setSelectedFacultyId] = useState("");
+    const [selectedMajorId, setSelectedMajorId] = useState("");
+    const [selectedCohort, setSelectedCohort] = useState("");
 
     // Modal states
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -70,13 +79,33 @@ export default function StaffStudentsPage() {
         totalEarnedCredits: 0,
     });
 
-    const TOKEN = Cookies.get("admin_accessToken");
+    const TOKEN = Cookies.get("staff_accessToken") || Cookies.get("admin_accessToken");
 
     useEffect(() => {
         fetchStudents();
         fetchMajors();
+        fetchFaculties();
+        fetchCohorts();
         fetchAdminClasses();
     }, []);
+
+    const fetchFaculties = async () => {
+        try {
+            const res = await fetch("/api/faculties", {
+                headers: { Authorization: `Bearer ${TOKEN}` }
+            });
+            if (res.ok) setFaculties(await res.json());
+        } catch (error) { console.error(error); }
+    };
+
+    const fetchCohorts = async () => {
+        try {
+            const res = await fetch("/api/cohorts", {
+                headers: { Authorization: `Bearer ${TOKEN}` }
+            });
+            if (res.ok) setCohorts(await res.json());
+        } catch (error) { console.error(error); }
+    };
 
     const fetchMajors = async () => {
         try {
@@ -793,6 +822,15 @@ export default function StaffStudentsPage() {
         { header: "Tín chỉ", accessorKey: "totalEarnedCredits", cell: (s: any) => s.totalEarnedCredits || "0" }
     ];
 
+    const filteredStudents = useMemo(() => {
+        return students.filter(s => {
+            const matchesFaculty = !selectedFacultyId || s.major?.facultyId === selectedFacultyId;
+            const matchesMajor = !selectedMajorId || s.majorId === selectedMajorId;
+            const matchesCohort = !selectedCohort || s.intake === selectedCohort;
+            return matchesFaculty && matchesMajor && matchesCohort;
+        });
+    }, [students, selectedFacultyId, selectedMajorId, selectedCohort]);
+
     if (loading) {
         return (
             <div className="flex min-h-screen items-center justify-center bg-[#f8fafc]">
@@ -802,64 +840,227 @@ export default function StaffStudentsPage() {
     }
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-700">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-                <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                        <Building2 size={14} className="text-uneti-blue" />
-                        <span>Giáo vụ</span>
-                        <span className="text-uneti-blue">/ Quản lý sinh viên</span>
-                    </div>
-                    <h1 className="text-3xl font-black text-slate-900 tracking-tight">Hồ sơ sinh viên</h1>
-                    <p className="text-[13px] font-medium text-slate-500">Quản lý và tiếp nhận thông tin học vụ sinh viên</p>
-                </div>
+        <div className="h-[calc(100vh-140px)] flex flex-col gap-4 overflow-hidden -mt-2">
+            {/* Compact Header */}
+            <div className="flex items-center justify-between gap-4 px-2">
                 <div className="flex items-center gap-3">
-                    <button className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-[12px] font-black hover:bg-slate-50 transition-all shadow-sm uppercase tracking-wider">
-                        <Download size={16} />
-                        Xuất báo cáo
+                    <div className="p-2 bg-uneti-blue text-white rounded-xl shadow-lg shadow-uneti-blue/20 flex-shrink-0">
+                        <Users size={18} />
+                    </div>
+                    <div>
+                        <h1 className="text-xl font-black text-slate-800 tracking-tight leading-none mb-1">Hồ sơ sinh viên</h1>
+                        <p className="text-[11px] font-bold text-slate-400 tracking-tight">Tiếp nhận & Quản lý thông tin học vụ</p>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <button 
+                        disabled={isExporting}
+                        onClick={async () => {
+                            try {
+                                setIsExporting(true);
+                                const res = await fetch("/api/students/export", { headers: { Authorization: `Bearer ${TOKEN}` } });
+                                const text = await res.text();
+                                let json;
+                                try {
+                                    json = JSON.parse(text);
+                                } catch (e) {
+                                    console.error("Failed to parse JSON:", text);
+                                    alert("Lỗi: Máy chủ phản hồi không đúng định dạng. Vui lòng thử lại sau.");
+                                    return;
+                                }
+
+                                if (res.ok && !json.error) {
+                                    const byteCharacters = atob(json.content);
+                                    const byteNumbers = new Array(byteCharacters.length);
+                                    for (let i = 0; i < byteCharacters.length; i++) {
+                                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                                    }
+                                    const byteArray = new Uint8Array(byteNumbers);
+                                    const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                                    const url = window.URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = json.filename;
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    a.remove();
+                                } else {
+                                    alert(json.message || "Lỗi khi xuất dữ liệu");
+                                }
+                            } catch (error) {
+                                alert("Lỗi kết nối máy chủ");
+                            } finally {
+                                setIsExporting(false);
+                            }
+                        }}
+                        className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 text-uneti-blue rounded-lg text-[10px] font-black hover:bg-slate-50 transition-all uppercase tracking-wider shadow-sm disabled:opacity-50"
+                    >
+                        {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} 
+                        {isExporting ? "Đang xử lý..." : "Xuất Excel (Đúng cột SQL)"}
                     </button>
+
+                    <button 
+                        onClick={async () => {
+                            try {
+                                const res = await fetch("/api/students/template", { headers: { Authorization: `Bearer ${TOKEN}` } });
+                                const text = await res.text();
+                                let json;
+                                try {
+                                    json = JSON.parse(text);
+                                } catch (e) {
+                                    alert("Lỗi: Máy chủ phản hồi không đúng định dạng.");
+                                    return;
+                                }
+
+                                if (res.ok && !json.error) {
+                                    const byteCharacters = atob(json.content);
+                                    const byteNumbers = new Array(byteCharacters.length);
+                                    for (let i = 0; i < byteCharacters.length; i++) {
+                                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                                    }
+                                    const byteArray = new Uint8Array(byteNumbers);
+                                    const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                                    const url = window.URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = json.filename;
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    a.remove();
+                                } else {
+                                    alert(json.message || "Lỗi khi lấy bản mẫu");
+                                }
+                            } catch (e) {
+                                alert("Lỗi kết nối");
+                            }
+                        }}
+                        className="flex items-center gap-2 px-3 py-2 bg-slate-50 text-slate-500 rounded-lg text-[10px] font-black hover:bg-slate-100 transition-all uppercase tracking-wider"
+                    >
+                        Bản mẫu
+                    </button>
+
+                    <label className="flex items-center gap-2 px-3 py-2 bg-emerald-500 text-white rounded-lg text-[10px] font-black hover:bg-emerald-600 transition-all cursor-pointer uppercase tracking-wider">
+                        <Plus size={14} /> Nhập Excel
+                        <input 
+                            type="file" 
+                            className="hidden" 
+                            accept=".xlsx,.xls" 
+                            onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                const formDataFile = new FormData();
+                                formDataFile.append('file', file);
+                                const res = await fetch("/api/students/import", {
+                                    method: 'POST',
+                                    headers: { Authorization: `Bearer ${TOKEN}` },
+                                    body: formDataFile
+                                });
+                                if (res.ok) {
+                                    const stats = await res.json();
+                                    alert(`Thành công! Cập nhật: ${stats.updated}, Tạo mới: ${stats.created}, Lỗi: ${stats.errors}`);
+                                    fetchStudents();
+                                } else {
+                                    alert("Lỗi khi nhập dữ liệu");
+                                }
+                            }}
+                        />
+                    </label>
+
                     <button
                         onClick={() => setIsAddModalOpen(true)}
-                        className="flex items-center gap-2 px-6 py-2.5 bg-uneti-blue text-white rounded-xl text-[12px] font-black hover:shadow-xl hover:shadow-uneti-blue/20 transition-all shadow-lg shadow-uneti-blue/10 uppercase tracking-wider"
+                        className="flex items-center gap-2 px-4 py-2 bg-uneti-blue text-white rounded-lg text-[10px] font-black hover:bg-blue-700 transition-all shadow-lg shadow-uneti-blue/10 uppercase tracking-wider"
                     >
-                        <Plus size={18} />
-                        Tiếp nhận sinh viên
+                        <UserPlus size={14} /> Tiếp nhận
                     </button>
                 </div>
             </div>
 
-            <DataTable
-                data={students}
-                columns={columns}
-                onRowClick={(s) => openEditModal(s)}
-                searchKey="fullName"
-                searchPlaceholder="Tìm theo tên sinh viên..."
-                actions={(s) => (
-                    <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all duration-200">
-                        <button
-                            onClick={() => openEditModal(s)}
-                            className="p-2.5 text-uneti-blue hover:bg-uneti-blue-light rounded-xl transition-all"
-                            title="Sửa hồ sơ"
-                        >
-                            <Edit2 size={16} />
-                        </button>
-                        <button
-                            onClick={() => { setSelectedStudent(s); setIsDeleteModalOpen(true); }}
-                            className="p-2.5 text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
-                            title="Xóa hồ sơ"
-                        >
-                            <Trash2 size={16} />
-                        </button>
-                    </div>
-                )}
-            />
+            {/* Compact Filter Bar */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-wrap items-end gap-6">
+                <div className="flex flex-col gap-1.5 min-w-[120px]">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Khóa học</span>
+                    <select 
+                        value={selectedCohort} 
+                        onChange={e => setSelectedCohort(e.target.value)}
+                        className="bg-slate-50 border-transparent rounded-lg px-3 py-2 text-[11px] font-black text-slate-700 outline-none focus:ring-1 focus:ring-uneti-blue/20"
+                    >
+                        <option value="">Tất cả Khóa</option>
+                        {cohorts.map((c: any) => <option key={c.id || c.code} value={c.code}>{c.code}</option>)}
+                    </select>
+                </div>
+
+                <div className="flex flex-col gap-1.5 min-w-[180px]">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Khoa</span>
+                    <select 
+                        value={selectedFacultyId} 
+                        onChange={e => { setSelectedFacultyId(e.target.value); setSelectedMajorId(""); }}
+                        className="bg-slate-50 border-transparent rounded-lg px-3 py-2 text-[11px] font-black text-slate-700 outline-none focus:ring-1 focus:ring-uneti-blue/20"
+                    >
+                        <option value="">Tất cả Khoa</option>
+                        {faculties.map((f: any) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                    </select>
+                </div>
+
+                <div className="flex flex-col gap-1.5 min-w-[200px]">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Ngành học</span>
+                    <select 
+                        value={selectedMajorId} 
+                        onChange={e => setSelectedMajorId(e.target.value)}
+                        className="bg-slate-50 border-transparent rounded-lg px-3 py-2 text-[11px] font-black text-slate-700 outline-none focus:ring-1 focus:ring-uneti-blue/20"
+                    >
+                        <option value="">Tất cả Ngành</option>
+                        {majors
+                            .filter(m => !selectedFacultyId || m.facultyId === selectedFacultyId)
+                            .map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)
+                        }
+                    </select>
+                </div>
+
+                <div className="flex-1"></div>
+
+                <button 
+                   onClick={() => { setSelectedCohort(""); setSelectedFacultyId(""); setSelectedMajorId(""); }}
+                   className="mb-1 text-[10px] font-black text-uneti-blue uppercase tracking-widest hover:text-slate-900 transition-colors"
+                >
+                    Đặt lại bộ lọc
+                </button>
+            </div>
+
+            <div className="flex-1 overflow-hidden">
+                <DataTable
+                    data={filteredStudents}
+                    columns={columns}
+                    onRowClick={(s) => openEditModal(s)}
+                    searchKey="fullName"
+                    searchPlaceholder="Tìm theo tên sinh viên..."
+                    maxHeight="calc(100vh - 420px)"
+                    actions={(s) => (
+                        <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200">
+                            <button
+                                onClick={() => openEditModal(s)}
+                                className="p-2 text-uneti-blue hover:bg-uneti-blue/5 rounded-lg transition-all"
+                                title="Sửa hồ sơ"
+                            >
+                                <Edit2 size={14} />
+                            </button>
+                            <button
+                                onClick={() => { setSelectedStudent(s); setIsDeleteModalOpen(true); }}
+                                className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                                title="Xóa hồ sơ"
+                            >
+                                <Trash2 size={14} />
+                            </button>
+                        </div>
+                    )}
+                />
+            </div>
 
             {/* ADD MODAL */}
             <Modal
                 isOpen={isAddModalOpen}
                 onClose={() => setIsAddModalOpen(false)}
-                title="Tiếp nhận hồ sơ sinh viên mới"
+                title="Tiếp nhận sinh viên mới"
                 maxWidth="4xl"
                 footer={
                     <div className="flex items-center justify-end gap-4 w-full">

@@ -72,6 +72,44 @@ export class EnrollmentService {
         }
     }
 
+    private toPortalDayOfWeek(value: Date | string) {
+        const day = new Date(value).getDay();
+        return day === 0 ? 8 : day + 1;
+    }
+
+    private mapSessionsToSchedules(sessions: any[] = []) {
+        return sessions
+            .map((session) => ({
+                id: session.id,
+                date: session.date,
+                dayOfWeek: this.toPortalDayOfWeek(session.date),
+                startShift: session.startShift,
+                endShift: session.endShift,
+                type: session.type,
+                room: session.room,
+                roomId: session.roomId,
+                note: session.note,
+            }))
+            .sort((left, right) => {
+                if (left.dayOfWeek !== right.dayOfWeek) return left.dayOfWeek - right.dayOfWeek;
+                return left.startShift - right.startShift;
+            });
+    }
+
+    private normalizeCourseClass(courseClass: any) {
+        if (!courseClass) return courseClass;
+        return {
+            ...courseClass,
+            schedules: this.mapSessionsToSchedules(courseClass.sessions || []),
+        };
+    }
+
+    private buildTuitionFeeId(studentId: string, semesterId: string) {
+        const normalizedStudent = studentId.replace(/[^A-Za-z0-9]/g, '').slice(-16) || 'STUDENT';
+        const normalizedSemester = semesterId.replace(/[^A-Za-z0-9]/g, '').slice(-16) || 'SEMESTER';
+        return `TUITION_${normalizedStudent}_${normalizedSemester}`.slice(0, 50);
+    }
+
     async registerCourse(studentIdOrUserId: string, classId: string) {
         // --- HYBRID LOCKING ---
         // 1. Try Redis Lock (Fast distributed lock)
@@ -100,7 +138,7 @@ export class EnrollmentService {
                     where: { id: classId },
                     include: {
                         subject: { include: { prerequisites: true } },
-                        schedules: { include: { room: true } },
+                        sessions: { include: { room: true } },
                         semester: true
                     }
                 });
@@ -150,14 +188,23 @@ export class EnrollmentService {
                 // 5. Schedule Conflict Check (Detailed)
                 const studentEnrollments = await tx.enrollment.findMany({
                     where: { studentId, courseClass: { semesterId: courseClass.semesterId } },
-                    include: { courseClass: { include: { subject: true, schedules: true } } }
+                    include: { courseClass: { include: { subject: true, sessions: true } } }
                 });
 
                 const existingSchedules = studentEnrollments.flatMap(e =>
-                    e.courseClass.schedules.map(s => ({ ...s, subjectName: e.courseClass.subject.name }))
+                    (e.courseClass as any).sessions.map(s => ({ 
+                        ...s, 
+                        dayOfWeek: this.toPortalDayOfWeek(s.date),
+                        subjectName: e.courseClass.subject.name 
+                    }))
                 );
 
-                const conflict = this.checkConflictDetailed(courseClass.schedules, existingSchedules);
+                const newSchedules = (courseClass as any).sessions.map(s => ({
+                    ...s,
+                    dayOfWeek: this.toPortalDayOfWeek(s.date)
+                }));
+
+                const conflict = this.checkConflictDetailed(newSchedules, existingSchedules);
                 if (conflict.isConflicted) {
                     throw new BadRequestException(conflict.message);
                 }
@@ -213,6 +260,35 @@ export class EnrollmentService {
         }
     }
 
+    async dropEnrollmentById(id: string) {
+        return await this.prisma.$transaction(async (tx) => {
+            const enrollment = await tx.enrollment.findUnique({
+                where: { id },
+                include: { courseClass: true }
+            });
+
+            if (!enrollment) throw new NotFoundException('Enrollment not found');
+
+            const classId = enrollment.courseClassId;
+            const studentId = enrollment.studentId;
+            const semesterId = enrollment.courseClass.semesterId;
+
+            // 1. Delete Enrollment
+            await tx.enrollment.delete({ where: { id } });
+
+            // 2. Decrement Slot
+            await tx.courseClass.update({
+                where: { id: classId },
+                data: { currentSlots: { decrement: 1 } }
+            });
+
+            // 3. Sync Tuition
+            await this.syncStudentTuition(studentId, semesterId, tx);
+
+            return { message: 'Hủy đăng ký thành công' };
+        });
+    }
+
     async dropCourse(studentIdOrUserId: string, classId: string) {
         return await this.prisma.$transaction(async (tx) => {
             // Resolve Student
@@ -266,30 +342,53 @@ export class EnrollmentService {
             .filter(enr => enr.status === 'PAID')
             .reduce((sum, enr) => sum + Number(enr.tuitionFee), 0);
 
+        if (totalTuition === 0 && enrollments.length === 0) {
+            await prisma.studentFee.deleteMany({
+                where: {
+                    studentId,
+                    semesterId,
+                    feeType: 'TUITION',
+                }
+            });
+            return;
+        }
+
         const semester = await prisma.semester.findUnique({ where: { id: semesterId } });
         const feeName = `Học phí ${semester?.name || semesterId}`;
 
-        // 2. Upsert StudentFee
-        await prisma.studentFee.upsert({
-            where: { id: `tuition-${studentId}-${semesterId}` },
-            update: {
-                totalAmount: totalTuition,
-                finalAmount: totalTuition,
-                paidAmount: paidTuition,
-                status: paidTuition >= totalTuition ? 'PAID' : (paidTuition > 0 ? 'PARTIAL' : 'DEBT')
-            },
-            create: {
-                id: `tuition-${studentId}-${semesterId}`,
+        const feePayload = {
+            totalAmount: totalTuition,
+            finalAmount: totalTuition,
+            paidAmount: paidTuition,
+            status: paidTuition >= totalTuition ? 'PAID' : (paidTuition > 0 ? 'PARTIAL' : 'DEBT')
+        };
+
+        const existingFee = await prisma.studentFee.findFirst({
+            where: {
+                studentId,
+                semesterId,
+                feeType: 'TUITION',
+            }
+        });
+
+        if (existingFee) {
+            await prisma.studentFee.update({
+                where: { id: existingFee.id },
+                data: feePayload,
+            });
+            return;
+        }
+
+        await prisma.studentFee.create({
+            data: {
+                id: this.buildTuitionFeeId(studentId, semesterId),
                 studentId,
                 semesterId,
                 feeType: 'TUITION',
                 name: feeName,
-                totalAmount: totalTuition,
                 discountAmount: 0,
-                finalAmount: totalTuition,
-                paidAmount: paidTuition,
-                status: paidTuition >= totalTuition ? 'PAID' : (paidTuition > 0 ? 'PARTIAL' : 'DEBT'),
-                isMandatory: true
+                isMandatory: true,
+                ...feePayload,
             }
         });
     }
@@ -297,13 +396,15 @@ export class EnrollmentService {
     private checkConflictDetailed(newSchedule: any[], existingSchedules: any[]) {
         const days = ["CN", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
         for (const ns of newSchedule) {
+            const nsDay = ns.dayOfWeek || this.toPortalDayOfWeek(ns.date);
             for (const es of existingSchedules) {
-                if (ns.dayOfWeek === es.dayOfWeek) {
-                    const hasOverlap = Math.max(ns.startShift, es.startShift) <= Math.min(ns.endShift, es.endShift);
+                const esDay = es.dayOfWeek || this.toPortalDayOfWeek(es.date);
+                if (nsDay === esDay) {
+                    const hasOverlap = Math.max(ns.startShift || ns.startPeriod, es.startShift || es.startPeriod) <= Math.min(ns.endShift || ns.endPeriod, es.endShift || es.endPeriod);
                     if (hasOverlap) {
                         return {
                             isConflicted: true,
-                            message: `Trùng lịch học với môn ${es.subjectName || 'đã đăng ký'} vào ${days[ns.dayOfWeek]}, Tiết ${es.startShift}-${es.endShift}`
+                            message: `Trùng lịch học với môn ${es.subjectName || 'đã đăng ký'} vào ${days[nsDay-1] || 'N/A'}, Tiết ${es.startShift || es.startPeriod}-${es.endShift || es.endPeriod}`
                         };
                     }
                 }
@@ -343,7 +444,7 @@ export class EnrollmentService {
                 where: { id: newClassId },
                 include: {
                     subject: true,
-                    schedules: true,
+                    sessions: true,
                     semester: true
                 }
             });
@@ -376,11 +477,21 @@ export class EnrollmentService {
                         id: { not: oldClassId } 
                     } 
                 },
-                include: { courseClass: { include: { schedules: true } } }
+                include: { courseClass: { include: { sessions: true } } }
             });
 
-            const existingSchedules = otherEnrollments.flatMap(e => e.courseClass.schedules);
-            const isConflicted = this.checkConflict(newClass.schedules, existingSchedules);
+            const existingSchedules = otherEnrollments.flatMap(e => 
+                (e.courseClass as any).sessions.map(s => ({
+                    ...s,
+                    dayOfWeek: this.toPortalDayOfWeek(s.date)
+                }))
+            );
+            const newSchedules = (newClass as any).sessions.map(s => ({
+                ...s,
+                dayOfWeek: this.toPortalDayOfWeek(s.date)
+            }));
+
+            const isConflicted = this.checkConflict(newSchedules, existingSchedules);
             if (isConflicted) {
                 throw new BadRequestException('Lịch học lớp mới bị trùng với các môn khác bạn đã đăng ký');
             }
@@ -532,7 +643,7 @@ export class EnrollmentService {
                     subjectName: subject.name,
                     credits: subject.credits,
                     suggestedSemester: item.suggestedSemester,
-                    isMandatory: item.isMandatory,
+                    isRequired: item.isRequired,
                     isPassed,
                     isEnrolled,
                     isEligible: !isPassed && !isEnrolled && missingPrereqs.length === 0,
@@ -544,6 +655,103 @@ export class EnrollmentService {
     async getSemesters() {
         return this.prisma.semester.findMany({
             orderBy: { startDate: 'desc' }
+        });
+    }
+
+    async getSemestersByStudent(studentIdOrUserId: string) {
+        // 1. Resolve student
+        let student = await this.prisma.student.findUnique({
+            where: { id: studentIdOrUserId },
+            include: { adminClass: true }
+        });
+        if (!student) {
+            student = await this.prisma.student.findUnique({
+                where: { userId: studentIdOrUserId },
+                include: { adminClass: true }
+            });
+        }
+        if (!student) {
+            return this.prisma.semester.findMany({ orderBy: { startDate: 'desc' } });
+        }
+
+        // 2. Resolve cohort code (e.g. K22)
+        const cohortCode = student.intake || (student.adminClass as any)?.cohort || null;
+        if (!cohortCode) {
+            return this.prisma.semester.findMany({ orderBy: { startDate: 'desc' } });
+        }
+
+        // 3. Get cohort start year (K22 -> 2028, K18 -> 2024, etc.)
+        const cohortMatch = cohortCode.match(/K(\d{2,})/i);
+        if (!cohortMatch) {
+            return this.prisma.semester.findMany({ orderBy: { startDate: 'desc' } });
+        }
+        const cohortNumber = Number(cohortMatch[1]);
+        const cohortStartYear = 2006 + cohortNumber; // K18 -> 2024, K22 -> 2028
+
+        // 4. Get all semesters
+        const allSemesters = await this.prisma.semester.findMany({
+            orderBy: [{ year: 'asc' }, { startDate: 'asc' }]
+        });
+
+        // 5. Match 8 semesters to this cohort
+        // HK1 -> first half of year cohortStartYear (Sep-Jan)
+        // HK2 -> second half of year cohortStartYear+1 (Feb-Jun)
+        // Pattern: HK(2n-1) starts ~Sep of (startYear + n-1), HK(2n) starts ~Feb of (startYear + n)
+        const matched: typeof allSemesters = [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        for (let hk = 1; hk <= 8; hk++) {
+            const expectedYear = cohortStartYear + Math.floor((hk - 1) / 2);
+            const isOddSemester = hk % 2 === 1; // HK1,3,5,7 start in ~Sep
+
+            // Find the best matching semester
+            const candidates = allSemesters.filter(sem => {
+                const semCode = `${sem.code || ''} ${sem.name || ''}`;
+                const semHkMatch = semCode.match(/HK\s*(\d)/i) || semCode.match(/H[OỌ]C\s*K[YỲ]\s*(\d)/i);
+                if (!semHkMatch) return false;
+                const semHk = Number(semHkMatch[1]);
+
+                // Check if 1-based semester number matches odd/even pattern
+                const semIsOdd = semHk % 2 === 1;
+                if (isOddSemester !== semIsOdd) return false;
+
+                // Check year match
+                const semYear = sem.year || (sem.startDate ? new Date(sem.startDate).getFullYear() : 0);
+                return Math.abs(semYear - expectedYear) <= 1;
+            });
+
+            // Pick the closest by year
+            const best = candidates.sort((a, b) => {
+                const aYear = a.year || (a.startDate ? new Date(a.startDate).getFullYear() : 0);
+                const bYear = b.year || (b.startDate ? new Date(b.startDate).getFullYear() : 0);
+                return Math.abs(aYear - expectedYear) - Math.abs(bYear - expectedYear);
+            })[0];
+
+            if (best) {
+                matched.push(best);
+            }
+        }
+
+        // 6. Remove duplicates and filter to only past/current semesters
+        const uniqueIds = new Set<string>();
+        const result = matched.filter(sem => {
+            if (uniqueIds.has(sem.id)) return false;
+            uniqueIds.add(sem.id);
+            // Only show semesters that have started or are current
+            if (sem.startDate) {
+                const start = new Date(sem.startDate);
+                start.setHours(0, 0, 0, 0);
+                return start <= today;
+            }
+            return true;
+        });
+
+        // Sort newest first for dropdown
+        return result.sort((a, b) => {
+            const aStart = a.startDate ? new Date(a.startDate).getTime() : 0;
+            const bStart = b.startDate ? new Date(b.startDate).getTime() : 0;
+            return bStart - aStart;
         });
     }
 
@@ -566,7 +774,7 @@ export class EnrollmentService {
             }
         }
 
-        return this.prisma.courseClass.findMany({
+        const classes = await this.prisma.courseClass.findMany({
             where: {
                 subjectId,
                 semesterId: targetSemesterId
@@ -574,36 +782,29 @@ export class EnrollmentService {
             include: {
                 lecturer: true,
                 adminClasses: true,
-                schedules: {
+                sessions: {
                     include: { room: true }
                 }
             }
         });
+
+        return classes.map((courseClass) => this.normalizeCourseClass(courseClass));
     }
 
     async getOpenClasses() {
-        return this.prisma.courseClass.findMany({
+        const classes = await this.prisma.courseClass.findMany({
             include: { subject: true, adminClasses: true },
             orderBy: { code: 'asc' }
         });
+
+        return classes.map((courseClass) => this.normalizeCourseClass(courseClass));
     }
 
     async getStudentEnrollments(studentId: string, semesterId?: string) {
-        let targetSemesterId = semesterId;
-        if (!targetSemesterId) {
-            const registeringSem = await this.prisma.semester.findFirst({ where: { isRegistering: true } });
-            if (registeringSem) {
-                targetSemesterId = registeringSem.id;
-            } else {
-                const current = await this.prisma.semester.findFirst({ where: { isCurrent: true } });
-                targetSemesterId = current?.id;
-            }
-        }
-
-        return this.prisma.enrollment.findMany({
+        const enrollments = await this.prisma.enrollment.findMany({
             where: { 
                 studentId,
-                ...(targetSemesterId ? { courseClass: { semesterId: targetSemesterId } } : {})
+                ...(semesterId ? { courseClass: { semesterId } } : {})
             },
             include: {
                 courseClass: {
@@ -611,7 +812,7 @@ export class EnrollmentService {
                         subject: true,
                         lecturer: true,
                         adminClasses: true,
-                        schedules: {
+                        sessions: {
                             include: { room: true }
                         },
                         semester: true,
@@ -624,14 +825,19 @@ export class EnrollmentService {
             },
             orderBy: { registeredAt: 'desc' }
         });
+
+        return enrollments.map((enrollment) => ({
+            ...enrollment,
+            courseClass: this.normalizeCourseClass(enrollment.courseClass),
+        }));
     }
 
     async getAllClassesSchedule() {
-        return this.prisma.courseClass.findMany({
+        const classes = await this.prisma.courseClass.findMany({
             include: {
                 subject: true,
                 lecturer: true,
-                schedules: {
+                sessions: {
                     include: { room: true }
                 },
                 _count: {
@@ -640,6 +846,8 @@ export class EnrollmentService {
             },
             orderBy: { code: 'asc' }
         });
+
+        return classes.map((courseClass) => this.normalizeCourseClass(courseClass));
     }
 
     async getClassEnrollments(classId: string) {
@@ -658,25 +866,101 @@ export class EnrollmentService {
     async bulkMarkAttendance(date: string, attendances: { enrollmentId: string; status: string; note?: string }[]) {
         const attendanceDate = new Date(date);
 
-        return await this.prisma.$transaction(
-            attendances.map(att => this.prisma.attendance.upsert({
-                where: {
-                    enrollmentId_date: {
-                        enrollmentId: att.enrollmentId,
-                        date: attendanceDate
+        return await this.prisma.$transaction(async (tx) => {
+            const results = await Promise.all(
+                attendances.map((att) =>
+                    tx.attendance.upsert({
+                        where: {
+                            enrollmentId_date: {
+                                enrollmentId: att.enrollmentId,
+                                date: attendanceDate,
+                            },
+                        },
+                        update: {
+                            status: att.status,
+                            note: att.note,
+                        },
+                        create: {
+                            enrollmentId: att.enrollmentId,
+                            date: attendanceDate,
+                            status: att.status,
+                            note: att.note,
+                        },
+                    }),
+                ),
+            );
+
+            const enrollmentIds = [...new Set(attendances.map((att) => att.enrollmentId))];
+            if (!enrollmentIds.length) {
+                return results;
+            }
+
+            const enrollments = await tx.enrollment.findMany({
+                where: { id: { in: enrollmentIds } },
+                include: {
+                    courseClass: {
+                        include: {
+                            sessions: {
+                                select: {
+                                    id: true,
+                                    date: true,
+                                    startShift: true,
+                                    endShift: true,
+                                },
+                            },
+                        },
+                    },
+                    attendances: {
+                        select: {
+                            date: true,
+                            status: true,
+                        },
+                    },
+                },
+            });
+
+            for (const enrollment of enrollments) {
+                const sessions = enrollment.courseClass?.sessions || [];
+                const totalPeriods = sessions.reduce(
+                    (sum, session) =>
+                        sum + Math.max(Number(session.endShift) - Number(session.startShift) + 1, 0),
+                    0,
+                );
+
+                const attendanceByDate = new Map(
+                    (enrollment.attendances || []).map((attendance) => [
+                        new Date(attendance.date).toISOString().slice(0, 10),
+                        attendance.status,
+                    ]),
+                );
+
+                const absentPeriods = sessions.reduce((sum, session) => {
+                    const key = new Date(session.date).toISOString().slice(0, 10);
+                    const status = attendanceByDate.get(key);
+                    if (!status || status === 'PRESENT') {
+                        return sum;
                     }
-                },
-                update: {
-                    status: att.status,
-                    note: att.note
-                },
-                create: {
-                    enrollmentId: att.enrollmentId,
-                    date: attendanceDate,
-                    status: att.status,
-                    note: att.note
-                }
-            }))
-        );
+                    return (
+                        sum +
+                        Math.max(Number(session.endShift) - Number(session.startShift) + 1, 0)
+                    );
+                }, 0);
+
+                const isEligible =
+                    totalPeriods > 0 ? absentPeriods / totalPeriods <= 0.5 : true;
+
+                await tx.grade.updateMany({
+                    where: {
+                        studentId: enrollment.studentId,
+                        courseClassId: enrollment.courseClassId,
+                    },
+                    data: {
+                        isEligibleForExam: isEligible,
+                    },
+                });
+            }
+
+            return results;
+        });
     }
 }

@@ -1,4 +1,14 @@
-import { Controller, Get, Param, Post, Put, Delete, Body } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Post,
+  Put,
+  Patch,
+  Delete,
+  Body,
+  Query,
+} from '@nestjs/common';
 import { SubjectService } from './subject.service';
 
 @Controller('subjects')
@@ -6,8 +16,12 @@ export class SubjectController {
   constructor(private readonly subjectService: SubjectService) {}
 
   @Get()
-  async findAll() {
-    return this.subjectService.findAll();
+  async findAll(
+    @Query('majorId') majorId?: string,
+    @Query('departmentId') departmentId?: string,
+    @Query('facultyId') facultyId?: string,
+  ) {
+    return this.subjectService.findAll(majorId, departmentId, facultyId);
   }
 
   @Get(':id')
@@ -22,6 +36,11 @@ export class SubjectController {
 
   @Put(':id')
   async update(@Param('id') id: string, @Body() data: any) {
+    return this.subjectService.update(id, data);
+  }
+
+  @Patch(':id')
+  async patch(@Param('id') id: string, @Body() data: any) {
     return this.subjectService.update(id, data);
   }
 

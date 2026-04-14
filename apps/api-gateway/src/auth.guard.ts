@@ -15,8 +15,15 @@ export class AuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
 
     // Whitelist public endpoints
-    const publicEndpoints = ["/api/auth/login", "/api/auth/register", "/api/auth/forgot-password", "/api/auth/reset-password"];
-    const isPublic = publicEndpoints.some(endpoint => request.originalUrl.startsWith(endpoint));
+    const publicEndpoints = [
+      "/api/auth/login",
+      "/api/auth/register",
+      "/api/auth/forgot-password",
+      "/api/auth/reset-password",
+    ];
+    const isPublic = publicEndpoints.some((endpoint) =>
+      request.originalUrl.startsWith(endpoint),
+    );
 
     if (
       isPublic ||
@@ -39,8 +46,8 @@ export class AuthGuard implements CanActivate {
       });
       request["user"] = payload;
       // Forward to microservices via headers
-      request.headers['x-user-id'] = payload.sub;
-      request.headers['x-user-role'] = payload.role;
+      request.headers["x-user-id"] = payload.sub;
+      request.headers["x-user-role"] = payload.role;
     } catch {
       throw new UnauthorizedException();
     }

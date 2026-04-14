@@ -3,8 +3,8 @@
 import { useEffect, useState, useMemo } from "react";
 import { StudentService } from "@/services/student.service";
 import api from "@/lib/api";
-import Cookies from "js-cookie";
 import { Wallet, Check, AlertCircle } from "lucide-react";
+import { getStudentProfileId, getStudentUserId, readStudentSessionUser } from "@/lib/student-session";
 
 export default function TuitionPage() {
     const [studentId, setStudentId] = useState("");
@@ -15,9 +15,22 @@ export default function TuitionPage() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const u = JSON.parse(Cookies.get("student_user") || localStorage.getItem("student_user") || "{}");
-        const sid = u.profileId || u.student?.id || u.id;
-        if (sid) setStudentId(sid);
+        const resolveStudentId = async () => {
+            const user = readStudentSessionUser();
+            const userId = getStudentUserId(user);
+            const profileId = getStudentProfileId(user);
+
+            if (profileId) {
+                setStudentId(profileId);
+                return;
+            }
+
+            if (!userId) return;
+            const profile = await StudentService.getProfile(userId);
+            if (profile?.id) setStudentId(profile.id);
+        };
+
+        resolveStudentId().catch(console.error);
     }, []);
 
     useEffect(() => {

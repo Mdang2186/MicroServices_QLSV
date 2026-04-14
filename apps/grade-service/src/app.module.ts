@@ -9,4 +9,4 @@ import { GpaService } from './gpa.service';
   controllers: [AppController],
   providers: [AppService, PrismaService, GpaService],
 })
-export class AppModule { }
+export class AppModule {}

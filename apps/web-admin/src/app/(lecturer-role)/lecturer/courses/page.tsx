@@ -83,6 +83,20 @@ export default function LecturerCoursesPage() {
     const totalCredits = filteredCourses.reduce((acc, c) => acc + (c.subject?.credits || 0), 0);
     const totalStudents = filteredCourses.reduce((acc, c) => acc + (c.currentSlots || 0), 0);
 
+    const getAdminClassLabel = (course: any) =>
+        course.adminClasses?.map((adminClass: any) => adminClass.code).join(", ") || "Chưa gắn lớp";
+
+    const getMajorLabel = (course: any) =>
+        course.subject?.major?.name ||
+        course.adminClasses?.[0]?.major?.name ||
+        "Chưa rõ ngành";
+
+    const getRoomLabel = (course: any) => {
+        const room = course.sessions?.[0]?.room;
+        if (!room) return "Chưa xếp phòng";
+        return room.building ? `${room.name} - ${room.building}` : room.name;
+    };
+
     const paginatedCourses = filteredCourses.slice(
         (currentPage - 1) * itemsPerPage,
         currentPage * itemsPerPage
@@ -176,7 +190,7 @@ export default function LecturerCoursesPage() {
                                         <div className="flex-1 min-w-0 space-y-1.5">
                                             <div className="flex items-center gap-2">
                                                 <span className="text-[9px] font-black text-uneti-blue uppercase bg-white px-2 py-0.5 rounded-md border border-uneti-blue/10 shadow-sm">{c.code}</span>
-                                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">TC: {c.subject?.credits} • Học kỳ {c.semester?.name?.split(' ').pop()}</span>
+                                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">TC: {c.subject?.credits} • {c.semester?.name || "Chưa rõ học kỳ"}</span>
                                             </div>
                                             <h3 className="font-bold text-slate-800 text-[13px] truncate uppercase group-hover:text-uneti-blue transition-colors tracking-tight">
                                                 {c.name || c.subject?.name}
@@ -184,11 +198,19 @@ export default function LecturerCoursesPage() {
                                             <div className="flex items-center gap-4 text-[9px] font-black text-slate-400 uppercase tracking-tight italic">
                                                 <div className="flex items-center gap-1">
                                                     <Clock size={10} className="text-slate-300" />
-                                                    <span>{c.schedules?.map((s:any)=>`T${s.dayOfWeek}`).join(", ") || "Chưa xếp lịch"}</span>
+                                                    <span>{c.sessions?.length > 0 ? Array.from(new Set(c.sessions.map((s:any)=> new Date(s.date).getDay() === 0 ? 8 : new Date(s.date).getDay() + 1))).map(d => `T${d}`).join(", ") : "Chưa xếp lịch"}</span>
                                                 </div>
                                                 <div className="flex items-center gap-1">
                                                     <UserCircle size={10} className="text-slate-300" />
-                                                    <span>Lớp chính quy: {c.adminClasses?.map((ac: any) => ac.code).join(", ")}</span>
+                                                    <span>Lớp: {getAdminClassLabel(c)}</span>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <GraduationCap size={10} className="text-slate-300" />
+                                                    <span>Ngành: {getMajorLabel(c)}</span>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <BookOpen size={10} className="text-slate-300" />
+                                                    <span>Phòng: {getRoomLabel(c)}</span>
                                                 </div>
                                             </div>
                                         </div>

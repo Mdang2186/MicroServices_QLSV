@@ -2,14 +2,29 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 async function main() {
-  const classId = 'CCLASS_CS04_HK1_01_2627';
-  const enrollments = await prisma.enrollment.count({ where: { courseClassId: classId } });
-  const grades = await prisma.grade.count({ where: { courseClassId: classId } });
-  const courseClass = await prisma.courseClass.findUnique({ where: { id: classId } });
-  
-  console.log('Enrollments:', enrollments);
-  console.log('Grades:', grades);
-  console.log('CourseClass exists:', !!courseClass);
+  console.log('--- Majors ---');
+  const majors = await prisma.major.findMany({ select: { id: true, name: true, code: true } });
+  console.table(majors);
+
+  console.log('\n--- Semesters ---');
+  const semesters = await prisma.semester.findMany({ select: { id: true, code: true, semesterNumber: true } });
+  console.table(semesters);
+
+  console.log('\n--- Curriculum (Sample) ---');
+  const curriculum = await prisma.curriculum.findMany({ 
+    take: 5,
+    select: { majorId: true, cohort: true, suggestedSemester: true }
+  });
+  console.table(curriculum);
+
+  console.log('\n--- Unique Cohorts in Curriculum ---');
+  const cohorts = await prisma.curriculum.findMany({
+    select: { cohort: true },
+    distinct: ['cohort']
+  });
+  console.log(cohorts.map(c => c.cohort));
 }
 
-main().catch(e => { console.error(e); process.exit(1); }).finally(() => prisma.$disconnect());
+main()
+  .catch(e => console.error(e))
+  .finally(async () => await prisma.$disconnect());

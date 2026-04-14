@@ -23,12 +23,24 @@ import { StatsGrid } from "@/components/dashboard/StatsGrid";
 import { OperationalInsights } from "@/components/dashboard/OperationalInsights";
 import { FacultyChart } from "@/components/dashboard/FacultyChart";
 
+async function readJsonSafely(response: Response) {
+    const rawText = await response.text();
+    if (!rawText) return null;
+    try {
+        return JSON.parse(rawText);
+    } catch {
+        return null;
+    }
+}
+
 export default function StaffDashboard() {
     const [user, setUser] = useState<any>(null);
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [selectedSemesterId, setSelectedSemesterId] = useState<string>("");
     const [selectedFacultyId, setSelectedFacultyId] = useState<string>("all");
+    const [selectedMajorId, setSelectedMajorId] = useState<string>("all");
+    const [selectedIntake, setSelectedIntake] = useState<string>("all");
 
     useEffect(() => {
         const c = Cookies.get("admin_user");
@@ -40,13 +52,26 @@ export default function StaffDashboard() {
         const params = new URLSearchParams();
         if (selectedSemesterId) params.append("semesterId", selectedSemesterId);
         if (selectedFacultyId && selectedFacultyId !== "all") params.append("facultyId", selectedFacultyId);
+        if (selectedMajorId && selectedMajorId !== "all") params.append("majorId", selectedMajorId);
+        if (selectedIntake && selectedIntake !== "all") params.append("intake", selectedIntake);
 
         fetch(`/api/students/dashboard/stats?${params.toString()}`)
-            .then(r => r.json())
-            .then(setStats)
-            .catch(console.error)
+            .then(async (response) => {
+                const payload = await readJsonSafely(response);
+                if (!response.ok || !payload) {
+                    throw new Error(
+                        (typeof payload === "object" && payload?.message) ||
+                        "Không thể tải dữ liệu dashboard.",
+                    );
+                }
+                setStats(payload);
+            })
+            .catch((error) => {
+                console.error(error);
+                setStats(null);
+            })
             .finally(() => setLoading(false));
-    }, [selectedSemesterId, selectedFacultyId]);
+    }, [selectedSemesterId, selectedFacultyId, selectedMajorId, selectedIntake]);
 
     if (loading && !stats) return (
         <div className="flex min-h-screen items-center justify-center bg-[#fbfcfd]">
@@ -97,6 +122,8 @@ export default function StaffDashboard() {
                 userId={`Mã Cán bộ: ${user?.id?.substring(0, 8).toUpperCase() || "STAFF-01"}`}
                 onSemesterChange={setSelectedSemesterId}
                 onFacultyChange={setSelectedFacultyId}
+                onMajorChange={setSelectedMajorId}
+                onIntakeChange={setSelectedIntake}
             />
 
             {/* Quick Actions Bar */}
@@ -192,7 +219,28 @@ export default function StaffDashboard() {
                 {/* Right Column: Business Insights (1/3) */}
                 <div className="space-y-8 h-full">
                     <OperationalInsights stats={stats?.operationalStats} />
-                    <FacultyChart data={stats?.operationalStats?.facultyDistribution || []} />
+                    <FacultyChart 
+                        title="Phân bổ Ghi danh Khoa" 
+                        data={stats?.operationalStats?.facultyDistribution || []} 
+                        iconType="building" 
+                        totalLabel="Tổng Sinh viên Học kỳ" 
+                    />
+                    
+                    {/* Additional charts section */}
+                    <div className="grid grid-cols-1 gap-8">
+                        <FacultyChart 
+                            title="Tỷ lệ Sinh viên theo Ngành" 
+                            data={stats?.majorDistribution || []} 
+                            iconType="compass"
+                            totalLabel="Tổng Mọi Học kỳ" 
+                        />
+                        <FacultyChart 
+                            title="Tỷ lệ Sinh viên theo Khóa" 
+                            data={stats?.intakeDistribution || []} 
+                            iconType="graduation"
+                            totalLabel="Phân bổ qua các Khóa" 
+                        />
+                    </div>
                 </div>
             </div>
         </div>

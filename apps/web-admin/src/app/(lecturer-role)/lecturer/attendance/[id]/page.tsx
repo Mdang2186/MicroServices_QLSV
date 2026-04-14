@@ -18,12 +18,16 @@ import {
     SearchX,
     ChevronLeft,
     ChevronRight as ChevronRightIcon,
-    Zap
+    Zap,
+    QrCode,
+    X
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { CompactLecturerHeader } from "@/components/dashboard/CompactLecturerHeader";
+import { QRCodeSVG } from "qrcode.react";
+import { io, Socket } from "socket.io-client";
 
 export default function LecturerAttendancePage() {
     const { id: classId } = useParams();
@@ -39,25 +43,63 @@ export default function LecturerAttendancePage() {
     const [filterStatus, setFilterStatus] = useState<"ALL" | "PRESENT" | "ABSENT_EXCUSED" | "ABSENT">("ALL");
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
     const [viewDate, setViewDate] = useState(new Date());
+    const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+    const [qrCodeData, setQrCodeData] = useState<{ otp: string, sessionId: string } | null>(null);
+    const [socket, setSocket] = useState<Socket | null>(null);
 
     const toYYYYMMDD = (d: Date) => {
         return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     };
 
     const isDateInSchedule = (checkDate: Date) => {
-        if (!courseClass?.schedules) return false;
-        const jsDay = checkDate.getDay();
-        const prismaDay = jsDay === 0 ? 8 : jsDay + 1;
-        return courseClass.schedules.some((s: any) => s.dayOfWeek === prismaDay);
+        if (!courseClass?.sessions) return false;
+        return courseClass.sessions.some((s: any) => new Date(s.date).toDateString() === checkDate.toDateString());
     };
 
     const getPeriodsForDate = (checkDate: Date) => {
-        if (!courseClass?.schedules) return 0;
-        const jsDay = checkDate.getDay();
-        const prismaDay = jsDay === 0 ? 8 : jsDay + 1;
-        const schedules = courseClass.schedules.filter((s: any) => s.dayOfWeek === prismaDay);
-        return schedules.reduce((acc: number, s: any) => acc + (s.endShift - s.startShift + 1), 0);
+        if (!courseClass?.sessions) return 0;
+        const sessions = courseClass.sessions.filter((s: any) => new Date(s.date).toDateString() === checkDate.toDateString());
+        return sessions.reduce((acc: number, s: any) => acc + Number(s.endShift) - Number(s.startShift) + 1, 0);
     };
+
+    const currentSession = courseClass?.sessions?.find((s: any) => {
+        const sessionDate = new Date(s.date).toISOString().split('T')[0];
+        const selectedDate = new Date(date).toISOString().split('T')[0];
+        return sessionDate === selectedDate;
+    });
+    const currentSessionId = currentSession?.id;
+
+    useEffect(() => {
+        if (!isQrModalOpen || !currentSessionId) return;
+
+        const newSocket = io("http://localhost:3004");
+        setSocket(newSocket);
+
+        newSocket.on('connect', () => {
+            newSocket.emit('generate_otp', { sessionId: currentSessionId });
+        });
+
+        newSocket.on('otp_generated', (res: any) => {
+            setQrCodeData(res.data);
+        });
+
+        newSocket.on('student_scanned', (data: any) => {
+            setEnrollments(prev => prev.map(e => 
+                e.id === data.enrollmentId ? { ...e, currentStatus: 'PRESENT' } : e
+            ));
+            setMessage({ text: "Một sinh viên vừa điểm danh thành công!", type: "success" });
+            setTimeout(() => setMessage({ text: "", type: "" }), 3000);
+        });
+
+        const interval = setInterval(() => {
+            newSocket.emit('generate_otp', { sessionId: currentSessionId });
+        }, 10000);
+
+        return () => {
+            clearInterval(interval);
+            newSocket.disconnect();
+        };
+    }, [isQrModalOpen, currentSessionId]);
 
     const TOKEN = Cookies.get("admin_accessToken");
 
@@ -280,6 +322,16 @@ export default function LecturerAttendancePage() {
                     </div>
 
                     <div className="flex items-center gap-2">
+                        {currentSessionId && (
+                            <Button
+                                onClick={() => setIsQrModalOpen(true)}
+                                variant="outline"
+                                className="h-10 px-4 text-xs font-black border-indigo-200 text-indigo-600 hover:bg-indigo-50 hover:border-indigo-300 shadow-sm rounded-xl uppercase tracking-wider transition-all flex items-center gap-2 mr-2"
+                            >
+                                <QrCode size={16} />
+                                QR Điểm danh
+                            </Button>
+                        )}
                         <Button
                             variant="ghost"
                             onClick={() => router.back()}
@@ -438,6 +490,39 @@ export default function LecturerAttendancePage() {
                     </div>
                 </div>
             </div>
+
+            {isQrModalOpen && (
+                <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full relative flex flex-col items-center justify-center animate-in zoom-in-95 duration-200 border border-slate-100">
+                        <button onClick={() => setIsQrModalOpen(false)} className="absolute top-4 right-4 p-2 bg-slate-50 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-all">
+                            <X size={20}/>
+                        </button>
+                        <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest mb-2 flex items-center gap-2">
+                            <QrCode size={18} className="text-indigo-600"/> QR Điểm Danh
+                        </h3>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase mb-6 text-center leading-relaxed">
+                            Yêu cầu sinh viên dùng Web Portal để quét mã này.<br/>Mã sẽ tự động làm mới mỗi 10 giây.
+                        </p>
+                        
+                        <div className="p-4 bg-white border-2 border-indigo-50 rounded-2xl shadow-inner mb-4 relative overflow-hidden group">
+                            <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/5 to-transparent pointer-events-none"></div>
+                            {qrCodeData ? (
+                                <QRCodeSVG value={JSON.stringify({ ...qrCodeData, type: 'UNETI_ATTENDANCE' })} size={240} fgColor="#3730A3" />
+                            ) : (
+                                <div className="h-[240px] w-[240px] flex items-center justify-center bg-slate-50/50 rounded-xl relative">
+                                    <div className="absolute inset-0 border-[3px] border-dashed border-slate-200 rounded-xl animate-[spin_10s_linear_infinite]"></div>
+                                    <div className="h-8 w-8 animate-spin border-4 border-slate-200 border-t-indigo-600 rounded-full"></div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex items-center gap-2 bg-indigo-50 px-4 py-2 rounded-xl border border-indigo-100/50">
+                            <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                            <span className="text-[10px] font-black uppercase text-indigo-700 tracking-wider">Đang phát dữ liệu trực tiếp</span>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

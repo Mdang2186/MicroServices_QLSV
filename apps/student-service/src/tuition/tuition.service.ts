@@ -5,6 +5,14 @@ import { PrismaService } from "../prisma/prisma.service";
 export class TuitionService {
   constructor(private prisma: PrismaService) {}
 
+  private buildTuitionFeeId(studentId: string, semesterId: string) {
+    const normalizedStudent =
+      studentId.replace(/[^A-Za-z0-9]/g, "").slice(-16) || "STUDENT";
+    const normalizedSemester =
+      semesterId.replace(/[^A-Za-z0-9]/g, "").slice(-16) || "SEMESTER";
+    return `TUITION_${normalizedStudent}_${normalizedSemester}`.slice(0, 50);
+  }
+
   async getFaculties() {
     return this.prisma.faculty.findMany({
       select: { id: true, name: true, code: true },
@@ -62,23 +70,23 @@ export class TuitionService {
     if (classId) {
       where.AND.push({ adminClassId: classId });
     }
-    if (params.status === 'DEBT') {
+    if (params.status === "DEBT") {
       where.AND.push({
         studentFees: {
           some: {
-            status: 'DEBT',
-            semesterId
-          }
-        }
+            status: "DEBT",
+            semesterId,
+          },
+        },
       });
     }
     if (semesterId) {
       where.AND.push({
         enrollments: {
           some: {
-            courseClass: { semesterId }
-          }
-        }
+            courseClass: { semesterId },
+          },
+        },
       });
     }
     if (query) {
@@ -115,14 +123,14 @@ export class TuitionService {
     // Fetch fixed fees for all students in the current page and semester
     // FILTER: Exclude redundant tuition summary records (names containing "Học phí")
     const studentIds = students.map((s) => s.id);
-    const fixedFees = semesterId 
+    const fixedFees = semesterId
       ? await this.prisma.studentFee.findMany({
           where: {
             studentId: { in: studentIds },
             semesterId,
             NOT: {
-              name: { contains: "Học phí" }
-            }
+              name: { contains: "Học phí" },
+            },
           },
         })
       : [];
@@ -130,7 +138,8 @@ export class TuitionService {
     // Group fixed fees by studentId
     const fixedFeesByStudent: Record<string, typeof fixedFees> = {};
     fixedFees.forEach((f) => {
-      if (!fixedFeesByStudent[f.studentId]) fixedFeesByStudent[f.studentId] = [];
+      if (!fixedFeesByStudent[f.studentId])
+        fixedFeesByStudent[f.studentId] = [];
       fixedFeesByStudent[f.studentId].push(f);
     });
 
@@ -155,7 +164,7 @@ export class TuitionService {
 
         const semesterEnrollments = Object.values(groupedEnrollments);
         const studentFixedFees = fixedFeesByStudent[s.id] || [];
-        
+
         const tuitionTotal = semesterEnrollments.reduce(
           (sum, e) => sum + Number(e.tuitionFee),
           0,
@@ -246,14 +255,14 @@ export class TuitionService {
     // 2. Update StudentFees
     const studentFeeUpdatePromise = this.prisma.studentFee.updateMany({
       where: { id: { in: paymentIds } },
-      data: { 
+      data: {
         status: status === "PAID" ? "PAID" : "DEBT",
         paidAmount: {
-          set: status === "PAID" ? undefined : 0 // This is a simplification
-        }
+          set: status === "PAID" ? undefined : 0, // This is a simplification
+        },
       },
     });
-    
+
     // Note: To be more accurate with paidAmount, we'd need to fetch the totalAmount.
     // However, for single-toggle UI, setting status is often the primary goal.
 
@@ -298,19 +307,22 @@ export class TuitionService {
     }));
 
     // Robust grouping by (semester, subject)
-    const subjectsInSemester: Record<string, { total: number; paid: number; semesterName: string; semesterId: string }> = {};
+    const subjectsInSemester: Record<
+      string,
+      { total: number; paid: number; semesterName: string; semesterId: string }
+    > = {};
 
     studentsWithEnrollments?.enrollments.forEach((e) => {
       const semesterId = e.courseClass.semesterId;
       const subjectId = e.courseClass.subjectId;
       const key = `${semesterId}_${subjectId}`;
-      
+
       if (!subjectsInSemester[key]) {
-        subjectsInSemester[key] = { 
-          total: Number(e.tuitionFee), 
+        subjectsInSemester[key] = {
+          total: Number(e.tuitionFee),
           paid: 0,
           semesterName: e.courseClass.semester.name,
-          semesterId: semesterId
+          semesterId: semesterId,
         };
       }
       // If any registration for this subject is PAID, the subject is considered paid
@@ -320,7 +332,10 @@ export class TuitionService {
     });
 
     // Sum up per semester
-    const enrollmentsBySemester: Record<string, { name: string; total: number; paid: number }> = {};
+    const enrollmentsBySemester: Record<
+      string,
+      { name: string; total: number; paid: number }
+    > = {};
     Object.values(subjectsInSemester).forEach((data) => {
       if (!enrollmentsBySemester[data.semesterId]) {
         enrollmentsBySemester[data.semesterId] = {
@@ -338,7 +353,7 @@ export class TuitionService {
       if (data.total > 0) {
         // Check if there's already a fee record for this semester to avoid double counting
         const hasExistingSemesterFee = studentFees.some(
-          (f) => f.semester === data.name,
+          (f) => f.semester === data.name && f.name.includes("Học phí"),
         );
 
         if (hasExistingSemesterFee) {
@@ -370,72 +385,94 @@ export class TuitionService {
       include: {
         enrollments: {
           where: { courseClass: { semesterId } },
-          include: { courseClass: { include: { subject: true } } }
-        }
-      }
+          include: { courseClass: { include: { subject: true } } },
+        },
+      },
     });
 
     if (!student) return;
 
     // 2. Sum up total tuition fees
-    const totalTuition = student.enrollments.reduce((sum, enr) => sum + Number(enr.tuitionFee), 0);
+    const totalTuition = student.enrollments.reduce(
+      (sum, enr) => sum + Number(enr.tuitionFee),
+      0,
+    );
     const paidTuition = student.enrollments
-      .filter(enr => enr.status === 'PAID')
+      .filter((enr) => enr.status === "PAID")
       .reduce((sum, enr) => sum + Number(enr.tuitionFee), 0);
-    
+
     if (totalTuition === 0 && student.enrollments.length === 0) {
       // If no enrollments, we might want to remove existing tuition fee records
       await this.prisma.studentFee.deleteMany({
         where: {
           studentId,
           semesterId,
-          feeType: 'TUITION'
-        }
+          feeType: "TUITION",
+        },
       });
       return;
     }
 
-    const semester = await this.prisma.semester.findUnique({ where: { id: semesterId } });
+    const semester = await this.prisma.semester.findUnique({
+      where: { id: semesterId },
+    });
     const feeName = `Học phí ${semester?.name || semesterId}`;
 
-    // 3. Upsert into StudentFee
-    await this.prisma.studentFee.upsert({
+    const feePayload = {
+      totalAmount: totalTuition,
+      finalAmount: totalTuition,
+      paidAmount: paidTuition,
+      status:
+        paidTuition >= totalTuition
+          ? "PAID"
+          : paidTuition > 0
+            ? "PARTIAL"
+            : "DEBT",
+    };
+
+    const existingFee = await this.prisma.studentFee.findFirst({
       where: {
-        // Since we don't have a unique constraint on (studentId, semesterId, feeType),
-        // we find by these criteria or create.
-        id: `tuition-${studentId}-${semesterId}` 
-      },
-      update: {
-        totalAmount: totalTuition,
-        finalAmount: totalTuition,
-        paidAmount: paidTuition,
-        status: paidTuition >= totalTuition ? 'PAID' : (paidTuition > 0 ? 'PARTIAL' : 'DEBT')
-      },
-      create: {
-        id: `tuition-${studentId}-${semesterId}`,
         studentId,
         semesterId,
-        feeType: 'TUITION',
+        feeType: "TUITION",
+      },
+    });
+
+    if (existingFee) {
+      await this.prisma.studentFee.update({
+        where: { id: existingFee.id },
+        data: feePayload,
+      });
+      return { total: totalTuition, paid: paidTuition };
+    }
+
+    await this.prisma.studentFee.create({
+      data: {
+        id: this.buildTuitionFeeId(studentId, semesterId),
+        studentId,
+        semesterId,
+        feeType: "TUITION",
         name: feeName,
-        totalAmount: totalTuition,
         discountAmount: 0,
-        finalAmount: totalTuition,
-        paidAmount: paidTuition,
-        status: paidTuition >= totalTuition ? 'PAID' : (paidTuition > 0 ? 'PARTIAL' : 'DEBT'),
-        isMandatory: true
-      }
+        isMandatory: true,
+        ...feePayload,
+      },
     });
 
     return { total: totalTuition, paid: paidTuition };
   }
 
-  async toggleExamEligibility(studentId: string, semesterId: string, isEligible: boolean) {
+  async toggleExamEligibility(
+    studentId: string,
+    semesterId: string,
+    isEligible: boolean,
+  ) {
     return this.prisma.grade.updateMany({
       where: {
         studentId,
-        courseClass: { semesterId }
+        courseClass: { semesterId },
       },
-      data: { isEligibleForExam: isEligible }
+      data: { isEligibleForExam: isEligible },
     });
   }
 }

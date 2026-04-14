@@ -19,6 +19,7 @@
   "devDependencies": {
     "@nestjs/platform-express": "^11.1.17",
     "@prisma/client": "^5.22.0",
+    "@prisma/engines": "^7.6.0",
     "@types/ejs": "^3.1.5",
     "@types/mjml": "^4.7.4",
     "@types/node": "^25.3.5",

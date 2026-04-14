@@ -13,26 +13,30 @@ import { RoomModule } from './room/room.module';
 import { SubjectModule } from './subject/subject.module';
 import { FacultyModule } from './faculty/faculty.module';
 import { DepartmentModule } from './department/department.module';
+import { SemesterPlanModule } from './semester-plan/semester-plan.module';
+import { AcademicCohortModule } from './academic-cohort/academic-cohort.module';
 
 @Module({
-    imports: [
-        ConfigModule.forRoot({
-            isGlobal: true,
-            envFilePath: ['.env', '../../.env'],
-        }),
-        PrismaModule, 
-        CacheModule, 
-        MajorModule, 
-        SubjectModule, 
-        CourseClassModule, 
-        AdminClassModule, 
-        SemesterModule, 
-        LecturerModule, 
-        RoomModule, 
-        FacultyModule, 
-        DepartmentModule
-    ],
-    controllers: [AppController],
-    providers: [AppService],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['.env', '../../.env'],
+    }),
+    PrismaModule,
+    CacheModule,
+    MajorModule,
+    SubjectModule,
+    CourseClassModule,
+    AdminClassModule,
+    SemesterModule,
+    LecturerModule,
+    RoomModule,
+    FacultyModule,
+    DepartmentModule,
+    AcademicCohortModule,
+    SemesterPlanModule,
+  ],
+  controllers: [AppController],
+  providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}

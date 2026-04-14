@@ -39,9 +39,9 @@ export class AppModule {
       )
       .forRoutes(
         { path: "/api/auth", method: RequestMethod.ALL },
-        { path: "/api/auth/(.*)", method: RequestMethod.ALL },
+        { path: "/api/auth/*path", method: RequestMethod.ALL },
         { path: "/api/notifications", method: RequestMethod.ALL },
-        { path: "/api/notifications/(.*)", method: RequestMethod.ALL }
+        { path: "/api/notifications/*path", method: RequestMethod.ALL },
       );
 
     // Proxy student requests
@@ -53,14 +53,17 @@ export class AppModule {
           pathRewrite: {
             "^/api/students": "/students",
             "^/api/student-fees": "/student-fees",
+            "^/api/training-results": "/training-results",
           },
         }),
       )
       .forRoutes(
         { path: "/api/students", method: RequestMethod.ALL },
-        { path: "/api/students/(.*)", method: RequestMethod.ALL },
+        { path: "/api/students/*path", method: RequestMethod.ALL },
         { path: "/api/student-fees", method: RequestMethod.ALL },
-        { path: "/api/student-fees/(.*)", method: RequestMethod.ALL }
+        { path: "/api/student-fees/*path", method: RequestMethod.ALL },
+        { path: "/api/training-results", method: RequestMethod.ALL },
+        { path: "/api/training-results/*path", method: RequestMethod.ALL },
       );
 
     // Proxy enrollment requests
@@ -76,7 +79,7 @@ export class AppModule {
       )
       .forRoutes(
         { path: "/api/enrollments", method: RequestMethod.ALL },
-        { path: "/api/enrollments/(.*)", method: RequestMethod.ALL }
+        { path: "/api/enrollments/*path", method: RequestMethod.ALL },
       );
 
     // Proxy course requests
@@ -95,28 +98,34 @@ export class AppModule {
             "^/api/lecturers": "/lecturers",
             "^/api/rooms": "/rooms",
             "^/api/departments": "/departments",
+            "^/api/cohorts": "/cohorts",
+            "^/api/semester-plan": "/semester-plan",
           },
         }),
       )
       .forRoutes(
         { path: "/api/courses", method: RequestMethod.ALL },
-        { path: "/api/courses/(.*)", method: RequestMethod.ALL },
+        { path: "/api/courses/*path", method: RequestMethod.ALL },
         { path: "/api/faculties", method: RequestMethod.ALL },
-        { path: "/api/faculties/(.*)", method: RequestMethod.ALL },
+        { path: "/api/faculties/*path", method: RequestMethod.ALL },
         { path: "/api/majors", method: RequestMethod.ALL },
-        { path: "/api/majors/(.*)", method: RequestMethod.ALL },
+        { path: "/api/majors/*path", method: RequestMethod.ALL },
         { path: "/api/subjects", method: RequestMethod.ALL },
-        { path: "/api/subjects/(.*)", method: RequestMethod.ALL },
+        { path: "/api/subjects/*path", method: RequestMethod.ALL },
         { path: "/api/admin-classes", method: RequestMethod.ALL },
-        { path: "/api/admin-classes/(.*)", method: RequestMethod.ALL },
+        { path: "/api/admin-classes/*path", method: RequestMethod.ALL },
         { path: "/api/semesters", method: RequestMethod.ALL },
-        { path: "/api/semesters/(.*)", method: RequestMethod.ALL },
+        { path: "/api/semesters/*path", method: RequestMethod.ALL },
         { path: "/api/lecturers", method: RequestMethod.ALL },
-        { path: "/api/lecturers/(.*)", method: RequestMethod.ALL },
+        { path: "/api/lecturers/*path", method: RequestMethod.ALL },
         { path: "/api/rooms", method: RequestMethod.ALL },
-        { path: "/api/rooms/(.*)", method: RequestMethod.ALL },
+        { path: "/api/rooms/*path", method: RequestMethod.ALL },
         { path: "/api/departments", method: RequestMethod.ALL },
-        { path: "/api/departments/(.*)", method: RequestMethod.ALL }
+        { path: "/api/departments/*path", method: RequestMethod.ALL },
+        { path: "/api/cohorts", method: RequestMethod.ALL },
+        { path: "/api/cohorts/*path", method: RequestMethod.ALL },
+        { path: "/api/semester-plan", method: RequestMethod.ALL },
+        { path: "/api/semester-plan/*path", method: RequestMethod.ALL },
       );
 
     // Proxy grade requests
@@ -132,7 +141,7 @@ export class AppModule {
       )
       .forRoutes(
         { path: "/api/grades", method: RequestMethod.ALL },
-        { path: "/api/grades/(.*)", method: RequestMethod.ALL }
+        { path: "/api/grades/*path", method: RequestMethod.ALL },
       );
   }
 }

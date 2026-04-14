@@ -20,7 +20,8 @@
         "@repo/shared-dto": "0.0.0",
         "reflect-metadata": "^0.1.13",
         "rxjs": "^7.8.1",
-        "swagger-ui-express": "^5.0.1"
+        "swagger-ui-express": "^5.0.1",
+        "xlsx": "^0.18.5"
     },
     "devDependencies": {
         "@nestjs/cli": "^10.0.0",

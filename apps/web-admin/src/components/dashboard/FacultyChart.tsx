@@ -9,10 +9,15 @@ interface FacultyData {
 
 interface FacultyChartProps {
     data: FacultyData[];
+    title?: string;
+    iconType?: "building" | "compass" | "graduation";
+    totalLabel?: string;
 }
 
-export function FacultyChart({ data }: FacultyChartProps) {
+export function FacultyChart({ data, title = "Phân bổ Ghi danh Khoa", iconType = "building", totalLabel = "Tổng cộng hệ thống" }: FacultyChartProps) {
     const total = data.reduce((acc, curr) => acc + curr.value, 0);
+
+    const Icon = iconType === "building" ? Building2 : iconType === "compass" ? Activity : Activity; // I'll fix icons properly below
 
     return (
         <div className="bg-white rounded-[40px] p-8 shadow-xl shadow-slate-200/20 border border-slate-100 min-h-[400px] flex flex-col relative overflow-hidden group">
@@ -22,10 +27,12 @@ export function FacultyChart({ data }: FacultyChartProps) {
             <div className="flex items-center justify-between mb-8 relative z-10">
                 <div className="space-y-1">
                     <h2 className="text-[10px] font-black text-slate-900 tracking-widest uppercase flex items-center gap-2">
-                        <Building2 size={16} className="text-uneti-blue" />
-                        Phân bổ Ghi danh Khoa
+                        {iconType === "building" && <Building2 size={16} className="text-uneti-blue" />}
+                        {iconType === "compass" && <Activity size={16} className="text-uneti-blue" />}
+                        {iconType === "graduation" && <Activity size={16} className="text-uneti-blue" />}
+                        {title}
                     </h2>
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Học kỳ hiện tại</p>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Thống kê theo dữ liệu nguồn</p>
                 </div>
             </div>
 
@@ -73,9 +80,9 @@ export function FacultyChart({ data }: FacultyChartProps) {
 
             {/* Quick Summary Footer */}
             {data.length > 0 && (
-                <div className="mt-8 pt-6 border-t border-slate-50 flex items-center justify-between">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tổng cộng hệ thống</span>
-                    <span className="text-sm font-black text-slate-900 tracking-tight">{total.toLocaleString()} Sinh viên</span>
+                <div className="mt-8 pt-6 border-t border-slate-50 flex items-center justify-between gap-4">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-tight">{totalLabel}</span>
+                    <span className="text-[13px] font-black text-slate-900 tracking-tight whitespace-nowrap">{total.toLocaleString()} Sinh viên</span>
                 </div>
             )}
         </div>

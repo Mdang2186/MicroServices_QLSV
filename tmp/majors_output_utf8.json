@@ -1,0 +1,170 @@
+[
+  {
+    "id": "18edde59-8af5-4bb9-915e-e3a38257118e",
+    "code": "CNTT",
+    "name": "Công nghệ Thông tin",
+    "_count": {
+      "adminClasses": 0,
+      "curriculums": 228,
+      "specializations": 0,
+      "students": 0,
+      "subjects": 38
+    }
+  },
+  {
+    "id": "bcab3252-aab6-4e87-9359-7bec845a29cb",
+    "code": "CNTT_K18",
+    "name": "Công nghệ thông tin",
+    "_count": {
+      "adminClasses": 0,
+      "curriculums": 32,
+      "specializations": 0,
+      "students": 0,
+      "subjects": 8
+    }
+  },
+  {
+    "id": "CNTT",
+    "code": "M_CNTT",
+    "name": "Công nghệ thông tin",
+    "_count": {
+      "adminClasses": 0,
+      "curriculums": 168,
+      "specializations": 0,
+      "students": 0,
+      "subjects": 42
+    }
+  },
+  {
+    "id": "DETMAY",
+    "code": "M_DM",
+    "name": "Công nghệ sợi, dệt",
+    "_count": {
+      "adminClasses": 0,
+      "curriculums": 12,
+      "specializations": 0,
+      "students": 0,
+      "subjects": 3
+    }
+  },
+  {
+    "id": "DienTu",
+    "code": "M_DIENTU",
+    "name": "Công nghệ kỹ thuật Điện, điện tử",
+    "_count": {
+      "adminClasses": 0,
+      "curriculums": 0,
+      "specializations": 0,
+      "students": 0,
+      "subjects": 0
+    }
+  },
+  {
+    "id": "KETOAN",
+    "code": "M_KETOAN",
+    "name": "Kế toán",
+    "_count": {
+      "adminClasses": 0,
+      "curriculums": 24,
+      "specializations": 0,
+      "students": 0,
+      "subjects": 6
+    }
+  },
+  {
+    "id": "MAJ_KETOAN",
+    "code": "KTK",
+    "name": "Kế toán",
+    "_count": {
+      "adminClasses": 1,
+      "curriculums": 24,
+      "specializations": 0,
+      "students": 8,
+      "subjects": 5
+    }
+  },
+  {
+    "id": "MAJ_KHMT",
+    "code": "KHMT",
+    "name": "Khoa học máy tính",
+    "_count": {
+      "adminClasses": 1,
+      "curriculums": 24,
+      "specializations": 2,
+      "students": 9,
+      "subjects": 6
+    }
+  },
+  {
+    "id": "MAJ_KTPM",
+    "code": "KTPM",
+    "name": "Kỹ thuật phần mềm",
+    "_count": {
+      "adminClasses": 1,
+      "curriculums": 12,
+      "specializations": 3,
+      "students": 9,
+      "subjects": 3
+    }
+  },
+  {
+    "id": "MAJ_NNA",
+    "code": "NNA",
+    "name": "Ngôn ngữ Anh",
+    "_count": {
+      "adminClasses": 1,
+      "curriculums": 8,
+      "specializations": 0,
+      "students": 8,
+      "subjects": 2
+    }
+  },
+  {
+    "id": "MAJ_NNT",
+    "code": "NNT",
+    "name": "Ngôn ngữ Trung",
+    "_count": {
+      "adminClasses": 1,
+      "curriculums": 10,
+      "specializations": 0,
+      "students": 8,
+      "subjects": 2
+    }
+  },
+  {
+    "id": "OTO",
+    "code": "M_OTO",
+    "name": "Công nghệ kỹ thuật Ô tô",
+    "_count": {
+      "adminClasses": 0,
+      "curriculums": 42,
+      "specializations": 0,
+      "students": 0,
+      "subjects": 7
+    }
+  },
+  {
+    "id": "QTKD",
+    "code": "M_QTKD",
+    "name": "Quản trị kinh doanh",
+    "_count": {
+      "adminClasses": 1,
+      "curriculums": 12,
+      "specializations": 2,
+      "students": 8,
+      "subjects": 2
+    }
+  },
+  {
+    "id": "THUCPHAM",
+    "code": "M_TP",
+    "name": "Công nghệ thực phẩm",
+    "_count": {
+      "adminClasses": 0,
+      "curriculums": 12,
+      "specializations": 0,
+      "students": 0,
+      "subjects": 3
+    }
+  }
+]

@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState, useMemo } from "react";
 import { StudentService } from "@/services/student.service";
-import Cookies from "js-cookie";
 import Link from "next/link";
 import {
     GraduationCap,
@@ -24,7 +23,8 @@ import {
     Wallet,
     CreditCard,
     ClipboardList,
-    AlertCircle
+    AlertCircle,
+    Camera
 } from "lucide-react";
 
 // ... (Rest of imports)
@@ -54,6 +54,7 @@ const Pie = RechartsPie as any;
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { getStudentProfileId, getStudentUserId, readStudentSessionUser } from "@/lib/student-session";
 
 export default function StudentDashboard() {
     const [student, setStudent] = useState<any>(null);
@@ -65,26 +66,23 @@ export default function StudentDashboard() {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const userCookie = Cookies.get("student_user");
-                if (!userCookie) return;
+                const user = readStudentSessionUser();
+                const userId = getStudentUserId(user);
+                if (!userId) return;
 
-                const user = JSON.parse(userCookie);
-                const studentId = user.student?.id || user.id;
+                const profileData = await StudentService.getProfile(userId);
 
-                if (studentId) {
-                    const profileData = await StudentService.getProfile(studentId);
-
-                    if (profileData && profileData.id) {
-                        setStudent(profileData);
-                        const [enrollmentsData, gradesData, trainingData] = await Promise.all([
-                            StudentService.getEnrollments(profileData.id),
-                            StudentService.getGrades(profileData.id),
-                            StudentService.getTrainingResults(profileData.id)
-                        ]);
-                        setEnrollments(enrollmentsData || []);
-                        setGrades(gradesData || []);
-                        setTrainingResults(trainingData || []);
-                    }
+                if (profileData && profileData.id) {
+                    const studentId = profileData.id || getStudentProfileId(user);
+                    setStudent(profileData);
+                    const [enrollmentsData, gradesData, trainingData] = await Promise.all([
+                        StudentService.getEnrollments(studentId),
+                        StudentService.getGrades(studentId),
+                        StudentService.getTrainingResults(studentId)
+                    ]);
+                    setEnrollments(enrollmentsData || []);
+                    setGrades(gradesData || []);
+                    setTrainingResults(trainingData || []);
                 }
             } catch (error) {
                 console.error("Failed to fetch dashboard data", error);
@@ -201,6 +199,7 @@ export default function StudentDashboard() {
             {/* Quick Action Buttons */}
             <div className="grid grid-cols-4 md:grid-cols-8 gap-4">
                 {[
+                    { label: "Điểm danh QR", icon: Camera, color: "text-indigo-500", href: "/portal/attendance/scan" },
                     { label: "Đề xuất biểu mẫu", icon: FileText, color: "text-sky-500", href: "/portal/enroll" },
                     { label: "Nhắc nhở", icon: Bell, color: "text-blue-500", href: "/portal/dashboard" },
                     { label: "Kết quả học tập", icon: TrendingUp, color: "text-indigo-500", href: "/portal/results" },
@@ -230,15 +229,51 @@ export default function StudentDashboard() {
 
                 <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
                     {(() => {
-                        const jsDay = new Date().getDay();
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        const jsDay = today.getDay();
                         const currentDayOfWeek = jsDay === 0 ? 8 : jsDay + 1;
-                        const todaySchedule = enrollments?.flatMap((e: any) =>
-                            e.courseClass?.schedules?.filter((s: any) => s.dayOfWeek === currentDayOfWeek).map((s: any) => ({
-                                startShift: s.startShift,
-                                subject: e.courseClass?.subject,
-                                room: s.room,
-                            })) || []
-                        ).sort((a, b) => a.startShift - b.startShift) || [];
+
+                        const todaySchedule = enrollments?.flatMap((e: any) => {
+                            const exactSessions = (e.courseClass?.sessions || [])
+                                .filter((session: any) => {
+                                    const sessionDate = new Date(session.date);
+                                    sessionDate.setHours(0, 0, 0, 0);
+                                    return sessionDate.getTime() === today.getTime();
+                                })
+                                .map((session: any) => ({
+                                    startShift: session.startShift,
+                                    subject: e.courseClass?.subject,
+                                    room: session.room,
+                                }));
+
+                            if (exactSessions.length > 0) {
+                                return exactSessions;
+                            }
+
+                            const semesterStart = e.courseClass?.semester?.startDate
+                                ? new Date(e.courseClass.semester.startDate)
+                                : null;
+                            const semesterEnd = e.courseClass?.semester?.endDate
+                                ? new Date(e.courseClass.semester.endDate)
+                                : null;
+
+                            if (semesterStart && semesterEnd) {
+                                semesterStart.setHours(0, 0, 0, 0);
+                                semesterEnd.setHours(0, 0, 0, 0);
+                                if (today < semesterStart || today > semesterEnd) {
+                                    return [];
+                                }
+                            }
+
+                            return (
+                                e.courseClass?.schedules?.filter((s: any) => s.dayOfWeek === currentDayOfWeek).map((s: any) => ({
+                                    startShift: s.startShift,
+                                    subject: e.courseClass?.subject,
+                                    room: s.room,
+                                })) || []
+                            );
+                        }).sort((a, b) => a.startShift - b.startShift) || [];
 
                         const shiftTimes: { [key: number]: string } = {
                             1: "07:00 - 09:30",

@@ -17,11 +17,11 @@ function LayoutContent({ children, sidebar, header }: DashboardLayoutProps) {
         <div className="flex h-screen overflow-hidden bg-[#f8fafc] text-slate-800 font-sans">
             {sidebar}
 
-            <div className={`flex-1 flex flex-col min-w-0 overflow-hidden relative transition-all duration-300`}>
+            <div className={`flex-1 flex flex-col min-w-0 overflow-hidden relative transition-all duration-300 bg-white`}>
                 {header}
 
-                <main className="flex-1 overflow-y-auto p-4 lg:p-8 scroll-smooth bg-[#f8fafc]">
-                    <div className="max-w-[1600px] mx-auto min-h-[calc(100vh-180px)] animate-in fade-in duration-700">
+                <main className="flex-1 overflow-y-auto p-4 lg:p-6 scroll-smooth bg-white">
+                    <div className="max-w-full mx-auto min-h-[calc(100vh-180px)] animate-in fade-in duration-700">
                         {children}
                     </div>
                     <Footer />

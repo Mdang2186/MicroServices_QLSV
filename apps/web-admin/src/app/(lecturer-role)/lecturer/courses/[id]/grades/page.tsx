@@ -73,10 +73,9 @@ export default function LecturerGradesPage() {
                         const diffDays = Math.ceil((dlDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
                         
                         if (now > dlDate) {
-                            setMessage({ text: `ĐÃ QUÁ HẠN NHẬP ĐIỂM (${dlDate.toLocaleDateString('vi-VN')}). Bảng điểm đã bị khóa tự động theo quy định.`, type: "error" });
+                            setMessage({ text: "Đã quá hạn nhập điểm giữa kỳ. Bảng điểm đã bị khóa.", type: "error" });
                         } else if (diffDays <= 14) {
-                            const daysText = diffDays === 0 ? "hôm nay" : `còn ${diffDays} ngày`;
-                            setMessage({ text: `CẢNH BÁO: Hạn nhập điểm học phần ${daysText} (Hạn cuối: ${dlDate.toLocaleDateString('vi-VN')}). Vui lòng hoàn tất trước khi hệ thống khóa tự động.`, type: "warning" });
+                            setMessage({ text: `Hạn nhập điểm giữa kỳ còn ${diffDays} ngày (${dlDate.toLocaleDateString('vi-VN')}). Vui lòng hoàn thành sớm.`, type: "warning" });
                         }
                     }
 
@@ -350,34 +349,24 @@ export default function LecturerGradesPage() {
             <AnimatePresence>
                 {message.text && (
                     <motion.div
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
                         className={cn(
-                            "p-5 border-2 flex items-center justify-between gap-4 rounded-2xl shadow-sm",
-                            message.type === 'success' ? "bg-emerald-50 border-emerald-200 text-emerald-800" : 
-                            message.type === 'warning' ? "bg-amber-50 border-amber-200 text-amber-800 ring-4 ring-amber-500/10" :
-                            "bg-rose-50 border-rose-200 text-rose-800 ring-4 ring-rose-500/10"
+                            "p-4 border flex items-center justify-between gap-4 rounded-xl",
+                            message.type === 'success' ? "bg-emerald-50 border-emerald-100 text-emerald-800" : 
+                            message.type === 'warning' ? "bg-amber-50 border-amber-100 text-amber-800" :
+                            "bg-rose-50 border-rose-100 text-rose-800"
                         )}
                     >
-                        <div className="flex items-center gap-4">
-                            <div className={cn(
-                                "p-2 rounded-xl",
-                                message.type === 'success' ? "bg-emerald-100" : 
-                                message.type === 'warning' ? "bg-amber-100" :
-                                "bg-rose-100"
-                            )}>
-                                {message.type === 'success' ? <CheckCircle2 size={20} /> : 
-                                 message.type === 'warning' ? <AlertCircle size={20} className="animate-pulse" /> :
-                                 <ShieldAlert size={20} />}
-                            </div>
-                            <div className="space-y-0.5">
-                                <p className="text-[11px] font-black uppercase tracking-tight">{message.type === 'warning' ? 'Thông báo gia hạn & Lưu ý' : 'Trạng thái hệ thống'}</p>
-                                <p className="text-[12px] font-bold leading-tight">{message.text}</p>
-                            </div>
+                        <div className="flex items-center gap-3">
+                            {message.type === 'success' ? <CheckCircle2 size={16} /> : 
+                             message.type === 'warning' ? <Info size={16} className="animate-pulse" /> :
+                             <AlertCircle size={16} />}
+                            <p className="text-[10px] font-black uppercase tracking-widest">{message.text}</p>
                         </div>
-                        <button onClick={() => setMessage({ text: "", type: "" })} className="p-2 hover:bg-black/5 rounded-full transition-colors">
-                            <X size={18} />
+                        <button onClick={() => setMessage({ text: "", type: "" })} className="p-1 hover:bg-black/5 rounded">
+                            <X size={14} />
                         </button>
                     </motion.div>
                 )}

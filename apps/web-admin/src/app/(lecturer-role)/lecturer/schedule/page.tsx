@@ -32,13 +32,91 @@ const DAYS = [
     { name: "Thứ Năm", short: "T5", value: 5 },
     { name: "Thứ Sáu", short: "T6", value: 6 },
     { name: "Thứ Bảy", short: "T7", value: 7 },
-    { name: "Chủ Nhật", short: "CN", value: 8 },
+    { name: "Chủ nhật", short: "CN", value: 8 },
 ];
+
+type SemesterOption = {
+    id: string;
+    code?: string;
+    name: string;
+    startDate?: Date | null;
+    endDate?: Date | null;
+    sessionDates: Date[];
+};
+
+const normalizeDate = (value: any) => {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const getSemesterSortTime = (semester: SemesterOption) => {
+    const lastSession = semester.sessionDates[semester.sessionDates.length - 1];
+    return (lastSession || semester.endDate || semester.startDate || new Date(0)).getTime();
+};
+
+const formatSemesterOptionLabel = (semester: Partial<SemesterOption>) => {
+    const code = `${semester.code || ""}`.trim();
+    const name = `${semester.name || ""}`.trim();
+
+    if (!code) return name || "Học kỳ";
+    if (!name) return code;
+    if (name.toUpperCase().includes(code.toUpperCase())) return name;
+    return `${code} - ${name}`;
+};
+
+const pickSemesterAnchorDate = (semester: SemesterOption) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const startDate = semester.startDate ? new Date(semester.startDate) : null;
+    const endDate = semester.endDate ? new Date(semester.endDate) : null;
+
+    if (startDate) startDate.setHours(0, 0, 0, 0);
+    if (endDate) endDate.setHours(0, 0, 0, 0);
+
+    if (startDate && endDate && today >= startDate && today <= endDate) {
+        return today;
+    }
+
+    const futureSession = semester.sessionDates.find((date) => date >= today);
+    if (futureSession) {
+        return new Date(futureSession);
+    }
+
+    if (semester.sessionDates.length > 0) {
+        return new Date(semester.sessionDates[0]);
+    }
+
+    if (startDate) {
+        return new Date(startDate);
+    }
+
+    return today;
+};
+
+const isDateWithinSemester = (date: Date, semester: SemesterOption | null) => {
+    if (!semester) return true;
+    const target = new Date(date);
+    target.setHours(0, 0, 0, 0);
+
+    const startDate = semester.startDate ? new Date(semester.startDate) : null;
+    const endDate = semester.endDate ? new Date(semester.endDate) : null;
+
+    if (!startDate || !endDate) {
+        return true;
+    }
+
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(0, 0, 0, 0);
+    return target >= startDate && target <= endDate;
+};
 
 export default function LecturerSchedulePage() {
     const [user, setUser] = useState<any>(null);
     const [loading, setLoading] = useState(false);
     const [schedule, setSchedule] = useState<any[]>([]);
+    const [allSemesters, setAllSemesters] = useState<any[]>([]);
+    const [semesterOptions, setSemesterOptions] = useState<SemesterOption[]>([]);
     const [selectedSemesterId, setSelectedSemesterId] = useState<string>("");
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [filter, setFilter] = useState("all");
@@ -49,6 +127,127 @@ export default function LecturerSchedulePage() {
         const c = Cookies.get("admin_user");
         if (c) try { setUser(JSON.parse(c)); } catch { }
     }, []);
+
+    useEffect(() => {
+        fetch("/api/semesters", {
+            headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {},
+        })
+            .then((response) => (response.ok ? response.json() : []))
+            .then((data) => setAllSemesters(Array.isArray(data) ? data : []))
+            .catch(() => setAllSemesters([]));
+    }, [TOKEN]);
+
+    useEffect(() => {
+        if (!user?.profileId) {
+            setSemesterOptions([]);
+            return;
+        }
+
+        fetch(`/api/courses/lecturer/${user.profileId}`, {
+            headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}
+        })
+            .then((response) => (response.ok ? response.json() : []))
+            .then((data) => {
+                const classes = Array.isArray(data) ? data : [];
+                const semesterMap = new Map<string, SemesterOption & { sessionKeys: Set<string> }>();
+
+                allSemesters.forEach((semester) => {
+                    if (!semester?.id) return;
+                    semesterMap.set(semester.id, {
+                        id: semester.id,
+                        code: semester.code,
+                        name: semester.name || semester.id,
+                        startDate: normalizeDate(semester.startDate),
+                        endDate: normalizeDate(semester.endDate),
+                        sessionDates: [],
+                        sessionKeys: new Set<string>(),
+                    });
+                });
+
+                classes.forEach((courseClass: any) => {
+                    const semester = courseClass.semester;
+                    const semesterId = courseClass.semesterId || semester?.id;
+                    if (!semesterId) return;
+
+                    const existing = semesterMap.get(semesterId);
+                    const sessionDates = (courseClass.sessions || [])
+                        .map((session: any) => normalizeDate(session.date))
+                        .filter(Boolean) as Date[];
+
+                    if (!existing) {
+                        const option: SemesterOption & { sessionKeys: Set<string> } = {
+                            id: semesterId,
+                            code: semester?.code,
+                            name: semester?.name || semesterId,
+                            startDate: normalizeDate(semester?.startDate),
+                            endDate: normalizeDate(semester?.endDate),
+                            sessionDates: [],
+                            sessionKeys: new Set<string>(),
+                        };
+
+                        sessionDates.forEach((date) => {
+                            const key = date.toISOString();
+                            if (!option.sessionKeys.has(key)) {
+                                option.sessionKeys.add(key);
+                                option.sessionDates.push(date);
+                            }
+                        });
+
+                        semesterMap.set(semesterId, option);
+                        return;
+                    }
+
+                    sessionDates.forEach((date) => {
+                        const key = date.toISOString();
+                        if (!existing.sessionKeys.has(key)) {
+                            existing.sessionKeys.add(key);
+                            existing.sessionDates.push(date);
+                        }
+                    });
+                });
+
+                const options = Array.from(semesterMap.values())
+                    .map(({ sessionKeys, ...semester }) => ({
+                        ...semester,
+                        sessionDates: [...semester.sessionDates].sort(
+                            (left, right) => left.getTime() - right.getTime(),
+                        ),
+                    }))
+                    .sort((left, right) => getSemesterSortTime(right) - getSemesterSortTime(left));
+
+                setSemesterOptions(options);
+            })
+            .catch(() => setSemesterOptions([]));
+    }, [user, TOKEN, allSemesters]);
+
+    useEffect(() => {
+        if (!semesterOptions.length) return;
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const semestersWithSessions = semesterOptions.filter(
+            (semester) => semester.sessionDates.length > 0,
+        );
+        const preferredSemesters =
+            semestersWithSessions.length > 0 ? semestersWithSessions : semesterOptions;
+
+        const currentSemester =
+            preferredSemesters.find((semester) => {
+                const startDate = semester.startDate ? new Date(semester.startDate) : null;
+                const endDate = semester.endDate ? new Date(semester.endDate) : null;
+                if (!startDate || !endDate) return false;
+                startDate.setHours(0, 0, 0, 0);
+                endDate.setHours(0, 0, 0, 0);
+                return today >= startDate && today <= endDate;
+            }) || preferredSemesters[0];
+
+        setSelectedSemesterId((current) =>
+            preferredSemesters.some((semester) => semester.id === current)
+                ? current
+                : currentSemester.id,
+        );
+    }, [semesterOptions]);
 
     useEffect(() => {
         if (!user?.profileId || !selectedSemesterId) {
@@ -68,6 +267,30 @@ export default function LecturerSchedulePage() {
             .finally(() => setLoading(false));
     }, [user, selectedSemesterId, TOKEN]);
 
+    useEffect(() => {
+        if (!schedule.length) return;
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const sessionDates = schedule
+            .map((session) => new Date(session.date))
+            .filter((date) => !Number.isNaN(date.getTime()))
+            .sort((left, right) => left.getTime() - right.getTime());
+
+        const futureSession = sessionDates.find((date) => date >= today);
+        const anchor = futureSession || sessionDates[0];
+        if (anchor) {
+            setSelectedDate(anchor);
+        }
+    }, [selectedSemesterId, schedule]);
+
+    const selectedSemester = useMemo(
+        () =>
+            semesterOptions.find((semester) => semester.id === selectedSemesterId) || null,
+        [semesterOptions, selectedSemesterId],
+    );
+
     const weekDays = useMemo(() => {
         const d = new Date(selectedDate);
         const day = d.getDay();
@@ -81,8 +304,15 @@ export default function LecturerSchedulePage() {
     }, [selectedDate]);
 
     const getSchedulesForDayAndSession = (dayValue: number, sessionValue: string) => {
+        const targetJsDay = dayValue === 8 ? 0 : dayValue - 1;
+        const dateAtIdx = weekDays.find(d => d.getDay() === targetJsDay);
         return schedule.filter(s => {
-            if (s.dayOfWeek !== dayValue) return false;
+            const sessionDate = new Date(s.date);
+            // normalization to YYYY-MM-DD for reliable comparison
+            const sessionDateStr = `${sessionDate.getFullYear()}-${sessionDate.getMonth()}-${sessionDate.getDate()}`;
+            const targetDateStr = dateAtIdx ? `${dateAtIdx.getFullYear()}-${dateAtIdx.getMonth()}-${dateAtIdx.getDate()}` : "";
+            
+            if (sessionDateStr !== targetDateStr) return false;
 
             const start = Number(s.startShift);
             let sessionMatch = false;
@@ -113,6 +343,7 @@ export default function LecturerSchedulePage() {
                 minimal={true}
                 title="Lịch giảng dạy chi tiết"
                 onSemesterChange={setSelectedSemesterId}
+                selectedSemesterId={selectedSemesterId}
             />
 
             {/* Compact Toolbar & Navigation */}
@@ -158,7 +389,18 @@ export default function LecturerSchedulePage() {
                         <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => setSelectedDate(new Date())}
+                            onClick={() => {
+                                const today = new Date();
+                                if (isDateWithinSemester(today, selectedSemester)) {
+                                    setSelectedDate(today);
+                                    return;
+                                }
+                                if (selectedSemester) {
+                                    setSelectedDate(pickSemesterAnchorDate(selectedSemester));
+                                    return;
+                                }
+                                setSelectedDate(today);
+                            }}
                             className="h-8 px-3 text-[10px] font-black uppercase text-slate-600 hover:bg-white hover:shadow-sm transition-all"
                         >
                             <CalendarCheck className="mr-1.5 h-3.5 w-3.5 text-uneti-blue" /> Hôm nay
@@ -181,6 +423,18 @@ export default function LecturerSchedulePage() {
                 </div>
             </div>
 
+            {selectedSemester && !isDateWithinSemester(selectedDate, selectedSemester) && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] font-black text-amber-700">
+                    Tuần đang xem nằm ngoài học kỳ đã chọn. Hệ thống đã giữ học kỳ đúng, nhưng bạn nên quay về tuần có lịch thực bằng nút <span className="font-black">Hôm nay</span> hoặc đổi học kỳ có phân công giảng dạy.
+                </div>
+            )}
+
+            {selectedSemester && schedule.length === 0 && (
+                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-[11px] font-black text-slate-600">
+                    Không có buổi giảng nào trong học kỳ đang chọn. Nếu bạn vừa được phân công lớp, hãy chọn đúng học kỳ có lịch hoặc tải lại trang.
+                </div>
+            )}
+
             {/* Main Schedule Grid */}
             <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden relative min-h-[600px]">
                 {loading && (
@@ -193,7 +447,7 @@ export default function LecturerSchedulePage() {
                 )}
 
                 <div className="overflow-x-auto">
-                    <table className="w-full border-collapse min-w-[1000px]">
+                    <table className="w-full border-collapse min-w-[1160px]">
                         <thead>
                             <tr className="bg-slate-50/50">
                                 <th className="w-20 p-4 text-[10px] font-black text-uneti-blue/60 uppercase border-b border-r border-slate-100 tracking-widest bg-slate-50/80 sticky left-0 z-20 backdrop-blur-md">Ca</th>

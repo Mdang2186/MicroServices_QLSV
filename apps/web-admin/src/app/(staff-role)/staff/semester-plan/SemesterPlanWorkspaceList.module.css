@@ -1,0 +1,54 @@
+.compact {
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.compact :global(.rounded-\[2rem\]),
+.compact :global(.rounded-2xl) {
+  border-radius: 10px !important;
+}
+
+.compact :global(.rounded-xl) {
+  border-radius: 8px !important;
+}
+
+.compact button,
+.compact input,
+.compact select,
+.compact textarea {
+  border-radius: 8px !important;
+}
+
+.compact input,
+.compact select,
+.compact textarea,
+.compact button {
+  min-height: 36px;
+}
+
+.compact table {
+  font-size: 12.5px;
+}
+
+.compact :global(.text-sm) {
+  font-size: 13px !important;
+}
+
+.compact :global(.text-xs) {
+  font-size: 11.5px !important;
+}
+
+.compact thead th {
+  font-size: 10px !important;
+  letter-spacing: 0.12em;
+}
+
+.compact h1 {
+  font-size: 24px;
+  line-height: 1.15;
+}
+
+.compact h2 {
+  font-size: 18px;
+  line-height: 1.2;
+}

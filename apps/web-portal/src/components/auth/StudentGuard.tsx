@@ -2,38 +2,34 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { clearStudentSession, readStudentSessionUser } from "@/lib/student-session";
 
 export default function StudentGuard({ children }: { children: React.ReactNode }) {
     const router = useRouter();
     const [authorized, setAuthorized] = useState(false);
 
     useEffect(() => {
-        const token = localStorage.getItem("student_accessToken");
-        const userStr = localStorage.getItem("student_user");
+        const token = localStorage.getItem("student_accessToken") || localStorage.getItem("accessToken");
+        const user = readStudentSessionUser();
 
-        if (!token || !userStr) {
+        if (!token || !user) {
             router.push("/login");
             return;
         }
 
-        try {
-            const user = JSON.parse(userStr);
-
-            if (user.role === "STUDENT") {
-                setAuthorized(true);
-                return;
-            }
-
-            if (user.role === "ADMIN") {
-                router.push("/admin/dashboard");
-                return;
-            }
-
-            router.push("/login");
-        } catch (e) {
-            localStorage.clear();
-            router.push("/login");
+        if (user.role === "STUDENT") {
+            setAuthorized(true);
+            return;
         }
+
+        if (user.role === "ADMIN" || user.role === "SUPER_ADMIN" || user.role === "ACADEMIC_STAFF" || user.role === "LECTURER") {
+            clearStudentSession();
+            window.location.href = "http://localhost:4005/login";
+            return;
+        }
+
+        clearStudentSession();
+        router.push("/login");
     }, [router]);
 
     if (!authorized) {

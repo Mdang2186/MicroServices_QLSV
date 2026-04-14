@@ -8,7 +8,7 @@ export class StudentFeeController {
   @Post("sync/:studentId/:semesterId")
   async syncTuition(
     @Param("studentId") studentId: string,
-    @Param("semesterId") semesterId: string
+    @Param("semesterId") semesterId: string,
   ) {
     return this.tuitionService.syncStudentTuition(studentId, semesterId);
   }
@@ -27,7 +27,7 @@ export class StudentFeeController {
     @Query("status") status?: string,
     @Query("query") query?: string,
     @Query("page") page?: number,
-    @Query("limit") limit?: number
+    @Query("limit") limit?: number,
   ) {
     return this.tuitionService.getStudentTuitionList({
       semesterId,
@@ -37,7 +37,7 @@ export class StudentFeeController {
       status,
       query,
       page,
-      limit
+      limit,
     });
   }
 
@@ -45,9 +45,13 @@ export class StudentFeeController {
   async toggleExamEligibility(
     @Query("studentId") studentId: string,
     @Query("semesterId") semesterId: string,
-    @Query("isEligible") isEligible: string
+    @Query("isEligible") isEligible: string,
   ) {
-    return this.tuitionService.toggleExamEligibility(studentId, semesterId, isEligible === 'true');
+    return this.tuitionService.toggleExamEligibility(
+      studentId,
+      semesterId,
+      isEligible === "true",
+    );
   }
 
   @Get("student/:studentId/transactions")

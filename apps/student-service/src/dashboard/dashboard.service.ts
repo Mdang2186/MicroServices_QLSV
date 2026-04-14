@@ -5,18 +5,41 @@ import { PrismaService } from "../prisma/prisma.service";
 export class DashboardService {
   constructor(private prisma: PrismaService) {}
 
-  async getStats(semesterId?: string, facultyId?: string) {
+  async getStats(
+    semesterId?: string,
+    facultyId?: string,
+    majorId?: string,
+    intake?: string,
+  ) {
     // Build where clause for filtering
     const where: any = {};
     if (semesterId) {
       where.semesterId = semesterId;
     }
 
-    // Handle faculty filtering (complex due to relations)
+    // Handle student filtering
     const studentWhere: any = {};
     if (facultyId && facultyId !== "all") {
       studentWhere.major = { facultyId: facultyId };
     }
+    if (majorId && majorId !== "all") {
+      studentWhere.majorId = majorId;
+    }
+    if (intake && intake !== "all") {
+      studentWhere.intake = intake;
+    }
+
+    const classWhere: any = {};
+    if (semesterId) classWhere.semesterId = semesterId;
+
+    const enrollmentWhere: any = {};
+    if (semesterId) enrollmentWhere.courseClass = { semesterId };
+    if (Object.keys(studentWhere).length > 0)
+      enrollmentWhere.student = studentWhere;
+
+    const gradeWhere: any = {};
+    if (semesterId) gradeWhere.courseClass = { semesterId };
+    if (Object.keys(studentWhere).length > 0) gradeWhere.student = studentWhere;
 
     // Run in parallel for performance
     const [
@@ -38,18 +61,19 @@ export class DashboardService {
       gpaDistributionRaw,
     ] = await Promise.all([
       this.prisma.student.count({ where: studentWhere }),
-      this.prisma.courseClass.count(),
+      this.prisma.courseClass.count({ where: classWhere }),
       this.prisma.enrollment.aggregate({
-        where: { status: "PAID" },
+        where: { status: "PAID", ...enrollmentWhere },
         _sum: { tuitionFee: true },
       }),
-      this.prisma.enrollment.count(),
+      this.prisma.enrollment.count({ where: enrollmentWhere }),
       this.prisma.grade.aggregate({
+        where: { ...gradeWhere, attendanceScore: { not: null } },
         _avg: { attendanceScore: true },
       }),
       // Recent Enrollments (Filter by semester if provided)
       this.prisma.enrollment.findMany({
-        where: semesterId ? { courseClass: { semesterId } } : {},
+        where: enrollmentWhere,
         take: 5,
         orderBy: { registeredAt: "desc" },
         include: {
@@ -60,18 +84,19 @@ export class DashboardService {
       // Attendance Distribution (fetch minimal needed to bucket)
       this.prisma.grade.findMany({
         select: { attendanceScore: true },
-        where: { attendanceScore: { not: null } },
+        where: { ...gradeWhere, attendanceScore: { not: null } },
       }),
       // Course Popularity: we'll group by courseClassId and get counts
       this.prisma.enrollment.groupBy({
         by: ["courseClassId"],
+        where: enrollmentWhere,
         _count: { studentId: true },
         orderBy: { _count: { studentId: "desc" } },
         take: 6,
       }),
       // For Enrollment Trends (Filter by semester if provided, otherwise last 6 months)
       this.prisma.enrollment.findMany({
-        where: semesterId ? { courseClass: { semesterId } } : {},
+        where: enrollmentWhere,
         select: { registeredAt: true },
       }),
 
@@ -86,14 +111,24 @@ export class DashboardService {
         where: studentWhere,
         select: { gpa: true },
       }),
+      this.prisma.student.groupBy({
+        by: ["intake"],
+        where: studentWhere,
+        _count: { id: true },
+      }),
+      this.prisma.student.groupBy({
+        by: ["majorId"],
+        where: studentWhere,
+        _count: { id: true },
+      }),
     ]);
 
     // Process Recent Enrollments
     const recentEnrollments = recentEnrollmentsRaw.map((e) => ({
-      name: e.student.fullName,
-      course: e.courseClass.subject.name,
+      name: e.student?.fullName || "N/A",
+      course: e.courseClass?.subject?.name || "Unknown Course",
       time: e.registeredAt.toISOString(),
-      img: e.student.fullName.substring(0, 2).toUpperCase(),
+      img: (e.student?.fullName || "??").substring(0, 2).toUpperCase(),
     }));
 
     // Process Attendance Distribution Buckets
@@ -142,9 +177,10 @@ export class DashboardService {
       const courseClass = topCoursesClasses.find(
         (tcc) => tcc.id === c.courseClassId,
       );
+      const subjectName = courseClass?.subject?.name || "Unknown";
       // generate a short name from subject name e.g "Software Engineering" -> "SE"
       const shortName =
-        courseClass?.subject.name
+        subjectName
           .split(" ")
           .map((w) => w[0])
           .join("")
@@ -152,7 +188,7 @@ export class DashboardService {
           .toUpperCase() || "UNK";
       return {
         name: shortName,
-        fullName: courseClass?.subject.name,
+        fullName: subjectName,
         value: c._count.studentId,
       };
     });
@@ -228,14 +264,56 @@ export class DashboardService {
       },
     };
 
-    // Student Distribution (General Stats)
-    const [statusDistributionRaw, totalStudentsCount] = await Promise.all([
+    // Intake Distribution
+    const intakeDistributionRaw = await arguments[0]; // will be assigned properly since grouped destructure is complex. Let's refer to returned array
+
+    // Actually wait, I need to destructure the result properly.
+    // Instead of replacing destructuring, I'll calculate it outside.
+
+    // Let's use the fetched student distribution.
+    const [
+      statusDistributionRaw,
+      totalStudentsCount,
+      rawIntakeDistribution,
+      rawMajorDistribution,
+    ] = await Promise.all([
       this.prisma.student.groupBy({
         by: ["academicStatus"],
+        where: studentWhere,
         _count: { id: true },
       }),
-      this.prisma.student.count(),
+      this.prisma.student.count({ where: studentWhere }),
+      this.prisma.student.groupBy({
+        by: ["intake"],
+        where: studentWhere,
+        _count: { id: true },
+      }),
+      this.prisma.student.groupBy({
+        by: ["majorId"],
+        where: studentWhere,
+        _count: { id: true },
+      }),
     ]);
+
+    const intakeDistribution = rawIntakeDistribution
+      .filter((r) => r.intake)
+      .map((r) => ({ name: r.intake || "Khác", value: r._count.id }))
+      .sort((a, b) => b.name.localeCompare(a.name));
+
+    // Major Distribution
+    const majorMap = new Map<string, number>();
+    const allMajorsForChart = await this.prisma.major.findMany();
+    rawMajorDistribution.forEach((m) => {
+      if (m.majorId) {
+        const major = allMajorsForChart.find((x) => x.id === m.majorId);
+        const name = major?.name || "Khác";
+        majorMap.set(name, (majorMap.get(name) || 0) + m._count.id);
+      }
+    });
+    const majorDistribution = Array.from(majorMap.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
 
     const statusDistribution = [
       { name: "Bình thường", value: 0, color: "#22c55e" },
@@ -263,20 +341,22 @@ export class DashboardService {
         paidFixedRevenue,
       ] = await Promise.all([
         this.prisma.courseClass.count({
-          where: { semesterId: currentSemesterId },
+          where: { semesterId: currentSemesterId, ...classWhere },
         }),
         this.prisma.courseClass.count({
           where: {
             semesterId: currentSemesterId,
+            ...classWhere,
             grades: { some: { isLocked: true } },
           },
         }),
         this.prisma.courseClass.aggregate({
-          where: { semesterId: currentSemesterId },
+          where: { semesterId: currentSemesterId, ...classWhere },
           _sum: { maxSlots: true, currentSlots: true },
         }),
         this.prisma.student.count({
           where: {
+            ...studentWhere,
             phone: { not: null },
             address: { not: null },
             citizenId: { not: null },
@@ -299,7 +379,10 @@ export class DashboardService {
         }),
         // Sum total fixed fees (e.g., BHYT)
         this.prisma.studentFee.aggregate({
-          where: { semesterId: currentSemesterId, NOT: { name: { contains: "Học phí" } } },
+          where: {
+            semesterId: currentSemesterId,
+            NOT: { name: { contains: "Học phí" } },
+          },
           _sum: { totalAmount: true },
         }),
         // Sum paid fixed fees
@@ -307,7 +390,7 @@ export class DashboardService {
           where: {
             semesterId: currentSemesterId,
             status: "PAID",
-            NOT: { name: { contains: "Học phí" } }
+            NOT: { name: { contains: "Học phí" } },
           },
           _sum: { totalAmount: true },
         }),
@@ -404,7 +487,7 @@ export class DashboardService {
 
       const facultyMap = new Map<string, number>();
       semesterEnrollmentsWithFaculty.forEach((e) => {
-        const fName = e.student.major.faculty.name;
+        const fName = e.student?.major?.faculty?.name || "Khác";
         facultyMap.set(fName, (facultyMap.get(fName) || 0) + 1);
       });
 
@@ -438,6 +521,8 @@ export class DashboardService {
       totalCreditsAssigned: totalCreditsAssigned._sum.totalEarnedCredits || 0,
       operationalStats,
       statusDistribution,
+      intakeDistribution,
+      majorDistribution,
     };
   }
 
@@ -453,6 +538,29 @@ export class DashboardService {
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     });
+  }
+
+  async getMajors(facultyId?: string) {
+    const where = facultyId && facultyId !== "all" ? { facultyId } : {};
+    return this.prisma.major.findMany({
+      where,
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    });
+  }
+
+  async getIntakes() {
+    const students = await this.prisma.student.groupBy({
+      by: ["intake"],
+      _count: true,
+      where: { intake: { not: null } },
+    });
+    return students
+      .map((s) => ({ id: s.intake, name: s.intake }))
+      .sort((a, b) => {
+        if (b.name && a.name) return b.name.localeCompare(a.name);
+        return 0;
+      });
   }
 
   async getTuitionList(
@@ -496,11 +604,11 @@ export class DashboardService {
       limit,
       items: enrollments.map((e) => ({
         id: e.id,
-        studentCode: e.student.studentCode,
-        studentName: e.student.fullName,
-        faculty: e.student.major.faculty.name,
-        subject: e.courseClass.subject.name,
-        credits: e.courseClass.subject.credits,
+        studentCode: e.student?.studentCode || "N/A",
+        studentName: e.student?.fullName || "N/A",
+        faculty: e.student?.major?.faculty?.name || "Khác",
+        subject: e.courseClass?.subject?.name || "Unknown",
+        credits: e.courseClass?.subject?.credits || 0,
         fee: Number(e.tuitionFee || 0),
         status: e.status,
         isPaid: e.id.length % 3 !== 0, // Keeping mock for now as it's not in DB yet

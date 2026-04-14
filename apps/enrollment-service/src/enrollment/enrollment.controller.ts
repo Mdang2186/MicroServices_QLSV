@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Param, Query } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Query, Delete } from '@nestjs/common';
 import { ApiBody } from '@nestjs/swagger';
 import { EnrollmentService } from './enrollment.service';
 
@@ -34,6 +34,11 @@ export class EnrollmentController {
         return this.enrollmentService.dropCourse(body.studentId, body.classId);
     }
 
+    @Delete(':id')
+    dropById(@Param('id') id: string) {
+        return this.enrollmentService.dropEnrollmentById(id);
+    }
+
     @Post('switch')
     @ApiBody({
         schema: {
@@ -52,6 +57,11 @@ export class EnrollmentController {
     @Get('semesters')
     getSemesters() {
         return this.enrollmentService.getSemesters();
+    }
+
+    @Get('semesters/student/:studentId')
+    getSemestersByStudent(@Param('studentId') studentId: string) {
+        return this.enrollmentService.getSemestersByStudent(studentId);
     }
 
     @Get('classes')

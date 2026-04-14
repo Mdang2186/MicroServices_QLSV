@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Cookies from "js-cookie";
 import { 
     User, Phone, MapPin, Mail, CreditCard, 
     Building, BookOpen, GraduationCap, Users, 
@@ -10,6 +9,7 @@ import {
 } from "lucide-react";
 import { StudentService } from "@/services/student.service";
 import api from "@/lib/api";
+import { getStudentUserId, readStudentSessionUser } from "@/lib/student-session";
 
 export default function StudentProfilePage() {
     const [student, setStudent] = useState<any>(null);
@@ -35,30 +35,26 @@ export default function StudentProfilePage() {
     const fetchProfile = async () => {
         setLoading(true);
         try {
-            const userCookie = Cookies.get("student_user");
-            if (!userCookie) {
+            const user = readStudentSessionUser();
+            const userId = getStudentUserId(user);
+            if (!userId) {
                 setLoading(false);
                 return;
             }
 
-            const user = JSON.parse(userCookie);
-            const studentId = user.student?.id || user.id;
-
-            if (studentId) {
-                const data = await StudentService.getProfile(studentId);
-                if (data && data.id) {
-                    setStudent(data);
-                    setFormData({
-                        phone: data.phone || "",
-                        emailPersonal: data.emailPersonal || "",
-                        address: data.address || "",
-                        permanentAddress: data.permanentAddress || "",
-                        bankName: data.bankName || "",
-                        bankBranch: data.bankBranch || "",
-                        bankAccountName: data.bankAccountName || "",
-                        bankAccountNumber: data.bankAccountNumber || "",
-                    });
-                }
+            const data = await StudentService.getProfile(userId);
+            if (data && data.id) {
+                setStudent(data);
+                setFormData({
+                    phone: data.phone || "",
+                    emailPersonal: data.emailPersonal || "",
+                    address: data.address || "",
+                    permanentAddress: data.permanentAddress || "",
+                    bankName: data.bankName || "",
+                    bankBranch: data.bankBranch || "",
+                    bankAccountName: data.bankAccountName || "",
+                    bankAccountNumber: data.bankAccountNumber || "",
+                });
             }
         } catch (error) {
             console.error("Lỗi khi tải thông tin", error);

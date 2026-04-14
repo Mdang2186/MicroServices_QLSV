@@ -1,5 +1,6 @@
 import axios from "axios";
 import Cookies from "js-cookie";
+import { clearStudentSession } from "./student-session";
 
 const api = axios.create({
     baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000",
@@ -12,7 +13,11 @@ const api = axios.create({
 api.interceptors.request.use(
     (config) => {
         // Priority: Cookie > LocalStorage
-        const token = Cookies.get("student_accessToken") || (typeof window !== "undefined" ? localStorage.getItem("student_accessToken") : null);
+        const token =
+            Cookies.get("student_accessToken") ||
+            (typeof window !== "undefined"
+                ? localStorage.getItem("student_accessToken") || localStorage.getItem("accessToken")
+                : null);
 
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
@@ -28,11 +33,7 @@ api.interceptors.response.use(
     (error) => {
         if (error.response?.status === 401) {
             if (typeof window !== "undefined") {
-                Cookies.remove("student_accessToken");
-                Cookies.remove("student_role");
-                Cookies.remove("student_user");
-                localStorage.removeItem("student_accessToken");
-                localStorage.removeItem("student_user");
+                clearStudentSession();
                 window.location.href = "/login";
             }
         }

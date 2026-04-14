@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, Headers } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Put,
+  Delete,
+  Headers,
+} from '@nestjs/common';
 import { ApiBody } from '@nestjs/swagger';
 import { AppService } from './app.service';
 import { GpaService } from './gpa.service';
@@ -8,7 +17,7 @@ export class AppController {
   constructor(
     private readonly appService: AppService,
     private readonly gpaService: GpaService,
-  ) { }
+  ) {}
 
   @Get()
   getHello(): string {
@@ -31,12 +40,21 @@ export class AppController {
   }
 
   @Post('initialize')
-  initializeGrades(@Body() body: { classId: string, subjectId: string, studentIds: string[] }) {
-    return this.appService.initializeGrades(body.classId, body.subjectId, body.studentIds);
+  initializeGrades(
+    @Body() body: { classId: string; subjectId: string; studentIds: string[] },
+  ) {
+    return this.appService.initializeGrades(
+      body.classId,
+      body.subjectId,
+      body.studentIds,
+    );
   }
 
   @Post('bulk')
-  bulkUpdateGrades(@Body() body: { grades: any[] }, @Headers('x-user-role') userRole?: string) {
+  bulkUpdateGrades(
+    @Body() body: { grades: any[] },
+    @Headers('x-user-role') userRole?: string,
+  ) {
     return this.appService.bulkUpdateGrades(body.grades, userRole);
   }
 
@@ -66,17 +84,26 @@ export class AppController {
   }
 
   @Get('student/:studentId/gpa/:semesterId')
-  getSemesterGPA(@Param('studentId') studentId: string, @Param('semesterId') semesterId: string) {
+  getSemesterGPA(
+    @Param('studentId') studentId: string,
+    @Param('semesterId') semesterId: string,
+  ) {
     return this.gpaService.calculateSemesterGPA(studentId, semesterId);
   }
 
   @Get('student/:studentId/academic-summary/:semesterId')
-  getAcademicSummary(@Param('studentId') studentId: string, @Param('semesterId') semesterId: string) {
+  getAcademicSummary(
+    @Param('studentId') studentId: string,
+    @Param('semesterId') semesterId: string,
+  ) {
     return this.gpaService.getAcademicSummary(studentId, semesterId);
   }
 
-  @Post('student/:studentId/sync-performance')
-  syncPerformance(@Param('studentId') studentId: string) {
-    return this.appService.syncStudentPerformance(studentId);
+  @Post('admin/remind-all')
+  async remindAllPending(
+    @Body() body: { semesterId: string },
+    @Headers('authorization') auth?: string,
+  ) {
+    return this.appService.remindAllPendingLecturers(body.semesterId, auth);
   }
 }

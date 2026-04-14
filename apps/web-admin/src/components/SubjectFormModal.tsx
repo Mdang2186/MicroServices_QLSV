@@ -21,6 +21,8 @@ export function SubjectFormModal({ isOpen, onClose, editingSubject, majors, depa
         theoryHours: 30,
         practiceHours: 15,
         selfStudyHours: 0,
+        theoryPeriods: 3,
+        practicePeriods: 3,
         departmentId: "",
         description: ""
     });
@@ -38,6 +40,8 @@ export function SubjectFormModal({ isOpen, onClose, editingSubject, majors, depa
                     theoryHours: editingSubject.theoryHours,
                     practiceHours: editingSubject.practiceHours,
                     selfStudyHours: editingSubject.selfStudyHours,
+                    theoryPeriods: editingSubject.theoryPeriods || 3,
+                    practicePeriods: editingSubject.practicePeriods || 3,
                     departmentId: editingSubject.departmentId || "",
                     description: editingSubject.description || ""
                 });
@@ -45,7 +49,8 @@ export function SubjectFormModal({ isOpen, onClose, editingSubject, majors, depa
                 setForm({
                     name: "", code: "", majorId: majors[0]?.id || "",
                     credits: 3, theoryHours: 30, practiceHours: 15,
-                    selfStudyHours: 0, departmentId: "", description: ""
+                    selfStudyHours: 0, theoryPeriods: 3, practicePeriods: 3,
+                    departmentId: "", description: ""
                 });
             }
             setErrorMsg(null);
@@ -157,32 +162,50 @@ export function SubjectFormModal({ isOpen, onClose, editingSubject, majors, depa
                     </select>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Số tiết LT</label>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    <div className="col-span-1 space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tín chỉ</label>
                         <input 
                             type="number" 
-                            className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none" 
+                            className="w-full px-5 py-3.5 bg-slate-50 border-transparent rounded-[18px] text-[13px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none" 
+                            value={form.credits}
+                            onChange={e => setForm(f => ({ ...f, credits: parseInt(e.target.value) }))}
+                        />
+                    </div>
+                    <div className="col-span-1 space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tiết LT</label>
+                        <input 
+                            type="number" 
+                            className="w-full px-5 py-3.5 bg-slate-50 border-transparent rounded-[18px] text-[13px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none" 
                             value={form.theoryHours}
                             onChange={e => setForm(f => ({ ...f, theoryHours: parseInt(e.target.value) }))}
                         />
                     </div>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Số tiết TH</label>
+                    <div className="col-span-1 space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tiết TH</label>
                         <input 
                             type="number" 
-                            className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none" 
+                            className="w-full px-5 py-3.5 bg-slate-50 border-transparent rounded-[18px] text-[13px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none" 
                             value={form.practiceHours}
                             onChange={e => setForm(f => ({ ...f, practiceHours: parseInt(e.target.value) }))}
                         />
                     </div>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Số tiết Tự học</label>
+                    <div className="col-span-1 space-y-2">
+                        <label className="text-[10px] font-black text-emerald-600 uppercase tracking-widest ml-1">Tiết / Buổi LT</label>
                         <input 
                             type="number" 
-                            className="w-full px-6 py-4 bg-slate-50 border-transparent rounded-[20px] text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 outline-none" 
-                            value={form.selfStudyHours}
-                            onChange={e => setForm(f => ({ ...f, selfStudyHours: parseInt(e.target.value) }))}
+                            className="w-full px-5 py-3.5 bg-emerald-50 border-emerald-100 rounded-[18px] text-[13px] font-black text-emerald-600 focus:ring-4 focus:ring-emerald-500/5 outline-none" 
+                            value={form.theoryPeriods}
+                            onChange={e => setForm(f => ({ ...f, theoryPeriods: parseInt(e.target.value) }))}
+                        />
+                    </div>
+                    <div className="col-span-1 space-y-2">
+                        <label className="text-[10px] font-black text-indigo-600 uppercase tracking-widest ml-1">Tiết / Buổi TH</label>
+                        <input 
+                            type="number" 
+                            className="w-full px-5 py-3.5 bg-indigo-50 border-indigo-100 rounded-[18px] text-[13px] font-black text-indigo-600 focus:ring-4 focus:ring-indigo-500/5 outline-none" 
+                            value={form.practicePeriods}
+                            onChange={e => setForm(f => ({ ...f, practicePeriods: parseInt(e.target.value) }))}
                         />
                     </div>
                 </div>

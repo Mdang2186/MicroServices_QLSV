@@ -89,7 +89,7 @@ export default function LecturerGradeEntryPage() {
                         // Tính % vắng và điểm CC theo quy chế UNETI
                         const missedPct = totalPeriods > 0 ? (absentPeriods / totalPeriods) * 100 : 0;
                         let autoCC: number | null = null;
-                        let isIneligible = false;
+                        let isIneligible = g.isEligibleForExam === false;
                         if (totalPeriods > 0) {
                             if (missedPct === 0)       autoCC = 10;
                             else if (missedPct < 10)   autoCC = 8;

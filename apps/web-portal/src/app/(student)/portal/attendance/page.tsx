@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { StudentService } from "@/services/student.service";
-import Cookies from "js-cookie";
 import { useRouter } from "next/navigation";
 import {
     ClipboardCheck,
@@ -21,6 +20,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import React from "react";
+import { getStudentUserId, readStudentSessionUser } from "@/lib/student-session";
 
 export default function AttendancePage() {
     const router = useRouter();
@@ -33,10 +33,9 @@ export default function AttendancePage() {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const userCookie = Cookies.get("student_user");
-                if (!userCookie) return;
-                const user = JSON.parse(userCookie);
-                const userId = user.id;
+                const user = readStudentSessionUser();
+                const userId = getStudentUserId(user);
+                if (!userId) return;
 
                 const studentData = await StudentService.getProfile(userId);
                 setStudent(studentData);

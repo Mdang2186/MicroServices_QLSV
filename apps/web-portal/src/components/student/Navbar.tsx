@@ -9,6 +9,7 @@ import { Book, Calendar, GraduationCap, Home, LogOut, User, Settings, ChevronDow
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
+import { clearStudentSession, getStudentDisplayCode, getStudentDisplayName, readStudentSessionUser } from "@/lib/student-session";
 
 const navItems = [
     { label: "Trang chủ", href: "/portal/dashboard", icon: Home },
@@ -17,6 +18,7 @@ const navItems = [
         href: "#",
         icon: AcademicIcon,
         children: [
+            { label: "Chương trình khung", href: "/portal/training/curriculum", icon: ClipboardCheck },
             { label: "Kết quả học tập", href: "/portal/results", icon: GraduationCap },
             { label: "Thông tin điểm danh", href: "/portal/attendance", icon: ClipboardCheck },
             { label: "Kết quả rèn luyện", href: "/portal/training", icon: Award },
@@ -36,23 +38,18 @@ export default function StudentNavbar() {
     const [studentProfile, setStudentProfile] = useState<any>(null);
 
     useEffect(() => {
-        const userCookie = Cookies.get("student_user");
-        if (userCookie) {
-            try {
-                const user = JSON.parse(userCookie);
-                setStudentProfile(user.student || user);
-            } catch (e) {
-                console.error("Failed to parse student user cookie", e);
-            }
+        const user = readStudentSessionUser();
+        if (user) {
+            setStudentProfile({
+                ...user,
+                fullName: getStudentDisplayName(user),
+                studentCode: getStudentDisplayCode(user),
+            });
         }
     }, []);
 
     const handleLogout = () => {
-        Cookies.remove("student_accessToken");
-        Cookies.remove("student_role");
-        Cookies.remove("student_user");
-        localStorage.removeItem("student_accessToken");
-        localStorage.removeItem("student_user");
+        clearStudentSession();
         router.push("/login");
     };
 

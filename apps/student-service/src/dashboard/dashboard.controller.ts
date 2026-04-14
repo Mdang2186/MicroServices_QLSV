@@ -9,8 +9,15 @@ export class DashboardController {
   getStats(
     @Query("semesterId") semesterId?: string,
     @Query("facultyId") facultyId?: string,
+    @Query("majorId") majorId?: string,
+    @Query("intake") intake?: string,
   ) {
-    return this.dashboardService.getStats(semesterId, facultyId);
+    return this.dashboardService.getStats(
+      semesterId,
+      facultyId,
+      majorId,
+      intake,
+    );
   }
 
   @Get("semesters")
@@ -21,6 +28,16 @@ export class DashboardController {
   @Get("faculties")
   getFaculties() {
     return this.dashboardService.getFaculties();
+  }
+
+  @Get("majors")
+  getMajors(@Query("facultyId") facultyId?: string) {
+    return this.dashboardService.getMajors(facultyId);
+  }
+
+  @Get("intakes")
+  getIntakes() {
+    return this.dashboardService.getIntakes();
   }
 
   @Get("tuition")

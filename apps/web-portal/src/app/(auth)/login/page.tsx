@@ -3,8 +3,8 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import Cookies from "js-cookie";
 import api from "@/lib/api";
+import { clearStudentSession, persistStudentSession } from "@/lib/student-session";
 
 function LoginForm() {
     const router = useRouter();
@@ -17,7 +17,7 @@ function LoginForm() {
 
     useEffect(() => {
         if (searchParams.get("registered") === "true") {
-            setSuccessMessage("Registration successful! Please sign in.");
+            setSuccessMessage("Đăng ký thành công. Vui lòng đăng nhập.");
         }
     }, [searchParams]);
 
@@ -35,43 +35,18 @@ function LoginForm() {
 
             const { accessToken, role, ...userData } = response.data;
 
-            // Save token and user in Cookies (for Middleware)
-            Cookies.set("student_accessToken", accessToken, { expires: 1, path: "/" }); // 1 day
-            Cookies.set("student_role", role, { expires: 1, path: "/" });
-            Cookies.set("student_user", JSON.stringify({ role, ...userData }), { expires: 1, path: "/" });
-
-            // Legacy support
-            localStorage.setItem("student_accessToken", accessToken);
-            localStorage.setItem("student_user", JSON.stringify({ role, ...userData }));
-
-            // Update Zustand Store (if imported, but for now simple redirect is enough for MVP)
-
-            // Role-Based Redirect
-            if (role === "SUPER_ADMIN" || role === "ADMIN_STAFF" || role === "ADMIN") {
-                // Admin portal is a separate app, usually on a different port or subdomain in prod.
-                // For monorepo local dev, we might need a full URL if it's a different Next.js app.
-                // Assuming web-admin is running on port 3001 or similar.
-                // IF web-admin is a separate Next.js app, we should redirect to its URL.
-                // For now, let's assume standard client-side routing if they are merged, 
-                // OR external link if they are separate. 
-                // Given the folder structure implies separate apps, we might need to redirect to the admin app URL.
-                // Let's assume for MVP they are on same domain or we just redirect to a known Admin URL.
-                // Ideally: window.location.href = "http://localhost:3002"; (if web-admin is there)
-
-                // For this specific file in WEB-PORTAL, an Admin shouldn't really be logging in here if it's strictly for students.
-                // But if it's a shared login:
-                window.location.href = "http://localhost:4005"; // Redirect to Web Admin
-            } else if (role === "STUDENT") {
+            if (role === "STUDENT") {
+                persistStudentSession(accessToken, { role, ...userData });
                 router.push("/portal/dashboard");
-            } else if (role === "LECTURER") {
-                router.push("/portal/dashboard"); // Or lecturer specific dashboard
+            } else if (["SUPER_ADMIN", "ADMIN", "ACADEMIC_STAFF", "LECTURER"].includes(role)) {
+                clearStudentSession();
+                window.location.href = "http://localhost:4005/login";
             } else {
-                // Fallback
-                router.push("/");
+                throw new Error("Tài khoản này không được hỗ trợ trên cổng sinh viên.");
             }
         } catch (err: any) {
             console.error("Login Error:", err);
-            setError(err.response?.data?.message || "Login failed. Please check your credentials.");
+            setError(err.response?.data?.message || "Đăng nhập thất bại. Vui lòng kiểm tra lại tài khoản và mật khẩu.");
         } finally {
             setLoading(false);
         }
@@ -80,8 +55,8 @@ function LoginForm() {
     return (
         <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4">
             <div className="w-full max-w-md rounded-xl bg-white p-8 shadow-lg">
-                <h2 className="mb-6 text-center text-3xl font-bold text-gray-800">Welcome Back</h2>
-                <p className="mb-8 text-center text-gray-500">Sign in to your account</p>
+                <h2 className="mb-6 text-center text-3xl font-bold text-gray-800">Đăng nhập cổng sinh viên</h2>
+                <p className="mb-8 text-center text-gray-500">Sử dụng mã sinh viên hoặc email để truy cập hệ thống</p>
 
                 {successMessage && (
                     <div className="mb-4 rounded-lg bg-green-100 border border-green-400 p-3 text-sm text-green-700">
@@ -96,7 +71,7 @@ function LoginForm() {
 
                 <form onSubmit={handleLogin} className="space-y-6">
                     <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Mã sinh viên hoặc Email</label>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Mã sinh viên hoặc email</label>
                         <input
                             type="text"
                             required
@@ -108,7 +83,7 @@ function LoginForm() {
                     </div>
 
                     <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Password</label>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Mật khẩu</label>
                         <input
                             type="password"
                             required
@@ -118,8 +93,8 @@ function LoginForm() {
                             onChange={(e) => setPassword(e.target.value)}
                         />
                         <div className="mt-2 text-right">
-                            <Link href="/forgot-password" title="Forgot Password" className="text-sm font-medium text-blue-600 hover:text-blue-500">
-                                Forgot password?
+                            <Link href="/forgot-password" title="Quên mật khẩu" className="text-sm font-medium text-blue-600 hover:text-blue-500">
+                                Quên mật khẩu?
                             </Link>
                         </div>
                     </div>
@@ -130,7 +105,7 @@ function LoginForm() {
                         className={`w-full rounded-lg bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${loading ? "cursor-not-allowed opacity-70" : ""
                             }`}
                     >
-                        {loading ? "Signing in..." : "Sign In"}
+                        {loading ? "Đang đăng nhập..." : "Đăng nhập"}
                     </button>
                 </form>
 

@@ -64,14 +64,6 @@ export default function AdminDashboard() {
             trend: { value: "+8.4%", type: "up" as const }
         },
         { 
-            label: "Lớp Học Phần", 
-            value: stats?.activeCourses || "0", 
-            icon: BookOpen, 
-            color: "indigo", 
-            sub: "Kiểm soát hệ thống",
-            trend: { value: "Ổn định", type: "neutral" as const }
-        },
-        { 
             label: "Khoa Chuyên Môn", 
             value: stats?.systemStats?.totalFaculties || 0, 
             icon: Building2, 

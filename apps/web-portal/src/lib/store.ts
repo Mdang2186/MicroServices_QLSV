@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import Cookies from 'js-cookie';
+import { clearStudentSession } from './student-session';
 
 interface User {
     id: string;
@@ -18,13 +18,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     user: null,
     setUser: (user) => set({ user }),
     logout: () => {
-        if (typeof window !== 'undefined') {
-            Cookies.remove("student_accessToken");
-            Cookies.remove("student_role");
-            Cookies.remove("student_user");
-            localStorage.removeItem("student_accessToken");
-            localStorage.removeItem("student_user");
-        }
+        clearStudentSession();
         set({ user: null })
     },
 }));

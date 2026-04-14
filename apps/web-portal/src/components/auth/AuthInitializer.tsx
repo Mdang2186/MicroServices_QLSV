@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from 'react';
-import Cookies from 'js-cookie';
 import { useAuthStore } from '@/lib/store';
+import { readStudentSessionUser } from '@/lib/student-session';
 
 export default function AuthInitializer() {
     const initialized = useRef(false);
@@ -11,18 +11,11 @@ export default function AuthInitializer() {
         if (initialized.current) return;
         initialized.current = true;
 
-        const userCookie = Cookies.get('user');
-        const tokenCookie = Cookies.get('accessToken');
+        const user = readStudentSessionUser();
 
-        if (tokenCookie && userCookie) {
-            try {
-                const user = JSON.parse(userCookie);
-                // Hydrate Store
-                useAuthStore.getState().setUser(user);
-                console.log("Session hydrated from cookies:", user.email);
-            } catch (e) {
-                console.error("Failed to parse user cookie", e);
-            }
+        if (user) {
+            useAuthStore.getState().setUser(user as any);
+            console.log("Session hydrated from student session:", user.email || user.username);
         }
     }, []);
 

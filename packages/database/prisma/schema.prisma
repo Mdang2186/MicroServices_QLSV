@@ -39,33 +39,47 @@ model Faculty {
   code        String       @unique @db.VarChar(50)
   name        String       @db.NVarChar(255)
   deanName    String?      @db.NVarChar(255)
+  departments Department[]
   lecturers   Lecturer[]
   majors      Major[]
-  departments Department[]
 }
 
 model Department {
-  id        String    @id @default(uuid()) @db.VarChar(50)
-  facultyId String    @db.VarChar(50)
-  code      String    @unique @db.VarChar(50)
-  name      String    @db.NVarChar(255)
-  headName  String?   @db.NVarChar(255)
-  faculty   Faculty   @relation(fields: [facultyId], references: [id], onUpdate: NoAction)
+  id        String     @id @default(uuid()) @db.VarChar(50)
+  facultyId String     @db.VarChar(50)
+  code      String     @unique @db.VarChar(50)
+  name      String     @db.NVarChar(255)
+  headName  String?    @db.NVarChar(255)
+  faculty   Faculty    @relation(fields: [facultyId], references: [id], onUpdate: NoAction)
   subjects  Subject[]
+  lecturers Lecturer[]
 }
 
 model Major {
-  id                   String           @id @default(uuid()) @db.VarChar(50)
-  facultyId            String           @db.VarChar(50)
-  code                 String           @unique @db.VarChar(50)
-  name                 String           @db.NVarChar(255)
-  totalCreditsRequired Int              @default(120)
-  adminClasses         AdminClass[]
-  curriculums          Curriculum[]
-  faculty              Faculty          @relation(fields: [facultyId], references: [id], onUpdate: NoAction)
-  specializations      Specialization[]
-  students             Student[]
-  subjects             Subject[]
+  id                    String                 @id @default(uuid()) @db.VarChar(50)
+  facultyId             String                 @db.VarChar(50)
+  code                  String                 @unique @db.VarChar(50)
+  name                  String                 @db.NVarChar(255)
+  totalCreditsRequired  Int                    @default(120)
+  adminClasses          AdminClass[]
+  semesterPlans         SemesterPlan[]
+  curriculums           Curriculum[]
+  faculty               Faculty                @relation(fields: [facultyId], references: [id], onUpdate: NoAction)
+  specializations       Specialization[]
+  students              Student[]
+  subjects              Subject[]
+  trainingPlanTemplates TrainingPlanTemplate[]
+}
+
+model AcademicCohort {
+  code                  String                 @id @db.VarChar(50)
+  startYear             Int
+  endYear               Int
+  isActive              Boolean                @default(true)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @default(now()) @updatedAt
+  semesterPlans         SemesterPlan[]
+  trainingPlanTemplates TrainingPlanTemplate[]
 }
 
 model Specialization {
@@ -79,36 +93,47 @@ model Specialization {
 }
 
 model Curriculum {
-  id                String  @id @default(uuid()) @db.VarChar(50)
-  majorId           String  @db.VarChar(50)
-  cohort            String  @db.VarChar(50)
-  subjectId         String  @db.VarChar(50)
-  suggestedSemester Int
-  isMandatory       Boolean @default(true)
-  major             Major   @relation(fields: [majorId], references: [id], onUpdate: NoAction)
-  subject           Subject @relation(fields: [subjectId], references: [id], onUpdate: NoAction)
+  id                String   @id(map: "PK__Curricul__3213E83F6570CBC5") @default(uuid()) @db.VarChar(50)
+  majorId           String   @db.VarChar(50)
+  subjectId         String   @db.VarChar(50)
+  cohort            String   @default("K18") @db.VarChar(50)
+  suggestedSemester Int      @default(1)
+  isRequired        Boolean? @default(true, map: "DF__Curriculu__isReq__3CF40B7E")
+  major             Major    @relation(fields: [majorId], references: [id], onUpdate: NoAction, map: "FK_Curriculum_Major")
+  subject           Subject  @relation(fields: [subjectId], references: [id], onUpdate: NoAction, map: "FK_Curriculum_Subject")
 
   @@unique([majorId, cohort, subjectId])
 }
 
 model Subject {
-  id             String         @id @default(uuid()) @db.VarChar(50)
-  majorId        String         @db.VarChar(50)
-  code           String         @unique @db.VarChar(50)
-  name           String         @db.NVarChar(255)
-  credits        Int
-  theoryHours    Int            @default(30)
-  practiceHours  Int            @default(15)
-  selfStudyHours Int            @default(0)
-  departmentId   String?        @db.VarChar(50)
-  description    String?        @db.NVarChar(Max)
-  classes        CourseClass[]
-  curriculums    Curriculum[]
-  grades         Grade[]
-  requiredFor    Prerequisite[] @relation("PrerequisiteFor")
-  prerequisites  Prerequisite[] @relation("SubjectPrerequisites")
-  major          Major          @relation(fields: [majorId], references: [id], onUpdate: NoAction)
-  department     Department?    @relation(fields: [departmentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  id                                                                     String                     @id @default(uuid()) @db.VarChar(50)
+  majorId                                                                String                     @db.VarChar(50)
+  code                                                                   String                     @unique @db.VarChar(50)
+  name                                                                   String                     @db.NVarChar(255)
+  credits                                                                Int
+  theoryHours                                                            Int                        @default(30)
+  practiceHours                                                          Int                        @default(15)
+  selfStudyHours                                                         Int                        @default(0)
+  description                                                            String?                    @db.NVarChar(Max)
+  departmentId                                                           String?                    @db.VarChar(50)
+  examDuration                                                           Int                        @default(90)
+  examType                                                               String                     @default("TRAC_NGHIEM") @db.VarChar(50)
+  examForm                                                               String                     @default("T? lu?n") @db.VarChar(50)
+  theoryPeriods                                                          Int?                       @default(0, map: "DF__Subject__theoryP__5E8A0973")
+  practicePeriods                                                        Int?                       @default(0, map: "DF__Subject__practic__5F7E2DAC")
+  practiceSessionsPerWeek                                                Int                        @default(1)
+  theorySessionsPerWeek                                                  Int                        @default(1)
+  classes                                                                CourseClass[]
+  curriculums                                                            Curriculum[]
+  grades                                                                 Grade[]
+  requiredFor                                                            Prerequisite[]             @relation("PrerequisiteFor")
+  prerequisites                                                          Prerequisite[]             @relation("SubjectPrerequisites")
+  semesterPlanItems                                                      SemesterPlanItem[]
+  department                                                             Department?                @relation(fields: [departmentId], references: [id], onUpdate: NoAction)
+  major                                                                  Major                      @relation(fields: [majorId], references: [id], onUpdate: NoAction)
+  SubjectPrerequisite_SubjectPrerequisite_subjectIdToSubject             SubjectPrerequisite[]      @relation("SubjectPrerequisite_subjectIdToSubject")
+  SubjectPrerequisite_SubjectPrerequisite_prerequisiteSubjectIdToSubject SubjectPrerequisite[]      @relation("SubjectPrerequisite_prerequisiteSubjectIdToSubject")
+  trainingPlanTemplateItems                                              TrainingPlanTemplateItem[]
 }
 
 model Prerequisite {
@@ -123,30 +148,34 @@ model Prerequisite {
 }
 
 model Lecturer {
-  id           String        @id @default(uuid()) @db.VarChar(50)
-  userId       String?       @unique @db.VarChar(50)
-  facultyId    String?       @db.VarChar(50)
-  lectureCode  String        @unique @db.VarChar(50)
-  fullName     String        @db.NVarChar(255)
-  degree       String?       @db.NVarChar(100)
-  phone        String?       @db.VarChar(20)
-  adminClasses AdminClass[]
-  classes      CourseClass[]
-  faculty      Faculty?      @relation(fields: [facultyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                String             @id @default(uuid()) @db.VarChar(50)
+  userId            String?            @unique @db.VarChar(50)
+  facultyId         String?            @db.VarChar(50)
+  departmentId      String?            @db.VarChar(50)
+  lectureCode       String             @unique @db.VarChar(50)
+  fullName          String             @db.NVarChar(255)
+  degree            String?            @db.NVarChar(100)
+  phone             String?            @db.VarChar(20)
+  adminClasses      AdminClass[]
+  classes           CourseClass[]
+  semesterPlanItems SemesterPlanItem[]
+  department        Department?        @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  faculty           Faculty?           @relation(fields: [facultyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user              User?              @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 model AdminClass {
-  id            String        @id @default(uuid()) @db.VarChar(50)
-  majorId       String        @db.VarChar(50)
-  code          String        @unique @db.VarChar(50)
-  name          String        @db.NVarChar(255)
-  cohort        String?       @db.VarChar(50)
-  advisorId     String?       @db.VarChar(50)
-  advisor       Lecturer?     @relation(fields: [advisorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  major         Major         @relation(fields: [majorId], references: [id], onUpdate: NoAction)
-  students      Student[]
-  courseClasses CourseClass[] @relation("AdminClassToCourseClass")
+  id                String             @id @default(uuid()) @db.VarChar(50)
+  majorId           String             @db.VarChar(50)
+  code              String             @unique @db.VarChar(50)
+  name              String             @db.NVarChar(255)
+  cohort            String?            @db.VarChar(50)
+  advisorId         String?            @db.VarChar(50)
+  advisor           Lecturer?          @relation(fields: [advisorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  major             Major              @relation(fields: [majorId], references: [id], onUpdate: NoAction)
+  students          Student[]
+  courseClasses     CourseClass[]      @relation("AdminClassToCourseClass")
+  semesterPlanItems SemesterPlanItem[]
 }
 
 model Student {
@@ -230,20 +259,26 @@ model TrainingScore {
 }
 
 model Semester {
-  id                String          @id @default(uuid()) @db.VarChar(50)
-  code              String          @unique @db.VarChar(50)
-  name              String          @db.NVarChar(255)
-  year              Int             @default(2024)
-  startDate         DateTime        @db.Date
-  endDate           DateTime        @db.Date
-  isCurrent         Boolean         @default(false)
-  isRegistering     Boolean         @default(false)
-  registerStartDate DateTime?
-  registerEndDate   DateTime?
-  classes           CourseClass[]
-  studentFees       StudentFee[]
-  trainingScores    TrainingScore[]
-  sessions          ClassSession[]
+  id                   String          @id @default(uuid()) @db.VarChar(50)
+  code                 String          @unique @db.VarChar(50)
+  name                 String          @db.NVarChar(255)
+  year                 Int             @default(2024)
+  startDate            DateTime        @db.Date
+  endDate              DateTime        @db.Date
+  isCurrent            Boolean         @default(false)
+  isRegistering        Boolean         @default(false)
+  registerStartDate    DateTime?
+  registerEndDate      DateTime?
+  midtermGradeDeadline DateTime?
+  examEndDate          DateTime?       @db.Date
+  examStartDate        DateTime?       @db.Date
+  semesterNumber       Int             @default(1)
+  sessions             ClassSession[]
+  classes              CourseClass[]
+  semesterPlans        SemesterPlan[]
+  studentFees          StudentFee[]
+  TeachingPlan         TeachingPlan[]
+  trainingScores       TrainingScore[]
 }
 
 model Room {
@@ -253,60 +288,153 @@ model Room {
   capacity  Int             @default(50)
   type      String          @default("THEORY") @db.VarChar(50)
   campus    String?         @db.NVarChar(100)
-  schedules ClassSchedule[]
   sessions  ClassSession[]
+  schedules ClassSchedule[]
 }
 
 model CourseClass {
-  id                String          @id @default(uuid()) @db.VarChar(50)
-  subjectId         String          @db.VarChar(50)
-  semesterId        String          @db.VarChar(50)
-  lecturerId        String?         @db.VarChar(50)
-  code              String          @unique @db.VarChar(50)
-  name              String          @db.NVarChar(255)
-  tuitionMultiplier Float           @default(1.0)
-  maxSlots          Int             @default(60)
-  currentSlots      Int             @default(0)
-  status            String          @default("OPEN") @db.VarChar(50)
-  schedules         ClassSchedule[]
-  sessions          ClassSession[]
-  lecturer          Lecturer?       @relation(fields: [lecturerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  semester          Semester        @relation(fields: [semesterId], references: [id], onUpdate: NoAction)
-  subject           Subject         @relation(fields: [subjectId], references: [id], onUpdate: NoAction)
-  enrollments       Enrollment[]
-  grades            Grade[]
-  adminClasses      AdminClass[]    @relation("AdminClassToCourseClass")
+  id                 String             @id @default(uuid()) @db.VarChar(50)
+  subjectId          String             @db.VarChar(50)
+  semesterId         String             @db.VarChar(50)
+  lecturerId         String?            @db.VarChar(50)
+  cohort             String?            @db.VarChar(50)
+  code               String             @unique @db.VarChar(50)
+  name               String             @db.NVarChar(255)
+  tuitionMultiplier  Float              @default(1.0)
+  maxSlots           Int                @default(60)
+  currentSlots       Int                @default(0)
+  status             String             @default("OPEN") @db.VarChar(50)
+  totalPeriods       Int                @default(45)
+  sessionsPerWeek    Int?               @default(1)
+  periodsPerSession  Int?               @default(3)
+  sessions           ClassSession[]
+  lecturer           Lecturer?          @relation(fields: [lecturerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  semester           Semester           @relation(fields: [semesterId], references: [id], onUpdate: NoAction)
+  subject            Subject            @relation(fields: [subjectId], references: [id], onUpdate: NoAction)
+  enrollments        Enrollment[]
+  generatedPlanItems SemesterPlanItem[] @relation("GeneratedCourseClass")
+  grades             Grade[]
+  TeachingPlan       TeachingPlan[]
+  adminClasses       AdminClass[]       @relation("AdminClassToCourseClass")
+}
+
+model TrainingPlanTemplate {
+  id                   String                     @id @default(uuid()) @db.VarChar(50)
+  majorId              String                     @db.VarChar(50)
+  cohort               String                     @db.VarChar(50)
+  version              Int
+  status               String                     @default("DRAFT") @db.VarChar(50)
+  publishedAt          DateTime?
+  copiedFromTemplateId String?                    @db.VarChar(50)
+  createdAt            DateTime                   @default(now())
+  updatedAt            DateTime                   @default(now()) @updatedAt
+  academicCohort       AcademicCohort             @relation(fields: [cohort], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  copiedFromTemplate   TrainingPlanTemplate?      @relation("TrainingPlanTemplateCopy", fields: [copiedFromTemplateId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  copiedTemplates      TrainingPlanTemplate[]     @relation("TrainingPlanTemplateCopy")
+  items                TrainingPlanTemplateItem[]
+  major                Major                      @relation(fields: [majorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  semesterPlans        SemesterPlan[]
+
+  @@unique([majorId, cohort, version])
+  @@index([majorId, cohort, status])
+}
+
+model TrainingPlanTemplateItem {
+  id                      String               @id @default(uuid()) @db.VarChar(50)
+  templateId              String               @db.VarChar(50)
+  subjectId               String               @db.VarChar(50)
+  conceptualSemester      Int
+  isRequired              Boolean              @default(true)
+  theoryPeriods           Int?
+  practicePeriods         Int?
+  theorySessionsPerWeek   Int?
+  practiceSessionsPerWeek Int?
+  periodsPerSession       Int?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @default(now()) @updatedAt
+  subject                 Subject              @relation(fields: [subjectId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  template                TrainingPlanTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([templateId, subjectId])
+  @@index([templateId, conceptualSemester])
+}
+
+model SemesterPlan {
+  id                 String               @id @default(uuid()) @db.VarChar(50)
+  semesterId         String               @db.VarChar(50)
+  majorId            String               @db.VarChar(50)
+  cohort             String               @db.VarChar(50)
+  templateId         String               @db.VarChar(50)
+  templateVersion    Int
+  conceptualSemester Int
+  status             String               @default("DRAFT") @db.VarChar(50)
+  executedAt         DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @default(now()) @updatedAt
+  academicCohort     AcademicCohort       @relation(fields: [cohort], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  items              SemesterPlanItem[]
+  major              Major                @relation(fields: [majorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  semester           Semester             @relation(fields: [semesterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  template           TrainingPlanTemplate @relation(fields: [templateId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([semesterId, majorId, cohort])
+  @@index([majorId, cohort, status])
+}
+
+model SemesterPlanItem {
+  id                      String       @id @default(uuid()) @db.VarChar(50)
+  semesterPlanId          String       @db.VarChar(50)
+  subjectId               String       @db.VarChar(50)
+  adminClassId            String       @db.VarChar(50)
+  lecturerId              String?      @db.VarChar(50)
+  status                  String       @default("DRAFT") @db.VarChar(50)
+  expectedStudentCount    Int          @default(0)
+  generatedCourseClassId  String?      @db.VarChar(50)
+  theoryPeriods           Int?
+  practicePeriods         Int?
+  theorySessionsPerWeek   Int?
+  practiceSessionsPerWeek Int?
+  periodsPerSession       Int?
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @default(now()) @updatedAt
+  adminClass              AdminClass   @relation(fields: [adminClassId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  generatedCourseClass    CourseClass? @relation("GeneratedCourseClass", fields: [generatedCourseClassId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lecturer                Lecturer?    @relation(fields: [lecturerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  semesterPlan            SemesterPlan @relation(fields: [semesterPlanId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  subject                 Subject      @relation(fields: [subjectId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([semesterPlanId, subjectId, adminClassId])
+  @@index([generatedCourseClassId])
+  @@index([lecturerId])
+  @@index([status])
 }
 
 model ClassSchedule {
-  id            String      @id @default(uuid()) @db.VarChar(50)
-  courseClassId String      @db.VarChar(50)
-  roomId        String?     @db.VarChar(50)
-  semesterId    String      @db.VarChar(50)
-  dayOfWeek     Int
-  startShift    Int
-  endShift      Int
-  type          String      @db.VarChar(50)
-  courseClass   CourseClass @relation(fields: [courseClassId], references: [id], onDelete: Cascade)
-  room          Room?       @relation(fields: [roomId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  @@unique([roomId, dayOfWeek, startShift, semesterId])
+  id           String       @id(map: "PK__ClassSch__3213E83FABA7CEB6") @default(uuid()) @db.VarChar(50)
+  planId       String       @db.VarChar(50)
+  studyDate    DateTime     @db.Date
+  startPeriod  Int
+  endPeriod    Int
+  roomId       String?      @db.VarChar(50)
+  type         String?      @default("N'STUDY'", map: "DF__ClassSched__type__477199F1") @db.NVarChar(50)
+  room         Room?        @relation(fields: [roomId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  TeachingPlan TeachingPlan @relation(fields: [planId], references: [id], onUpdate: NoAction, map: "FK_Schedule_TP")
 }
 
 model ClassSession {
-  id            String      @id @default(uuid()) @db.VarChar(50)
-  courseClassId String      @db.VarChar(50)
-  roomId        String?     @db.VarChar(50)
-  semesterId    String      @db.VarChar(50)
-  date          DateTime    @db.Date
+  id            String       @id @default(uuid()) @db.VarChar(50)
+  courseClassId String       @db.VarChar(50)
+  roomId        String?      @db.VarChar(50)
+  semesterId    String       @db.VarChar(50)
+  date          DateTime     @db.Date
   startShift    Int
   endShift      Int
-  type          String      @default("LECTURE") @db.VarChar(50)
-  note          String?     @db.NVarChar(255)
-  courseClass   CourseClass @relation(fields: [courseClassId], references: [id], onDelete: Cascade)
-  room          Room?       @relation(fields: [roomId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  semester      Semester    @relation(fields: [semesterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  type          String       @default("LECTURE") @db.VarChar(50)
+  note          String?      @db.NVarChar(255)
   attendances   Attendance[]
+  courseClass   CourseClass  @relation(fields: [courseClassId], references: [id], onDelete: Cascade)
+  room          Room?        @relation(fields: [roomId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  semester      Semester     @relation(fields: [semesterId], references: [id], onUpdate: NoAction)
 
   @@unique([roomId, date, startShift, semesterId])
 }
@@ -329,11 +457,11 @@ model Enrollment {
 model Attendance {
   id           String        @id @default(uuid()) @db.VarChar(50)
   enrollmentId String        @db.VarChar(50)
-  sessionId    String?       @db.VarChar(50)
   date         DateTime      @db.Date
   status       String        @default("PRESENT") @db.VarChar(50)
   note         String?       @db.NVarChar(255)
-  enrollment   Enrollment    @relation(fields: [enrollmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sessionId    String?       @db.VarChar(50)
+  enrollment   Enrollment    @relation(fields: [enrollmentId], references: [id], onUpdate: NoAction)
   session      ClassSession? @relation(fields: [sessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([enrollmentId, date])
@@ -344,20 +472,27 @@ model Grade {
   studentId         String      @db.VarChar(50)
   courseClassId     String      @db.VarChar(50)
   subjectId         String      @db.VarChar(50)
-  attendanceScore   Float?
-  regularScore1     Float?
-  regularScore2     Float?
-  practiceScore     Float?
-  midtermScore      Float?
-  isEligibleForExam Boolean     @default(true)
-  isAbsentFromExam  Boolean     @default(false)
-  finalScore        Float?
-  totalScore10      Float?
-  totalScore4       Float?
-  letterGrade       String?     @db.VarChar(10)
-  isPassed          Boolean     @default(false)
+  // ===== ĐIỂM THÀNH PHẦN =====
+  attendanceScore   Float?                         // Điểm Chuyên Cần (CC)
+  regularScores     String?     @db.NVarChar(Max)  // JSON float[]: [TX1, TX2, TX3] - Điểm Thường Kỳ
+  coef1Scores       String?     @db.NVarChar(Max)  // JSON float[]: [H1_1..H1_n] - LT Hệ số 1 (n=số tín chỉ)
+  coef2Scores       String?     @db.NVarChar(Max)  // JSON float[]: [H2_1..H2_n] - LT Hệ số 2 (n=số tín chỉ)
+  practiceScores    String?     @db.NVarChar(Max)  // JSON float[]: [TH1, TH2] - Điểm Thực Hành
+  tbThuongKy        Float?                         // Điểm TB Thường Kỳ (tự động tính)
+  // ===== THI & KẾT QUẢ =====
+  isEligibleForExam Boolean     @default(true)     // Được dự thi (tbThuongKy >= 3.0)
+  isAbsentFromExam  Boolean     @default(false)    // Vắng thi cuối kỳ (→ examScore1 = 0)
+  examScore1        Float?                         // Điểm thi cuối kỳ lần 1
+  examScore2        Float?                         // Điểm thi lại (lần 2)
+  finalScore1       Float?                         // Điểm Tổng Kết lần 1 = tbThuongKy*0.4 + examScore1*0.6
+  finalScore2       Float?                         // Điểm Tổng Kết lần 2 = tbThuongKy*0.4 + examScore2*0.6
+  totalScore10      Float?                         // Điểm hệ 10 = max(finalScore1, finalScore2)
+  totalScore4       Float?                         // Điểm hệ 4
+  letterGrade       String?     @db.VarChar(10)    // Điểm chữ: A, B+, B, C+, C, D+, D, F
+  isPassed          Boolean     @default(false)    // Đạt nếu totalScore10 >= 5.0
   isLocked          Boolean     @default(false)
   status            String      @default("DRAFT") @db.VarChar(50)
+  notes             String?     @db.NVarChar(500)  // Ghi chú
   courseClass       CourseClass @relation(fields: [courseClassId], references: [id], onUpdate: NoAction)
   student           Student     @relation(fields: [studentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   subject           Subject     @relation(fields: [subjectId], references: [id], onUpdate: NoAction)
@@ -387,7 +522,7 @@ model StudentFee {
   dueDate        DateTime?        @db.Date
   transactions   FeeTransaction[]
   semester       Semester         @relation(fields: [semesterId], references: [id], onUpdate: NoAction)
-  student       Student          @relation(fields: [studentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  student        Student          @relation(fields: [studentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 model FeeTransaction {
@@ -399,4 +534,24 @@ model FeeTransaction {
   transactionDate DateTime   @default(now())
   transactionCode String?    @db.VarChar(100)
   studentFee      StudentFee @relation(fields: [studentFeeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model SubjectPrerequisite {
+  id                                                         String  @id(map: "PK__SubjectP__3213E83FE822B36A") @db.VarChar(50)
+  subjectId                                                  String  @db.VarChar(50)
+  prerequisiteSubjectId                                      String  @db.VarChar(50)
+  Subject_SubjectPrerequisite_subjectIdToSubject             Subject @relation("SubjectPrerequisite_subjectIdToSubject", fields: [subjectId], references: [id], onUpdate: NoAction, map: "FK_Prereq_Subject")
+  Subject_SubjectPrerequisite_prerequisiteSubjectIdToSubject Subject @relation("SubjectPrerequisite_prerequisiteSubjectIdToSubject", fields: [prerequisiteSubjectId], references: [id], onUpdate: NoAction, map: "FK_Prereq_Subject_Pre")
+}
+
+model TeachingPlan {
+  id            String          @id(map: "PK__Teaching__3213E83FE850BEF5") @db.VarChar(50)
+  courseClassId String          @db.VarChar(50)
+  semesterId    String          @db.VarChar(50)
+  lecturerId    String?         @db.VarChar(50)
+  status        String?         @default("N'DRAFT'", map: "DF__TeachingP__statu__41B8C09B") @db.NVarChar(50)
+  totalPeriods  Int?            @default(0, map: "DF__TeachingP__total__42ACE4D4")
+  ClassSchedule ClassSchedule[]
+  CourseClass   CourseClass     @relation(fields: [courseClassId], references: [id], onUpdate: NoAction, map: "FK_TP_CourseClass")
+  Semester      Semester        @relation(fields: [semesterId], references: [id], onUpdate: NoAction, map: "FK_TP_Semester")
 }

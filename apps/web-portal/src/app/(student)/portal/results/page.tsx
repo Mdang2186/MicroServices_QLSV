@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { StudentService } from "@/services/student.service";
-import Cookies from "js-cookie";
 import {
     GraduationCap,
     TrendingUp,
@@ -24,6 +23,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { getStudentUserId, readStudentSessionUser } from "@/lib/student-session";
 
 export default function ResultsPage() {
     const [student, setStudent] = useState<any>(null);
@@ -35,10 +35,9 @@ export default function ResultsPage() {
     useEffect(() => {
         const fetchStudentData = async () => {
             try {
-                const userCookie = Cookies.get("student_user");
-                if (!userCookie) return;
-                const user = JSON.parse(userCookie);
-                const userId = user.id;
+                const user = readStudentSessionUser();
+                const userId = getStudentUserId(user);
+                if (!userId) return;
 
                 const data = await StudentService.getProfile(userId);
                 setStudent(data);

@@ -4,14 +4,23 @@ import { CacheService } from '../cache/cache.service';
 
 @Injectable()
 export class SubjectService {
-  constructor(private prisma: PrismaService, private cache: CacheService) {}
+  constructor(
+    private prisma: PrismaService,
+    private cache: CacheService,
+  ) {}
 
-  async findAll() {
+  async findAll(majorId?: string, departmentId?: string, facultyId?: string) {
     return this.prisma.subject.findMany({
+      where: {
+        ...(majorId ? { majorId } : {}),
+        ...(departmentId ? { departmentId } : {}),
+        ...(facultyId ? { major: { facultyId } } : {}),
+      },
       include: {
         major: true,
+        department: true,
       },
-      orderBy: { name: 'asc' }
+      orderBy: { name: 'asc' },
     });
   }
 
@@ -20,6 +29,7 @@ export class SubjectService {
       where: { id },
       include: {
         major: true,
+        department: true,
       },
     });
   }
@@ -33,7 +43,9 @@ export class SubjectService {
       if (error.code === 'P2002') {
         throw new BadRequestException('Mã môn học đã tồn tại trong hệ thống.');
       }
-      throw new BadRequestException('Lỗi hệ thống: ' + (error.message || 'Không thể lưu môn học'));
+      throw new BadRequestException(
+        'Lỗi hệ thống: ' + (error.message || 'Không thể lưu môn học'),
+      );
     }
   }
 
@@ -49,7 +61,9 @@ export class SubjectService {
       if (error.code === 'P2002') {
         throw new BadRequestException('Mã môn học đã tồn tại trong hệ thống.');
       }
-      throw new BadRequestException('Lỗi hệ thống: ' + (error.message || 'Không thể cập nhật môn học'));
+      throw new BadRequestException(
+        'Lỗi hệ thống: ' + (error.message || 'Không thể cập nhật môn học'),
+      );
     }
   }
 

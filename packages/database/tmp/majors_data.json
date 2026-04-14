@@ -1,0 +1,86 @@
+[
+  {
+    "id": "18edde59-8af5-4bb9-915e-e3a38257118e",
+    "facultyId": "FAC_CNTT",
+    "code": "CNTT",
+    "name": "Công nghệ Thông tin",
+    "totalCreditsRequired": 145
+  },
+  {
+    "id": "DETMAY",
+    "facultyId": "F05",
+    "code": "M_DM",
+    "name": "Công nghệ sợi, dệt",
+    "totalCreditsRequired": 120
+  },
+  {
+    "id": "DienTu",
+    "facultyId": "F03",
+    "code": "M_DIENTU",
+    "name": "Công nghệ kỹ thuật Điện, điện tử",
+    "totalCreditsRequired": 120
+  },
+  {
+    "id": "KETOAN",
+    "facultyId": "F02",
+    "code": "M_KETOAN",
+    "name": "Kế toán",
+    "totalCreditsRequired": 120
+  },
+  {
+    "id": "MAJ_KETOAN",
+    "facultyId": "FAC_KT",
+    "code": "KTK",
+    "name": "Kế toán",
+    "totalCreditsRequired": 135
+  },
+  {
+    "id": "MAJ_KHMT",
+    "facultyId": "FAC_CNTT",
+    "code": "KHMT",
+    "name": "Khoa học máy tính",
+    "totalCreditsRequired": 150
+  },
+  {
+    "id": "MAJ_KTPM",
+    "facultyId": "FAC_CNTT",
+    "code": "KTPM",
+    "name": "Kỹ thuật phần mềm",
+    "totalCreditsRequired": 150
+  },
+  {
+    "id": "MAJ_NNA",
+    "facultyId": "FAC_NN",
+    "code": "NNA",
+    "name": "Ngôn ngữ Anh",
+    "totalCreditsRequired": 130
+  },
+  {
+    "id": "MAJ_NNT",
+    "facultyId": "FAC_NN",
+    "code": "NNT",
+    "name": "Ngôn ngữ Trung",
+    "totalCreditsRequired": 130
+  },
+  {
+    "id": "OTO",
+    "facultyId": "F04",
+    "code": "M_OTO",
+    "name": "Công nghệ kỹ thuật Ô tô",
+    "totalCreditsRequired": 120
+  },
+  {
+    "id": "QTKD",
+    "facultyId": "F02",
+    "code": "M_QTKD",
+    "name": "Quản trị kinh doanh",
+    "totalCreditsRequired": 120
+  },
+  {
+    "id": "THUCPHAM",
+    "facultyId": "F05",
+    "code": "M_TP",
+    "name": "Công nghệ thực phẩm",
+    "totalCreditsRequired": 120
+  }
+]

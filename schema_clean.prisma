@@ -66,6 +66,7 @@ model Major {
   specializations      Specialization[]
   students             Student[]
   subjects             Subject[]
+  semesterPlans        SemesterPlan[]
 }
 
 model Specialization {
@@ -100,15 +101,30 @@ model Subject {
   theoryHours    Int            @default(30)
   practiceHours  Int            @default(15)
   selfStudyHours Int            @default(0)
+  examType       String         @default("TU_LUAN") @db.VarChar(50)
   departmentId   String?        @db.VarChar(50)
   description    String?        @db.NVarChar(Max)
   classes        CourseClass[]
   curriculums    Curriculum[]
+  semesterPlans  SemesterPlan[]
   grades         Grade[]
   requiredFor    Prerequisite[] @relation("PrerequisiteFor")
   prerequisites  Prerequisite[] @relation("SubjectPrerequisites")
   major          Major          @relation(fields: [majorId], references: [id], onUpdate: NoAction)
   department     Department?    @relation(fields: [departmentId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+}
+
+model SemesterPlan {
+  id         String   @id @default(uuid()) @db.VarChar(50)
+  semesterId String   @db.VarChar(50)
+  majorId    String   @db.VarChar(50)
+  cohort     String   @db.VarChar(50)
+  subjectId  String   @db.VarChar(50)
+  semester   Semester @relation(fields: [semesterId], references: [id])
+  major      Major    @relation(fields: [majorId], references: [id])
+  subject    Subject  @relation(fields: [subjectId], references: [id])
+
+  @@unique([semesterId, majorId, cohort, subjectId])
 }
 
 model Prerequisite {
@@ -245,6 +261,7 @@ model Semester {
   studentFees       StudentFee[]
   trainingScores    TrainingScore[]
   sessions          ClassSession[]
+  semesterPlans     SemesterPlan[]
 }
 
 model Room {
@@ -268,6 +285,8 @@ model CourseClass {
   tuitionMultiplier Float           @default(1.0)
   maxSlots          Int             @default(60)
   currentSlots      Int             @default(0)
+  totalPeriods      Int             @default(0)
+  examType          String          @default("TU_LUAN") @db.VarChar(50)
   status            String          @default("OPEN") @db.VarChar(50)
   schedules         ClassSchedule[]
   sessions          ClassSession[]
@@ -277,6 +296,18 @@ model CourseClass {
   enrollments       Enrollment[]
   grades            Grade[]
   adminClasses      AdminClass[]    @relation("AdminClassToCourseClass")
+  examSchedule      ExamSchedule?
+}
+
+model ExamSchedule {
+  id            String      @id @default(uuid()) @db.VarChar(50)
+  courseClassId String      @unique @db.VarChar(50)
+  roomId        String      @db.VarChar(50)
+  examDate      DateTime    @db.Date
+  shift         Int
+  examType      String      @db.VarChar(50)
+  courseClass   CourseClass @relation(fields: [courseClassId], references: [id], onDelete: Cascade)
+  room          Room        @relation(fields: [roomId], references: [id])
 }
 
 model ClassSchedule {
@@ -348,6 +379,9 @@ model Grade {
   attendanceScore   Float?
   regularScore1     Float?
   regularScore2     Float?
+  regularScore3     Float?
+  regularScore4     Float?
+  regularScore5     Float?
   practiceScore     Float?
   midtermScore      Float?
   isEligibleForExam Boolean     @default(true)

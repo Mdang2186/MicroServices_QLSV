@@ -1,7 +1,7 @@
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
-import { MicroserviceOptions, Transport } from '@nestjs/microservices';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { NestFactory } from "@nestjs/core";
+import { AppModule } from "./app.module";
+import { MicroserviceOptions, Transport } from "@nestjs/microservices";
+import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -13,21 +13,21 @@ async function bootstrap() {
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.TCP,
     options: {
-      host: '0.0.0.0',
-      port: 3011
-    }
+      host: "0.0.0.0",
+      port: 3011,
+    },
   });
 
   const config = new DocumentBuilder()
-    .setTitle('Auth Service API')
-    .setVersion('1.0')
-    .addServer('/api')
+    .setTitle("Auth Service API")
+    .setVersion("1.0")
+    .addServer("/api")
     .build();
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('auth/docs', app, document);
+  SwaggerModule.setup("auth/docs", app, document);
 
   await app.startAllMicroservices();
-  await app.listen(3001, '0.0.0.0'); // Auth Service runs on 3001
+  await app.listen(3001, "0.0.0.0"); // Auth Service runs on 3001
   console.log(`Auth Service is running on: ${await app.getUrl()}`);
 }
 bootstrap();

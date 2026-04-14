@@ -43,5 +43,10 @@ export const StudentService = {
     getCPA: async (studentId: string) => {
         const response = await api.get(`/api/grades/student/${studentId}/cpa`);
         return response.data;
+    },
+
+    getCurriculumProgress: async (studentId: string) => {
+        const response = await api.get(`/api/students/${studentId}/curriculum-progress`);
+        return response.data;
     }
 };

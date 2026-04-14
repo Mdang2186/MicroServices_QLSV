@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { StudentService } from "@/services/student.service";
-import Cookies from "js-cookie";
 import { useRouter } from "next/navigation";
 import {
     Calendar as CalendarIcon,
@@ -21,6 +20,8 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { getStudentUserId, readStudentSessionUser } from "@/lib/student-session";
+import ScheduleListView from "./ScheduleListView";
 
 const SESSIONS = [
     { label: "Sáng", time: "07:00 - 12:15", value: "morning", color: "bg-blue-50/10 text-slate-500 border-slate-100" },
@@ -35,7 +36,7 @@ const DAYS = [
     { name: "Thứ Năm", short: "T5", value: 5 },
     { name: "Thứ Sáu", short: "T6", value: 6 },
     { name: "Thứ Bảy", short: "T7", value: 7 },
-    { name: "Chủ Nhật", short: "CN", value: 8 },
+    { name: "Chủ nhật", short: "CN", value: 8 },
 ];
 
 const LEGEND = [
@@ -44,20 +45,105 @@ const LEGEND = [
     { label: "Lịch thi", color: "bg-yellow-50/80 border-yellow-200", textColor: "text-yellow-700" },
 ];
 
+type SemesterOption = {
+    id: string;
+    code?: string;
+    name: string;
+    startDate?: Date | null;
+    endDate?: Date | null;
+    sessionDates: Date[];
+};
+
+const normalizeDate = (value: any) => {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const getSemesterSortTime = (semester: SemesterOption) => {
+    const lastSession = semester.sessionDates[semester.sessionDates.length - 1];
+    return (lastSession || semester.endDate || semester.startDate || new Date(0)).getTime();
+};
+
+const formatSemesterOptionLabel = (semester: Partial<SemesterOption>) => {
+    const code = `${semester.code || ""}`.trim();
+    const name = `${semester.name || ""}`.trim();
+
+    if (!code) return name || "Học kỳ";
+    if (!name) return code;
+    if (name.toUpperCase().includes(code.toUpperCase())) return name;
+    return `${code} - ${name}`;
+};
+
+const pickSemesterAnchorDate = (semester: SemesterOption) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const startDate = semester.startDate ? new Date(semester.startDate) : null;
+    const endDate = semester.endDate ? new Date(semester.endDate) : null;
+
+    if (startDate) startDate.setHours(0, 0, 0, 0);
+    if (endDate) endDate.setHours(0, 0, 0, 0);
+
+    if (startDate && endDate && today >= startDate && today <= endDate) {
+        return today;
+    }
+
+    const futureSession = semester.sessionDates.find((date) => date >= today);
+    if (futureSession) {
+        return new Date(futureSession);
+    }
+
+    if (semester.sessionDates.length > 0) {
+        return new Date(semester.sessionDates[0]);
+    }
+
+    if (startDate) {
+        return new Date(startDate);
+    }
+
+    return today;
+};
+
+const isDateWithinSemester = (date: Date, semester: SemesterOption | null) => {
+    if (!semester) return true;
+    const target = new Date(date);
+    target.setHours(0, 0, 0, 0);
+
+    const startDate = semester.startDate ? new Date(semester.startDate) : null;
+    const endDate = semester.endDate ? new Date(semester.endDate) : null;
+
+    if (!startDate || !endDate) {
+        return true;
+    }
+
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(0, 0, 0, 0);
+    return target >= startDate && target <= endDate;
+};
+
 export default function SchedulePage() {
+    return <ScheduleListView />;
     const router = useRouter();
     const [enrollments, setEnrollments] = useState<any[]>([]);
+    const [allSemesters, setAllSemesters] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedDate, setSelectedDate] = useState(new Date());
+    const [selectedSemesterId, setSelectedSemesterId] = useState("");
     const [filter, setFilter] = useState("all");
+
+    useEffect(() => {
+        fetch("/api/semesters")
+            .then((response) => (response.ok ? response.json() : []))
+            .then((data) => setAllSemesters(Array.isArray(data) ? data : []))
+            .catch(() => setAllSemesters([]));
+    }, []);
 
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const userCookie = Cookies.get("student_user");
-                if (!userCookie) return;
-                const user = JSON.parse(userCookie);
-                const userId = user.id;
+                const user = readStudentSessionUser();
+                const userId = getStudentUserId(user);
+                if (!userId) return;
 
                 const data = await StudentService.getProfile(userId);
 
@@ -77,6 +163,115 @@ export default function SchedulePage() {
         fetchData();
     }, []);
 
+    const semesterOptions = useMemo<SemesterOption[]>(() => {
+        const semesterMap = new Map<string, SemesterOption & { sessionKeys: Set<string> }>();
+
+        allSemesters.forEach((semester) => {
+            if (!semester?.id) return;
+            semesterMap.set(semester.id, {
+                id: semester.id,
+                code: semester.code,
+                name: semester.name || semester.id,
+                startDate: normalizeDate(semester.startDate),
+                endDate: normalizeDate(semester.endDate),
+                sessionDates: [],
+                sessionKeys: new Set<string>(),
+            });
+        });
+
+        enrollments.forEach((enrollment) => {
+            const semester = enrollment.courseClass?.semester;
+            const semesterId = enrollment.courseClass?.semesterId || semester?.id;
+            if (!semesterId) return;
+
+            const existing = semesterMap.get(semesterId);
+            const sessionDates = (enrollment.courseClass?.sessions || [])
+                .map((session: any) => normalizeDate(session.date))
+                .filter(Boolean) as Date[];
+
+            if (!existing) {
+                const option: SemesterOption & { sessionKeys: Set<string> } = {
+                    id: semesterId,
+                    code: semester?.code,
+                    name: semester?.name || semesterId,
+                    startDate: normalizeDate(semester?.startDate),
+                    endDate: normalizeDate(semester?.endDate),
+                    sessionDates: [],
+                    sessionKeys: new Set<string>(),
+                };
+
+                sessionDates.forEach((date) => {
+                    const key = date.toISOString();
+                    if (!option.sessionKeys.has(key)) {
+                        option.sessionKeys.add(key);
+                        option.sessionDates.push(date);
+                    }
+                });
+
+                semesterMap.set(semesterId, option);
+                return;
+            }
+
+            sessionDates.forEach((date) => {
+                const key = date.toISOString();
+                if (!existing.sessionKeys.has(key)) {
+                    existing.sessionKeys.add(key);
+                    existing.sessionDates.push(date);
+                }
+            });
+        });
+
+        return Array.from(semesterMap.values())
+            .map(({ sessionKeys, ...semester }) => ({
+                ...semester,
+                sessionDates: [...semester.sessionDates].sort(
+                    (left, right) => left.getTime() - right.getTime(),
+                ),
+            }))
+            .sort((left, right) => getSemesterSortTime(right) - getSemesterSortTime(left));
+    }, [allSemesters, enrollments]);
+
+    useEffect(() => {
+        if (!semesterOptions.length) {
+            setSelectedSemesterId("");
+            return;
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const semestersWithSessions = semesterOptions.filter(
+            (semester) => semester.sessionDates.length > 0,
+        );
+        const preferredSemesters =
+            semestersWithSessions.length > 0 ? semestersWithSessions : semesterOptions;
+
+        const currentSemester =
+            preferredSemesters.find((semester) => {
+                const startDate = semester.startDate ? new Date(semester.startDate) : null;
+                const endDate = semester.endDate ? new Date(semester.endDate) : null;
+                if (!startDate || !endDate) return false;
+                startDate.setHours(0, 0, 0, 0);
+                endDate.setHours(0, 0, 0, 0);
+                return today >= startDate && today <= endDate;
+            }) || preferredSemesters[0];
+
+        setSelectedSemesterId((current) =>
+            preferredSemesters.some((semester) => semester.id === current)
+                ? current
+                : currentSemester.id,
+        );
+    }, [semesterOptions]);
+
+    useEffect(() => {
+        if (!selectedSemesterId) return;
+        const selectedSemester = semesterOptions.find(
+            (semester) => semester.id === selectedSemesterId,
+        );
+        if (!selectedSemester) return;
+        setSelectedDate(pickSemesterAnchorDate(selectedSemester));
+    }, [selectedSemesterId, semesterOptions]);
+
     const startOfWeek = (date: Date) => {
         const d = new Date(date);
         const day = d.getDay();
@@ -95,15 +290,32 @@ export default function SchedulePage() {
         return Array.from({ length: 7 }, (_, i) => addDays(start, i));
     }, [selectedDate]);
 
+    const selectedSemester = useMemo(
+        () =>
+            semesterOptions.find((semester) => semester.id === selectedSemesterId) || null,
+        [semesterOptions, selectedSemesterId],
+    );
+
+    const visibleEnrollments = useMemo(() => {
+        if (!selectedSemesterId) return enrollments;
+        return enrollments.filter((enrollment) => {
+            const semesterId =
+                enrollment.courseClass?.semesterId || enrollment.courseClass?.semester?.id;
+            return semesterId === selectedSemesterId;
+        });
+    }, [enrollments, selectedSemesterId]);
+
     const getSchedulesForDayAndSession = (dayValue: number, sessionValue: string) => {
-        const dateAtIdx = weekDays.find(d => d.getDay() === (dayValue === 8 ? 0 : dayValue));
+        const targetJsDay = dayValue === 8 ? 0 : dayValue - 1;
+        const dateAtIdx = weekDays.find(d => d.getDay() === targetJsDay);
         if (!dateAtIdx) return [];
 
-        return enrollments.flatMap(enr => {
-            const schedules = enr.courseClass?.schedules || [];
+        return visibleEnrollments.flatMap(enr => {
+            const schedules = enr.courseClass?.sessions || [];
             return schedules
                 .filter((s: any) => {
-                    if (s.dayOfWeek !== dayValue) return false;
+                    const sessionDateStr = new Date(s.date).toDateString();
+                    if (sessionDateStr !== dateAtIdx.toDateString()) return false;
 
                     const start = Number(s.startShift);
                     let sessionMatch = false;
@@ -211,24 +423,70 @@ export default function SchedulePage() {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                    <select
+                        value={selectedSemesterId}
+                        onChange={(event) => setSelectedSemesterId(event.target.value)}
+                        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none"
+                    >
+                        {semesterOptions.map((semester) => (
+                            <option key={semester.id} value={semester.id}>
+                                {formatSemesterOptionLabel(semester)}
+                            </option>
+                        ))}
+                    </select>
+
                     <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setSelectedDate(new Date())}
+                        onClick={() => {
+                            const today = new Date();
+                            if (isDateWithinSemester(today, selectedSemester)) {
+                                setSelectedDate(today);
+                                return;
+                            }
+                            if (selectedSemester) {
+                                setSelectedDate(pickSemesterAnchorDate(selectedSemester));
+                                return;
+                            }
+                            setSelectedDate(today);
+                        }}
                         className="h-10 rounded-xl px-4 text-xs font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-600 transition-all border border-transparent hover:border-blue-100"
                     >
                         <CalendarCheck className="mr-2 h-4 w-4" /> Hôm nay
                     </Button>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-10 rounded-xl px-4 text-xs font-bold text-slate-600 hover:bg-emerald-50 hover:text-emerald-600 transition-all border border-transparent hover:border-emerald-100"
-                    >
-                        <Printer className="mr-2 h-4 w-4" /> Xuất PDF
-                    </Button>
+
                 </div>
             </div>
+
+            {selectedSemester && (
+                <div className="rounded-sm border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-bold text-slate-600">
+                    Đang xem lịch của: <span className="text-blue-700">{selectedSemester.name}</span>
+                    {selectedSemester.startDate && selectedSemester.endDate && (
+                        <span className="ml-2 text-slate-500">
+                            ({selectedSemester.startDate.toLocaleDateString("vi-VN")} - {selectedSemester.endDate.toLocaleDateString("vi-VN")})
+                        </span>
+                    )}
+                </div>
+            )}
+
+            {selectedSemester && !isDateWithinSemester(selectedDate, selectedSemester) && (
+                <div className="rounded-sm border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] font-bold text-amber-700">
+                    Tuần đang xem nằm ngoài học kỳ đã chọn. Hệ thống khuyên dùng nút <span className="font-black">Về tuần có lịch</span> để quay về tuần có buổi học thật.
+                </div>
+            )}
+
+            {selectedSemester &&
+                visibleEnrollments.length > 0 &&
+                visibleEnrollments.every(
+                    (enrollment) =>
+                        !Array.isArray(enrollment.courseClass?.sessions) ||
+                        enrollment.courseClass.sessions.length === 0,
+                ) && (
+                    <div className="rounded-sm border border-rose-200 bg-rose-50 px-4 py-3 text-[11px] font-bold text-rose-700">
+                        Bạn đã có học phần trong học kỳ này nhưng chưa có buổi học nào được xếp lịch.
+                    </div>
+                )}
 
             {/* Schedule Grid */}
             <div className="bg-white rounded-none border border-slate-200 shadow-sm overflow-hidden relative">
@@ -236,7 +494,7 @@ export default function SchedulePage() {
                 <div className="absolute top-0 right-0 w-64 h-64 bg-blue-50/30 rounded-full blur-3xl -mr-32 -mt-32"></div>
 
                 <div className="overflow-x-auto">
-                    <table className="w-full border-collapse min-w-[1000px]">
+                    <table className="w-full border-collapse min-w-[1160px]">
                         <thead>
                             <tr className="bg-slate-50/80">
                                 <th className="w-20 p-3 text-[11px] font-black text-blue-600 uppercase border border-slate-200">Ca học</th>
@@ -288,11 +546,11 @@ export default function SchedulePage() {
                                                             animate={{ opacity: 1 }}
                                                             className={cn(
                                                                 "p-2.5 rounded-sm border text-left transition-all shadow-sm",
-                                                                s.type === 'EXAM' 
-                                                                    ? "bg-yellow-50/90 border-yellow-200" 
+                                                                s.type === 'EXAM'
+                                                                    ? "bg-yellow-50/90 border-yellow-200"
                                                                     : (s.type === 'PRACTICE' || s.roomName?.toLowerCase().includes('lab'))
-                                                                    ? "bg-green-50/90 border-green-200"
-                                                                    : "bg-white border-slate-200"
+                                                                        ? "bg-green-50/90 border-green-200"
+                                                                        : "bg-white border-slate-200"
                                                             )}
                                                         >
                                                             <div className="space-y-1">

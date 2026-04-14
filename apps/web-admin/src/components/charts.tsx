@@ -8,7 +8,7 @@ import {
 
 export const EnrollmentChart = ({ trends }: { trends: any[] }) => {
     // Reformat data slightly 
-    const data = trends.map(t => ({
+    const data = (trends || []).map(t => ({
         name: t.name,
         'Ghi danh': t.enrollments
     }));
@@ -61,7 +61,7 @@ export const EnrollmentChart = ({ trends }: { trends: any[] }) => {
 export const AttendancePieChart = ({ distribution, rate }: { distribution: any[], rate: number }) => {
 
     // Process color correctly from DB format
-    const data = distribution.map(d => ({
+    const data = (distribution || []).map(d => ({
         name: d.name.replace("Poor (< 5)", "Kém (< 5)")
             .replace("Average (5-6)", "Khá (5-6)")
             .replace("Good (7-8)", "Giỏi (7-8)")
@@ -127,7 +127,7 @@ export const GpaPieChart = ({ distribution }: { distribution: any[] }) => {
                         dataKey="value"
                         stroke="none"
                     >
-                        {distribution.map((entry, index) => (
+                        {(distribution || []).map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
                     </Pie>

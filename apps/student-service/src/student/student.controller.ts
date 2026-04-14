@@ -6,8 +6,12 @@ import {
   Param,
   Put,
   Delete,
+  Res,
+  UseInterceptors,
+  UploadedFile,
 } from "@nestjs/common";
-import { ApiBody } from "@nestjs/swagger";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { ApiBody, ApiTags } from "@nestjs/swagger";
 import { StudentService } from "./student.service";
 import { CreateStudentDto, UpdateStudentDto } from "@repo/shared-dto";
 
@@ -51,6 +55,11 @@ export class StudentController {
     return this.studentService.findByUserId(userId);
   }
 
+  @Get(":id/curriculum-progress")
+  getCurriculumProgress(@Param("id") id: string) {
+    return this.studentService.getCurriculumProgress(id);
+  }
+
   @Put(":id")
   @ApiBody({
     schema: {
@@ -74,5 +83,42 @@ export class StudentController {
   @Delete(":id")
   remove(@Param("id") id: string) {
     return this.studentService.remove(id);
+  }
+  @Get("template")
+  async downloadTemplate() {
+    try {
+      const content = await this.studentService.getTemplate();
+      return {
+        filename: "Template_SinhVien.xlsx",
+        content,
+      };
+    } catch (err) {
+      return {
+        error: true,
+        message: err.message || "Failed to generate template",
+      };
+    }
+  }
+
+  @Get("export")
+  async exportExcel() {
+    try {
+      const content = await this.studentService.exportExcel();
+      return {
+        filename: `DanhSachSinhVien_${new Date().getTime()}.xlsx`,
+        content,
+      };
+    } catch (err) {
+      return {
+        error: true,
+        message: err.message || "Failed to export excel",
+      };
+    }
+  }
+
+  @Post("import")
+  @UseInterceptors(FileInterceptor("file"))
+  async importExcel(@UploadedFile() file: any) {
+    return this.studentService.importExcel(file.buffer);
   }
 }

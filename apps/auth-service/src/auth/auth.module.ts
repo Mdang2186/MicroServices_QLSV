@@ -46,4 +46,4 @@ import { MailerModule } from "@nestjs-modules/mailer";
   controllers: [AuthController, NotificationController],
   exports: [AuthService, NotificationService],
 })
-export class AuthModule { }
+export class AuthModule {}

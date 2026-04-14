@@ -1,12 +1,28 @@
-import { Controller, Post, Body, UseGuards, Req, Get, Put, Delete, Param } from "@nestjs/common";
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Req,
+  Get,
+  Put,
+  Delete,
+  Param,
+} from "@nestjs/common";
 import { ApiBody } from "@nestjs/swagger";
 import { AuthService } from "./auth.service";
-import { LoginDto, RegisterDto, ChangePasswordDto, ForgotPasswordDto, ResetPasswordDto } from "@repo/shared-dto";
+import {
+  LoginDto,
+  RegisterDto,
+  ChangePasswordDto,
+  ForgotPasswordDto,
+  ResetPasswordDto,
+} from "@repo/shared-dto";
 import { AuthGuard } from "@nestjs/passport";
 
 @Controller("auth")
 export class AuthController {
-  constructor(private authService: AuthService) { }
+  constructor(private authService: AuthService) {}
 
   @Post("login")
   async login(@Body() loginDto: LoginDto) {
@@ -18,9 +34,12 @@ export class AuthController {
     return this.authService.register(registerDto);
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard("jwt"))
   @Post("change-password")
-  async changePassword(@Req() req: any, @Body() changePasswordDto: ChangePasswordDto) {
+  async changePassword(
+    @Req() req: any,
+    @Body() changePasswordDto: ChangePasswordDto,
+  ) {
     return this.authService.changePassword(req.user.userId, changePasswordDto);
   }
 
@@ -48,8 +67,8 @@ export class AuthController {
         email: { type: "string", example: "admin@uneti.edu.vn" },
         password: { type: "string", example: "newpassword123" },
         role: { type: "string", example: "ADMIN" },
-      }
-    }
+      },
+    },
   })
   async updateUser(@Param("id") id: string, @Body() data: any) {
     return this.authService.updateUser(id, data);
@@ -76,9 +95,9 @@ export class AuthController {
         email: { type: "string", example: "gv@uneti.edu.vn" },
         facultyId: { type: "string", example: "Khoa CNTT" },
         degree: { type: "string", example: "Thạc sĩ" },
-        phone: { type: "string", example: "0123456789" }
-      }
-    }
+        phone: { type: "string", example: "0123456789" },
+      },
+    },
   })
   async createLecturer(@Body() data: any) {
     return this.authService.createLecturer(data);
@@ -94,9 +113,9 @@ export class AuthController {
         email: { type: "string", example: "gvsms@uneti.edu.vn" },
         facultyId: { type: "string", example: "Khoa CNTT" },
         degree: { type: "string", example: "Tiến sĩ" },
-        phone: { type: "string", example: "0987654321" }
-      }
-    }
+        phone: { type: "string", example: "0987654321" },
+      },
+    },
   })
   async updateLecturer(@Param("id") id: string, @Body() data: any) {
     return this.authService.updateLecturer(id, data);
@@ -114,9 +133,9 @@ export class AuthController {
       properties: {
         username: { type: "string" },
         email: { type: "string" },
-        password: { type: "string" }
-      }
-    }
+        password: { type: "string" },
+      },
+    },
   })
   async grantAccount(@Param("id") id: string, @Body() data: any) {
     return this.authService.grantAccount(id, data);
@@ -131,9 +150,9 @@ export class AuthController {
         name: { type: "string", example: "Nguyễn Văn Sinh Viên" },
         email: { type: "string", example: "sv@uneti.edu.vn" },
         major: { type: "string", example: "Công nghệ thông tin" },
-        dob: { type: "string", example: "2000-01-01" }
-      }
-    }
+        dob: { type: "string", example: "2000-01-01" },
+      },
+    },
   })
   async createStudent(@Body() data: any) {
     return this.authService.createStudent(data);
