@@ -2,21 +2,72 @@
 
 import { useEffect, useState } from "react";
 import { 
-    User, Phone, MapPin, Mail, CreditCard, 
-    Building, BookOpen, GraduationCap, Users, 
-    Calendar, Shield, Flag, Award, HeartHandshake, Briefcase,
-    Loader2, Save
+    Phone, Mail, CreditCard, 
+    Calendar, Shield, Globe, MapPinned, 
+    Loader2, Save, Fingerprint, Landmark,
+    Check, X, Lock, User, GraduationCap, Award, Info, Users
 } from "lucide-react";
 import { StudentService } from "@/services/student.service";
 import api from "@/lib/api";
 import { getStudentUserId, readStudentSessionUser } from "@/lib/student-session";
+import { cn } from "@/lib/utils";
+
+// --- Components ---
+
+const ModalSectionHeader = ({ title, color }: { title: string, color: string }) => (
+    <div className="flex items-center gap-2 mb-6">
+        <span className={cn("w-1.5 h-6 rounded-full", color)}></span>
+        <h3 className="text-[12px] font-black text-slate-800 uppercase tracking-widest">{title}</h3>
+    </div>
+);
+
+const ModalField = ({ label, value, className = "", icon: Icon }: { label: string, value: string | number, className?: string, icon?: any }) => (
+    <div className={cn("space-y-2", className)}>
+        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
+        <div className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold text-slate-800 min-h-[46px] flex items-center gap-3">
+            {Icon && <Icon size={14} className="text-slate-300 shrink-0" />}
+            <span className="truncate">{value || "---"}</span>
+        </div>
+    </div>
+);
+
+const ModalInputField = ({ label, value, onChange, placeholder, type = "text", icon: Icon }: any) => (
+    <div className="space-y-2">
+        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
+        <div className="relative">
+            <input
+                type={type}
+                className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold text-slate-800 outline-none focus:bg-white focus:ring-4 focus:ring-blue-600/5 transition-all border border-transparent focus:border-blue-600/10"
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                placeholder={placeholder}
+            />
+            {Icon && <Icon className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />}
+        </div>
+    </div>
+);
+
+const ModalTextareaField = ({ label, value, onChange, placeholder }: any) => (
+    <div className="space-y-2">
+        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
+        <textarea
+            rows={2}
+            className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold text-slate-800 outline-none focus:bg-white focus:ring-4 focus:ring-blue-600/5 transition-all resize-none border border-transparent focus:border-blue-600/10"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+        />
+    </div>
+);
+
+// --- Main Page ---
 
 export default function StudentProfilePage() {
     const [student, setStudent] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     
-    // Editable fields
+    // Editable data
     const [formData, setFormData] = useState({
         phone: "",
         emailPersonal: "",
@@ -27,6 +78,12 @@ export default function StudentProfilePage() {
         bankAccountName: "",
         bankAccountNumber: "",
     });
+
+    // Security Verification State
+    const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [verifyingPassword, setVerifyingPassword] = useState(false);
+    const [authError, setAuthError] = useState("");
 
     useEffect(() => {
         fetchProfile();
@@ -63,9 +120,49 @@ export default function StudentProfilePage() {
         }
     };
 
-    const handleSave = async () => {
-        setSaving(true);
+    const handleSaveTrigger = () => {
+        setAuthError("");
+        setConfirmPassword("");
+        setIsPasswordModalOpen(true);
+    };
+
+    const executeSaveWithVerification = async () => {
+        if (!confirmPassword) {
+            setAuthError("Vui lòng nhập mật khẩu để xác nhận.");
+            return;
+        }
+
+        setVerifyingPassword(true);
+        setAuthError("");
+
         try {
+            const user = readStudentSessionUser();
+            const identifier = user?.username || user?.email;
+
+            if (!identifier) {
+                setAuthError("Không tìm thấy thông tin phiên đăng nhập.");
+                setVerifyingPassword(false);
+                return;
+            }
+
+            try {
+                const loginRes = await api.post("/api/auth/login", {
+                    username: identifier,
+                    password: confirmPassword
+                });
+
+                if (loginRes.status !== 200 && loginRes.status !== 201) {
+                    setAuthError("Mật khẩu không chính xác. Vui lòng thử lại.");
+                    setVerifyingPassword(false);
+                    return;
+                }
+            } catch (authErr) {
+                setAuthError("Mật khẩu không chính xác hoặc lỗi hệ thống.");
+                setVerifyingPassword(false);
+                return;
+            }
+
+            setSaving(true);
             const res = await api.put(`/api/students/${student.id}`, {
                 phone: formData.phone,
                 emailPersonal: formData.emailPersonal,
@@ -76,16 +173,35 @@ export default function StudentProfilePage() {
                 bankAccountName: formData.bankAccountName,
                 bankAccountNumber: formData.bankAccountNumber,
             });
+
             if (res.status === 200) {
                 alert("Cập nhật thông tin thành công!");
+                setIsPasswordModalOpen(false);
                 fetchProfile();
             } else {
-                alert("Cập nhật thất bại. Vui lòng thử lại.");
+                setAuthError("Cập nhật thất bại. Vui lòng thử lại.");
             }
-        } catch (error) {
-            alert("Lỗi kết nối.");
+        } catch (error: any) {
+            console.error("Error during verification/save:", error);
+            setAuthError("Đã có lỗi xảy ra. Vui lòng thử lại sau.");
         } finally {
+            setVerifyingPassword(false);
             setSaving(false);
+        }
+    };
+
+    const handleReset = () => {
+        if (student) {
+            setFormData({
+                phone: student.phone || "",
+                emailPersonal: student.emailPersonal || "",
+                address: student.address || "",
+                permanentAddress: student.permanentAddress || "",
+                bankName: student.bankName || "",
+                bankBranch: student.bankBranch || "",
+                bankAccountName: student.bankAccountName || "",
+                bankAccountNumber: student.bankAccountNumber || "",
+            });
         }
     };
 
@@ -94,21 +210,12 @@ export default function StudentProfilePage() {
         return new Date(dateString).toLocaleDateString("vi-VN");
     };
 
-    const StatusBadge = ({ status }: { status: string }) => {
-        if (status === "STUDYING" || status === "ACTIVE") {
-            return <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-md text-[10px] font-bold">Đang học tập</span>;
-        }
-        if (status === "RESERVED") return <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-md text-[10px] font-bold">Bảo lưu</span>;
-        if (status === "DROPOUT") return <span className="px-2 py-0.5 bg-rose-100 text-rose-700 rounded-md text-[10px] font-bold">Thôi học</span>;
-        return <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md text-[10px] font-bold">{status}</span>;
-    };
-
     const genderMap = { MALE: "Nam", FEMALE: "Nữ", OTHER: "Khác" };
 
     if (loading) {
         return (
             <div className="flex h-[80vh] items-center justify-center">
-                <div className="w-10 h-10 border-[3px] border-uneti-blue/10 border-t-uneti-blue rounded-full animate-spin"></div>
+                <div className="w-10 h-10 border-[3px] border-slate-100 border-t-blue-600 rounded-full animate-spin"></div>
             </div>
         );
     }
@@ -118,307 +225,229 @@ export default function StudentProfilePage() {
     }
 
     return (
-        <div className="space-y-6 max-w-7xl mx-auto animate-in fade-in duration-500 pb-12">
-            <div>
-                <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                    <User className="text-uneti-blue" size={26} />
-                    Hồ sơ Tổng hợp Sinh viên
-                </h1>
-                <p className="text-[14px] text-slate-500 mt-1">Quản lý toàn bộ thông tin cá nhân, học vụ, nhân khẩu và tài khoản.</p>
-            </div>
-
-            <div className="flex flex-col lg:flex-row gap-6">
-                {/* Left Column: Readonly Info (Academic & Summary) */}
-                <div className="w-full lg:w-1/3 xl:w-1/4 flex-shrink-0 space-y-6">
-                    <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-br from-uneti-blue/20 to-uneti-blue/5"></div>
-                        <div className="relative pt-6 flex flex-col items-center">
-                            <div className="w-24 h-24 rounded-full bg-white border-4 border-white shadow-md flex items-center justify-center text-4xl font-black text-uneti-blue">
-                                {student.fullName?.charAt(0)}
-                            </div>
-                            <h2 className="mt-4 text-xl font-black text-slate-800 text-center">{student.fullName}</h2>
-                            <span className="mt-2 px-3 py-1 bg-uneti-blue/10 text-uneti-blue text-[11px] font-bold rounded-lg uppercase tracking-wider">
-                                {student.studentCode}
-                            </span>
-                            <div className="mt-3">
-                                <StatusBadge status={student.status} />
-                            </div>
+        <div className="max-w-5xl mx-auto py-8 px-4 animate-in fade-in zoom-in-95 duration-500 relative">
+            {/* The "Modal" Card */}
+            <div className="bg-white rounded-[2.5rem] shadow-2xl shadow-slate-200/60 overflow-hidden border border-slate-100">
+                {/* Header Area */}
+                <div className="px-10 py-8 flex justify-between items-center border-b border-slate-50">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white font-black text-xl shadow-lg shadow-blue-600/20">
+                            {student.fullName?.charAt(0)}
                         </div>
-
-                        <div className="mt-8 space-y-4">
-                            <div className="flex items-start gap-3">
-                                <BookOpen className="text-slate-400 mt-0.5" size={16} />
-                                <div>
-                                    <p className="text-[11px] font-black uppercase text-slate-400 tracking-wider">Ngành học</p>
-                                    <p className="text-[14px] font-bold text-slate-700">{student.major?.name || "---"}</p>
-                                </div>
-                            </div>
-                            {student.specialization && (
-                                <div className="flex items-start gap-3">
-                                    <Users className="text-slate-400 mt-0.5" size={16} />
-                                    <div>
-                                        <p className="text-[11px] font-black uppercase text-slate-400 tracking-wider">Chuyên ngành</p>
-                                        <p className="text-[14px] font-bold text-slate-700">{student.specialization?.name || "---"}</p>
-                                    </div>
-                                </div>
-                            )}
-                            <div className="flex items-start gap-3">
-                                <GraduationCap className="text-slate-400 mt-0.5" size={16} />
-                                <div>
-                                    <p className="text-[11px] font-black uppercase text-slate-400 tracking-wider">Lớp / Khóa</p>
-                                    <p className="text-[14px] font-bold text-slate-700">{student.adminClass?.code || "Chưa xếp lớp"} / {student.intake || "---"}</p>
-                                </div>
-                            </div>
-                            <div className="flex items-start gap-3">
-                                <Award className="text-slate-400 mt-0.5" size={16} />
-                                <div>
-                                    <p className="text-[11px] font-black uppercase text-slate-400 tracking-wider">Bậc / Loại hình đào tạo</p>
-                                    <p className="text-[14px] font-bold text-slate-700">{student.educationLevel || "Đại học"} - {student.educationType || "Chính quy"}</p>
-                                </div>
-                            </div>
-                            <div className="flex items-start gap-3">
-                                <Building className="text-slate-400 mt-0.5" size={16} />
-                                <div>
-                                    <p className="text-[11px] font-black uppercase text-slate-400 tracking-wider">Cơ sở (Campus)</p>
-                                    <p className="text-[14px] font-bold text-slate-700">{student.campus || "Hà Nội"}</p>
-                                </div>
-                            </div>
-                            <div className="flex items-start gap-3">
-                                <Calendar className="text-slate-400 mt-0.5" size={16} />
-                                <div>
-                                    <p className="text-[11px] font-black uppercase text-slate-400 tracking-wider">Ngày nhập học</p>
-                                    <p className="text-[14px] font-bold text-slate-700">{formatDate(student.admissionDate)}</p>
-                                </div>
-                            </div>
+                        <div>
+                            <h1 className="text-xl font-black text-slate-800 tracking-tight">{student.fullName}</h1>
+                            <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{student.studentCode} • {student.status}</p>
                         </div>
                     </div>
-
-                    <div className="bg-emerald-50 rounded-2xl p-6 border border-emerald-100">
-                        <h3 className="text-[13px] font-black text-emerald-800 uppercase tracking-wider mb-4 flex items-center gap-2">
-                            <span className="w-1.5 h-6 bg-emerald-500 rounded-full"></span>
-                            Thống kê học tập
-                        </h3>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <p className="text-[11px] font-black text-emerald-600/60 uppercase tracking-wider mb-1">CPA</p>
-                                <p className="text-3xl font-black text-emerald-700">{student.cpa?.toFixed(2) || "0.00"}</p>
-                            </div>
-                            <div>
-                                <p className="text-[11px] font-black text-emerald-600/60 uppercase tracking-wider mb-1">Tín chỉ Tích lũy</p>
-                                <p className="text-3xl font-black text-emerald-700">{student.totalEarnedCredits || 0}</p>
-                            </div>
-                        </div>
+                    <div className="w-8 h-8 rounded-full hover:bg-slate-50 flex items-center justify-center text-slate-400 transition-colors cursor-pointer">
+                        <X size={20} />
                     </div>
                 </div>
 
-                {/* Right Column: Detailed Flex layout */}
-                <div className="flex-1 min-w-0 space-y-6">
-                    {/* Basic Identity Details */}
-                    <div className="bg-white rounded-2xl p-6 md:p-8 border border-slate-200 shadow-sm">
-                        <h3 className="text-base font-black text-slate-800 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-4 mb-6">
-                            <User className="text-slate-400" size={20} />
-                            Cơ sở dữ liệu Cá nhân & Nhân khẩu
-                        </h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-                            <div>
-                                <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1">Ngày sinh</p>
-                                <p className="text-[15px] font-bold text-slate-800">{formatDate(student.dob)}</p>
-                            </div>
-                            <div>
-                                <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1">Giới tính</p>
-                                <p className="text-[15px] font-bold text-slate-800">{student.gender ? (genderMap as any)[student.gender] : "---"}</p>
-                            </div>
-                            <div>
-                                <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1">Nơi sinh</p>
-                                <p className="text-[15px] font-bold text-slate-800">{student.birthPlace || "---"}</p>
-                            </div>
-                            <div>
-                                <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1">Quốc tịch</p>
-                                <p className="text-[15px] font-bold text-slate-800">{student.nationality || "---"}</p>
-                            </div>
-                            <div>
-                                <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1">Dân tộc</p>
-                                <p className="text-[15px] font-bold text-slate-800">{student.ethnicity || "---"}</p>
-                            </div>
-                            <div>
-                                <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1">Tôn giáo</p>
-                                <p className="text-[15px] font-bold text-slate-800">{student.religion || "---"}</p>
-                            </div>
-                            <div>
-                                <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1">Số CCCD</p>
-                                <p className="text-[15px] font-bold text-slate-800">{student.citizenId || "---"}</p>
-                            </div>
-                            <div className="sm:col-span-2">
-                                <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1">Ngày cấp - Nơi cấp CCCD</p>
-                                <p className="text-[15px] font-bold text-slate-800">
-                                    {formatDate(student.idIssueDate)} tại {student.idIssuePlace || "---"}
-                                </p>
-                            </div>
+                <div className="p-10 space-y-12">
+                    
+                    {/* section: Kết quả học tập */}
+                    <div className="space-y-6">
+                        <ModalSectionHeader title="Kết quả học tập" color="bg-blue-600" />
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                            <ModalField label="GPA (Hệ 4)" value={student.gpa?.toFixed(2)} icon={Award} />
+                            <ModalField label="CPA Toàn khóa" value={student.cpa?.toFixed(2)} icon={GraduationCap} />
+                            <ModalField label="Tín chỉ tích lũy" value={student.totalEarnedCredits} icon={Check} />
                         </div>
                     </div>
 
-                    {/* Political & Region details */}
-                    <div className="bg-white rounded-2xl p-6 md:p-8 border border-slate-200 shadow-sm">
-                        <h3 className="text-base font-black text-slate-800 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-4 mb-6">
-                            <Flag className="text-slate-400" size={20} />
-                            Đoàn - Đảng & Chính sách
-                        </h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-                            <div>
-                                <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1">Khu vực ưu tiên</p>
-                                <p className="text-[15px] font-bold text-slate-800">{student.region || "---"}</p>
-                            </div>
-                            <div className="sm:col-span-2">
-                                <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1">Diện ưu tiên chính sách</p>
-                                <p className="text-[15px] font-bold text-slate-800">{student.policyBeneficiary || "Không"}</p>
-                            </div>
-                            <div>
-                                <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1">Ngày vào Đoàn</p>
-                                <p className="text-[15px] font-bold text-slate-800">{formatDate(student.youthUnionDate)}</p>
-                            </div>
-                            <div>
-                                <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-1">Ngày vào Đảng</p>
-                                <p className="text-[15px] font-bold text-slate-800">{formatDate(student.partyDate)}</p>
-                            </div>
+                    {/* section: Nhân khẩu & Định danh */}
+                    <div className="space-y-6">
+                        <ModalSectionHeader title="Thông tin nhân khẩu & Định danh" color="bg-amber-500" />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8">
+                            <ModalField label="Ngày sinh" value={formatDate(student.dob)} icon={Calendar} />
+                            <ModalField label="Giới tính" value={(genderMap as any)[student.gender] || "Nam"} icon={User} />
+                            <ModalField label="Nơi sinh" value={student.birthPlace} icon={MapPinned} />
+                            <ModalField label="Dân tộc" value={student.ethnicity || "Kinh"} />
+                            <ModalField label="Tôn giáo" value={student.religion || "Không"} />
+                            <ModalField label="Quốc tịch" value={student.nationality || "Việt Nam"} icon={Globe} />
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-4">
+                            <ModalField label="Số CCCD" value={student.citizenId} icon={Shield} />
+                            <ModalField label="Ngày cấp & Nơi cấp" value={`${formatDate(student.idIssueDate)} tại ${student.idIssuePlace}`} />
                         </div>
                     </div>
 
-                    {/* Contact & Bank - Editable Sections */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Contact Info */}
-                        <div className="bg-blue-50/50 rounded-2xl p-6 md:p-8 border border-blue-100/50 shadow-sm space-y-5">
-                            <div className="flex items-center justify-between border-b border-blue-200/50 pb-4">
-                                <h3 className="text-base font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                                    <Phone className="text-uneti-blue" size={20} />
-                                    Thông tin liên hệ
-                                </h3>
-                                <span className="text-[11px] bg-blue-100 text-blue-700 px-2.5 py-1 rounded font-bold uppercase tracking-wider">Tự cập nhật</span>
-                            </div>
-                            
-                            <div className="space-y-4">
-                                <div className="space-y-1.5">
-                                    <label className="text-[12px] font-black text-slate-500 uppercase tracking-widest block">SĐT Cá nhân</label>
-                                    <input
-                                        type="tel"
-                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-[14px] font-bold outline-none focus:border-uneti-blue focus:ring-4 focus:ring-uneti-blue/10 transition-all"
-                                        value={formData.phone}
-                                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                                        placeholder="0987..."
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-[12px] font-black text-slate-500 uppercase tracking-widest block">Email Cá nhân</label>
-                                    <input
-                                        type="email"
-                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-[14px] font-bold outline-none focus:border-uneti-blue focus:ring-4 focus:ring-uneti-blue/10 transition-all"
-                                        value={formData.emailPersonal}
-                                        onChange={(e) => setFormData({ ...formData, emailPersonal: e.target.value })}
-                                        placeholder="email@example.com"
-                                    />
-                                </div>
-                                <div className="space-y-1.5 break-words">
-                                    <label className="text-[12px] font-black text-slate-500 uppercase tracking-widest block">
-                                        Nơi ở hiện nay (Tạm trú)
-                                    </label>
-                                    <textarea
-                                        rows={2}
-                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-[14px] font-bold outline-none focus:border-uneti-blue focus:ring-4 focus:ring-uneti-blue/10 transition-all resize-none"
-                                        value={formData.address}
-                                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                                        placeholder="Số nhà, đường, phường/xã..."
-                                    />
-                                </div>
-                                <div className="space-y-1.5 break-words">
-                                    <label className="text-[12px] font-black text-slate-500 uppercase tracking-widest block">
-                                        Hộ khẩu thường trú
-                                    </label>
-                                    <textarea
-                                        rows={2}
-                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-[14px] font-bold outline-none focus:border-uneti-blue focus:ring-4 focus:ring-uneti-blue/10 transition-all resize-none"
-                                        value={formData.permanentAddress}
-                                        onChange={(e) => setFormData({ ...formData, permanentAddress: e.target.value })}
-                                        placeholder="Nơi đăng ký hộ khẩu thường trú..."
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Bank Info */}
-                        <div className="bg-blue-50/50 rounded-2xl p-6 md:p-8 border border-blue-100/50 shadow-sm space-y-5">
-                            <div className="flex items-center justify-between border-b border-blue-200/50 pb-4">
-                                <h3 className="text-base font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                                    <CreditCard className="text-uneti-blue" size={20} />
-                                    Thông tin Ngân hàng
-                                </h3>
-                                <span className="text-[11px] bg-blue-100 text-blue-700 px-2.5 py-1 rounded font-bold uppercase tracking-wider">Tự cập nhật</span>
-                            </div>
-                            
-                            <div className="space-y-4">
-                                <div className="space-y-1.5">
-                                    <label className="text-[12px] font-black text-slate-500 uppercase tracking-widest block">Tên Ngân hàng</label>
-                                    <input
-                                        type="text"
-                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-[14px] font-bold outline-none focus:border-uneti-blue focus:ring-4 focus:ring-uneti-blue/10 transition-all"
-                                        value={formData.bankName}
-                                        onChange={(e) => setFormData({ ...formData, bankName: e.target.value })}
-                                        placeholder="Ví dụ: Vietcombank, BIDV, MB..."
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-[12px] font-black text-slate-500 uppercase tracking-widest block">Chi nhánh nạp tiền</label>
-                                    <input
-                                        type="text"
-                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-[14px] font-bold outline-none focus:border-uneti-blue focus:ring-4 focus:ring-uneti-blue/10 transition-all"
-                                        value={formData.bankBranch}
-                                        onChange={(e) => setFormData({ ...formData, bankBranch: e.target.value })}
-                                        placeholder="Ví dụ: Chi nhánh Hoàng Mai"
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-[12px] font-black text-slate-500 uppercase tracking-widest block">Tên Chủ tài khoản</label>
-                                    <input
-                                        type="text"
-                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-[14px] font-bold outline-none focus:border-uneti-blue focus:ring-4 focus:ring-uneti-blue/10 transition-all"
-                                        value={formData.bankAccountName}
-                                        onChange={(e) => setFormData({ ...formData, bankAccountName: e.target.value })}
-                                        placeholder="VI DU: NGUYEN VAN A"
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-[12px] font-black text-slate-500 uppercase tracking-widest block">Số Tài khoản</label>
-                                    <input
-                                        type="text"
-                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-[14px] font-bold outline-none focus:border-uneti-blue focus:ring-4 focus:ring-uneti-blue/10 transition-all"
-                                        value={formData.bankAccountNumber}
-                                        onChange={(e) => setFormData({ ...formData, bankAccountNumber: e.target.value })}
-                                        placeholder="Nhập số tài khoản..."
-                                    />
-                                </div>
-                            </div>
+                    {/* section: Học vấn & Đào tạo */}
+                    <div className="space-y-6">
+                        <ModalSectionHeader title="Thông tin học vấn & Đào tạo" color="bg-emerald-500" />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <ModalField label="Ngày nhập học" value={formatDate(student.admissionDate)} icon={Calendar} />
+                            <ModalField label="Cơ sở đào tạo" value={student.campus} icon={MapPinned} />
+                            <ModalField label="Hệ đào tạo" value={student.educationLevel} />
+                            <ModalField label="Loại hình đào tạo" value={student.educationType} />
+                            <ModalField label="Khóa học" value={student.intake} />
+                            <ModalField label="Lớp hành chính" value={student.adminClass?.code} />
+                            <ModalField label="Ngành học" value={student.major?.name} className="md:col-span-2" />
+                            <ModalField label="Chuyên ngành" value={student.specialization?.name} className="md:col-span-2" />
                         </div>
                     </div>
 
-                    <div className="flex justify-end pt-4">
-                        <button
-                            onClick={handleSave}
-                            disabled={saving}
-                            className="bg-uneti-blue text-white px-10 py-4 rounded-xl font-black uppercase tracking-wider text-[14px] shadow-lg shadow-uneti-blue/30 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0 flex items-center gap-2"
+                    {/* section: Chính sách & Đoàn thể */}
+                    <div className="space-y-6">
+                        <ModalSectionHeader title="Thông tin ưu tiên & Đoàn thể" color="bg-indigo-500" />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <ModalField label="Khu vực ưu tiên" value={student.region} />
+                            <ModalField label="Diện chính sách" value={student.policyBeneficiary || "Không"} />
+                            <ModalField label="Ngày vào Đoàn" value={formatDate(student.youthUnionDate)} />
+                            <ModalField label="Ngày vào Đảng" value={formatDate(student.partyDate)} />
+                        </div>
+                    </div>
+
+                    {/* section: Liên hệ & Địa chỉ (Editable) */}
+                    <div className="space-y-6">
+                        <ModalSectionHeader title="Thông tin liên hệ & Địa chỉ" color="bg-amber-600" />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <ModalInputField 
+                                label="Số điện thoại" 
+                                value={formData.phone} 
+                                onChange={(val: string) => setFormData({ ...formData, phone: val })}
+                                placeholder="09..."
+                                icon={Phone}
+                            />
+                            <ModalInputField 
+                                label="Email cá nhân" 
+                                value={formData.emailPersonal} 
+                                onChange={(val: string) => setFormData({ ...formData, emailPersonal: val })}
+                                placeholder="email@..."
+                                icon={Mail}
+                            />
+                            <ModalTextareaField 
+                                label="Nơi ở hiện nay (Tạm trú)" 
+                                value={formData.address} 
+                                onChange={(val: string) => setFormData({ ...formData, address: val })}
+                                placeholder="Địa chỉ tạm trú..."
+                            />
+                            <ModalTextareaField 
+                                label="Hộ khẩu thường trú" 
+                                value={formData.permanentAddress} 
+                                onChange={(val: string) => setFormData({ ...formData, permanentAddress: val })}
+                                placeholder="Địa chỉ thường trú..."
+                            />
+                        </div>
+                    </div>
+
+                    {/* section: Ngân hàng (Editable) */}
+                    <div className="space-y-6">
+                        <ModalSectionHeader title="Tài khoản thụ hưởng & Ngân hàng" color="bg-slate-900" />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <ModalInputField 
+                                label="Tên ngân hàng" 
+                                value={formData.bankName} 
+                                onChange={(val: string) => setFormData({ ...formData, bankName: val })}
+                                placeholder="Ví dụ: Vietcombank"
+                                icon={Landmark}
+                            />
+                            <ModalInputField 
+                                label="Chi nhánh ngân hàng" 
+                                value={formData.bankBranch} 
+                                onChange={(val: string) => setFormData({ ...formData, bankBranch: val })}
+                                placeholder="Ví dụ: Chi nhánh Hà Nội"
+                                icon={MapPinned}
+                            />
+                            <ModalInputField 
+                                label="Chủ tài khoản" 
+                                value={formData.bankAccountName} 
+                                onChange={(val: string) => setFormData({ ...formData, bankAccountName: val })}
+                                placeholder="HO TEN CHU TK"
+                                icon={User}
+                            />
+                            <ModalInputField 
+                                label="Số tài khoản" 
+                                value={formData.bankAccountNumber} 
+                                onChange={(val: string) => setFormData({ ...formData, bankAccountNumber: val })}
+                                placeholder="Số tài khoản..."
+                                icon={CreditCard}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Footer / Actions */}
+                    <div className="flex items-center justify-end gap-6 pt-4">
+                        <button 
+                            onClick={handleReset}
+                            className="text-[14px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
                         >
-                            {saving ? (
-                                <>
-                                    <Loader2 className="w-5 h-5 animate-spin" />
-                                    Đang lưu dữ liệu...
-                                </>
-                            ) : (
-                                <>
-                                    <Save className="w-5 h-5" />
-                                    Lưu Thay Đổi Thông Tin
-                                </>
+                            Hủy bỏ các thay đổi
+                        </button>
+                        <button 
+                            onClick={handleSaveTrigger}
+                            disabled={saving}
+                            className={cn(
+                                "flex items-center gap-2 px-10 py-5 bg-[#0F4C81] text-white rounded-2xl text-[14px] font-black uppercase tracking-widest transition-all",
+                                saving ? "opacity-50 cursor-not-allowed" : "hover:bg-blue-900 shadow-xl shadow-blue-900/20 active:scale-95"
                             )}
+                        >
+                            <Save size={18} />
+                            Xác nhận cập nhật hồ sơ
                         </button>
                     </div>
                 </div>
             </div>
+
+            {/* Password Confirm Modal */}
+            {isPasswordModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-300">
+                        <div className="px-8 py-6 flex justify-between items-center border-b border-slate-50">
+                            <h2 className="text-lg font-black text-slate-800 tracking-tight">Xác thực danh tính</h2>
+                            <button 
+                                onClick={() => setIsPasswordModalOpen(false)}
+                                className="w-8 h-8 rounded-full hover:bg-slate-50 flex items-center justify-center text-slate-400 transition-colors"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-8 space-y-6">
+                            <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-4">
+                                <Lock className="text-blue-600" size={28} />
+                            </div>
+                            <p className="text-sm font-medium text-slate-600 text-center leading-relaxed">
+                                Để bảo vệ thông tin cá nhân và tài chính, vui lòng nhập mật khẩu tài khoản của bạn để xác nhận cập nhật.
+                            </p>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mật khẩu của bạn</label>
+                                <div className="relative">
+                                    <input 
+                                        type="password"
+                                        className="w-full px-5 py-4 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold text-slate-800 outline-none focus:bg-white focus:ring-4 focus:ring-blue-600/10 transition-all border border-transparent focus:border-blue-600/20"
+                                        placeholder="••••••••"
+                                        value={confirmPassword}
+                                        onChange={(e) => setConfirmPassword(e.target.value)}
+                                        onKeyDown={(e) => e.key === "Enter" && executeSaveWithVerification()}
+                                        autoFocus
+                                    />
+                                    <Shield className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+                                </div>
+                                {authError && (
+                                    <p className="text-[11px] font-bold text-red-500 mt-2 pl-1 animate-bounce text-center">{authError}</p>
+                                )}
+                            </div>
+                            <div className="flex gap-4 pt-4">
+                                <button 
+                                    onClick={() => setIsPasswordModalOpen(false)}
+                                    className="flex-1 px-6 py-4 rounded-2xl text-[13px] font-black uppercase tracking-widest text-slate-400 hover:bg-slate-50 transition-all"
+                                >
+                                    Bỏ qua
+                                </button>
+                                <button 
+                                    disabled={verifyingPassword}
+                                    onClick={executeSaveWithVerification}
+                                    className="flex-1 px-6 py-4 bg-[#0F4C81] text-white rounded-2xl text-[13px] font-black uppercase tracking-widest hover:bg-blue-900 shadow-xl shadow-blue-900/10 transition-all flex items-center justify-center gap-2"
+                                >
+                                    {verifyingPassword ? <Loader2 size={16} className="animate-spin" /> : <Shield size={16} />}
+                                    {verifyingPassword ? "Đang kiểm tra..." : "Xác nhận ngay"}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

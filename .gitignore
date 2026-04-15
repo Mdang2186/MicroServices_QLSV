@@ -62,7 +62,79 @@ desktop.ini
 /coverage
 .nyc_output
 
+# ===== Temp / Debug / One-off scripts =====
+/tmp/
+tmp_*.js
+tmp_*.ts
+check_*.js
+check_*.ts
+cleanup_*.js
+debug_*.js
+debug_*.ts
+verify_*.js
+verify-*.js
+verify-*.ts
+compare_*.js
+compare_*.ts
+patch_*.js
+seed_*.js
+search_*.js
+test_*.js
+find_*.js
+merge_*.js
+fix_*.ts
+fix_*.py
+populate_*.ts
+research_*.ts
+audit_*.js
+restore_*.js
+reset_*.ts
+reset_*.js
+list_*.js
+get_*.js
+query_*.js
+deploy_*.js
+sync_*.js
+force_*.js
+read_*.js
+ready.js
+run_*.ts
+enhance*.ts
+upgrade_*.ts
+universal_*.ts
+fill_*.ts
+ensure_*.ts
+resolve_*.js
+deep_*.js
+sp.sql
+check-ports.js
+
+# ===== Output / Log files at root =====
+*_out.txt
+*_err.txt
+*_log.txt
+*_output.txt
+*_error.log
+*.log
+out.txt
+output.txt
+
+# ===== Backup / Data dumps =====
+grade_backup.json
+*_backup.json
+*.backup
+*_report.txt
+
+# ===== One-off SQL/Prisma files at root =====
+/*.sql
+/*.prisma
+!packages/database/prisma/schema.prisma
+
+# ===== PowerShell one-off scripts =====
+/*.ps1
+!start-infra.ps1
+
 # ===== Misc =====
 *.local
-verify-*.js
-check-ports.js
+/main
+temp_*.txt
