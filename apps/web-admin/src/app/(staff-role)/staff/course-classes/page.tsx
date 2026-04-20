@@ -24,8 +24,8 @@ import { vi } from "date-fns/locale";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
-import CourseClassDetailDrawer from "./components/CourseClassDetailDrawer";
-import CourseClassCreationWizard from "./components/CourseClassCreationWizard";
+import CourseClassDetailDrawer from "../courses/components/CourseClassDetailDrawer";
+import CourseClassCreationWizard from "../courses/components/CourseClassCreationWizard";
 
 function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
 

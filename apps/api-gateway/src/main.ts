@@ -36,3 +36,6 @@ async function bootstrap() {
   console.log(`Swagger UI is available at: ${await app.getUrl()}/api-docs`);
 }
 bootstrap();
+
+// Forced reload: 2026-04-18 02:45
+

@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import React from "react";
-import { getStudentUserId, readStudentSessionUser } from "@/lib/student-session";
+import { resolveCurrentStudentContext } from "@/lib/current-student";
 
 export default function AttendancePage() {
     const router = useRouter();
@@ -33,19 +33,17 @@ export default function AttendancePage() {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const user = readStudentSessionUser();
-                const userId = getStudentUserId(user);
-                if (!userId) return;
+                const context = await resolveCurrentStudentContext();
+                if (!context.studentId) return;
 
-                const studentData = await StudentService.getProfile(userId);
+                const studentData =
+                    context.profile ||
+                    (await StudentService.getProfileByStudentId(context.studentId).catch(() => null));
+                if (!studentData) return;
+
                 setStudent(studentData);
-
-                if (studentData.enrollments) {
-                    setEnrollments(studentData.enrollments);
-                } else {
-                    const enrollmentData = await StudentService.getEnrollments(studentData.id);
-                    setEnrollments(enrollmentData || []);
-                }
+                const enrollmentData = await StudentService.getEnrollments(context.studentId);
+                setEnrollments(enrollmentData || []);
             } catch (error) {
                 console.error("Failed to fetch attendance data:", error);
             } finally {

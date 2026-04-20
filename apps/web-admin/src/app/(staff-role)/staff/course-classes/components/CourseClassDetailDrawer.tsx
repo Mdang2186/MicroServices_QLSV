@@ -18,7 +18,8 @@ import {
   ChevronRight,
   ArrowRightLeft,
   Settings,
-  Activity
+  Activity,
+  CalendarPlus
 } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -50,7 +51,9 @@ export default function CourseClassDetailDrawer({
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [sessionLoading, setSessionLoading] = useState(false);
+  const [generatingLoader, setGeneratingLoader] = useState(false);
   const [movingSession, setMovingSession] = useState<any | null>(null);
+  const [addingSession, setAddingSession] = useState<any | null>(null);
 
   // --- Form State ---
   const [form, setForm] = useState({
@@ -104,22 +107,88 @@ export default function CourseClassDetailDrawer({
     }
   };
 
-  const handleMoveSession = async (sessionId: string, newDate: string, newShift: number) => {
+  const handleMoveSession = async (sessionId: string, newDate: string, newShift: number, newRoomId: string) => {
     setSessionLoading(true);
     try {
-      // In a real implementation, we'd have a specific endpoint for moving a single session
-      // or we update the session via the courses/sessions endpoint.
-      const res = await fetch(`/api/courses/sessions/${sessionId}`, {
+      const res = await fetch(`/api/courses/sessions/${sessionId}/reschedule`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({ date: newDate, startShift: newShift, endShift: newShift + 2 })
+        body: JSON.stringify({ 
+          date: newDate, 
+          startShift: newShift, 
+          endShift: newShift + 2,
+          roomId: newRoomId || movingSession?.roomId
+        })
       });
       if (res.ok) {
         fetchSessions();
         setMovingSession(null);
       } else {
         const err = await res.json();
-        alert(err.message || "Không thể dời lịch do có xung đột.");
+        alert(err.message || "Không thể dời lịch do có xung đột tài nguyên.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Đã xảy ra lỗi mạng khi dời lịch.");
+    } finally {
+      setSessionLoading(false);
+    }
+  };
+
+  const handleGenerateSessions = async () => {
+    if (!confirm("CẢNH BÁO: Thao tác này sẽ xóa toàn bộ lịch hiện tại và xếp lại từ đầu. Bạn có chắc chắn không?")) return;
+    setGeneratingLoader(true);
+    try {
+      const res = await fetch(`/api/courses/${courseClass.id}/generate-sessions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({
+          startDate: courseClass.semester?.startDate,
+          endDate: courseClass.semester?.endDate,
+          schedules: courseClass.schedules || [],
+          clearExisting: true
+        })
+      });
+      if (res.ok) {
+        fetchSessions();
+        alert("Đã hoàn tất tính toán và xếp lịch tự động.");
+      } else {
+        const err = await res.json();
+        alert(err.message || "Không thể tự động xếp lịch. Vui lòng kiểm tra lại cấu hình lớp.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Xảy ra lỗi hệ thống khi xếp lịch.");
+    } finally {
+      setGeneratingLoader(false);
+    }
+  };
+
+  const handleAddManualSession = async () => {
+    if (!addingSession.date || !addingSession.roomId) {
+       alert("Vui lòng nhập ngày và phòng học.");
+       return;
+    }
+    setSessionLoading(true);
+    try {
+      const res = await fetch(`/api/courses/${courseClass.id}/manual-session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({
+          date: addingSession.date,
+          startShift: addingSession.startShift || 1,
+          endShift: (addingSession.startShift || 1) + 2,
+          roomId: addingSession.roomId,
+          type: "EXTRA",
+          note: addingSession.note || "Học bù"
+        })
+      });
+      if (res.ok) {
+        fetchSessions();
+        setAddingSession(null);
+      } else {
+        const err = await res.json();
+        alert(err.message || "Cảnh báo: Lịch học bù trùng với lịch sinh viên/GV hoặc phòng đã kín.");
       }
     } catch (err) {
       console.error(err);
@@ -182,11 +251,23 @@ export default function CourseClassDetailDrawer({
           {/* --- SCHEDULE TAB --- */}
           {activeTab === "schedule" && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
+               <div className="flex items-center justify-between">
                  <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Danh sách buổi học định kỳ</h3>
-                 <button className="flex items-center gap-2 text-[10px] font-black text-uneti-blue hover:bg-blue-50 px-4 py-2 rounded-xl transition-all uppercase tracking-widest">
-                    <Zap size={14} /> Xếp lại lịch tự động
-                 </button>
+                 <div className="flex gap-2">
+                    <button 
+                      onClick={() => setAddingSession({ date: format(new Date(), "yyyy-MM-dd"), startShift: 1, roomId: "" })}
+                      className="flex items-center gap-2 text-[10px] font-black text-slate-500 hover:bg-slate-100 px-4 py-2 rounded-xl transition-all uppercase tracking-widest"
+                    >
+                        <CalendarPlus size={14} /> Thêm buổi bù
+                    </button>
+                    <button 
+                      onClick={handleGenerateSessions}
+                      disabled={generatingLoader}
+                      className="flex items-center gap-2 text-[10px] font-black text-uneti-blue hover:bg-blue-50 px-4 py-2 rounded-xl transition-all uppercase tracking-widest disabled:opacity-50"
+                    >
+                        {generatingLoader ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />} Xếp lại lịch tự động
+                    </button>
+                 </div>
               </div>
 
               {sessionLoading ? (
@@ -321,7 +402,7 @@ export default function CourseClassDetailDrawer({
                   </div>
                   <div>
                      <p className="text-[11px] font-black text-emerald-600 uppercase tracking-widest">Không phát hiện trùng lặp</p>
-                     <p className="text-[9px] font-bold text-slate-500 mt-0.5 uppercase tracking-widest leading-none">Tất cả {sessions.length} buổi học đều thỏa mãn tài nguyên giảng dạy</p>
+                     <p className="text-[9px] font-bold text-slate-500 mt-0.5 uppercase tracking-widest leading-none">Kiểm soát an toàn cho {sessions.length} buổi học qua Engine Xung đột</p>
                   </div>
                </div>
 
@@ -373,6 +454,19 @@ export default function CourseClassDetailDrawer({
 
                <div className="space-y-6">
                   <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block pl-2">Chọn phòng học mới</label>
+                    <select
+                      className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 text-[11px] font-black outline-none focus:ring-4 focus:ring-uneti-blue/5 transition-all appearance-none"
+                      defaultValue={movingSession.roomId || ""}
+                      onChange={e => setMovingSession({ ...movingSession, nextRoomId: e.target.value })}
+                    >
+                      <option value="">-- Giữ nguyên phòng --</option>
+                      {rooms.map(r => (
+                        <option key={r.id} value={r.id}>{r.name} - Sức chứa {r.capacity}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block pl-2">Chọn ngày học mới</label>
                     <input
                       type="date"
@@ -389,16 +483,21 @@ export default function CourseClassDetailDrawer({
                       onChange={e => setMovingSession({ ...movingSession, nextShift: parseInt(e.target.value) })}
                     >
                       <option value={1}>Ca 1 (Tiết 1-3)</option>
-                      <option value={2}>Ca 2 (Tiết 4-6)</option>
-                      <option value={3}>Ca 3 (Tiết 7-9)</option>
-                      <option value={4}>Ca 4 (Tiết 10-12)</option>
+                      <option value={4}>Ca 2 (Tiết 4-6)</option>
+                      <option value={7}>Ca 3 (Tiết 7-9)</option>
+                      <option value={10}>Ca 4 (Tiết 10-12)</option>
                     </select>
                   </div>
                </div>
 
                <div className="flex gap-3 mt-10">
                   <button
-                    onClick={() => handleMoveSession(movingSession.id, movingSession.nextDate || format(new Date(movingSession.date), "yyyy-MM-dd"), movingSession.nextShift || movingSession.startShift)}
+                    onClick={() => handleMoveSession(
+                        movingSession.id, 
+                        movingSession.nextDate || format(new Date(movingSession.date), "yyyy-MM-dd"), 
+                        movingSession.nextShift || movingSession.startShift,
+                        movingSession.nextRoomId || movingSession.roomId
+                    )}
                     className="flex-1 py-4 bg-uneti-blue text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-uneti-blue/20 hover:bg-slate-900 transition-all font-montserrat"
                   >
                     Xác nhận dời
@@ -413,6 +512,76 @@ export default function CourseClassDetailDrawer({
             </div>
           </div>
         )}
+         {/* --- ADDING SESSION DIALOG --- */}
+         {addingSession && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center p-8">
+            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setAddingSession(null)} />
+            <div className="relative w-full max-w-sm bg-white rounded-[40px] shadow-2xl p-10 animate-in zoom-in-95 duration-300">
+               <div className="flex flex-col items-center text-center gap-4 mb-8">
+                  <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-[24px] flex items-center justify-center">
+                    <CalendarPlus size={32} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black tracking-tight text-slate-900">Bố trí buổi học mới</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Dành cho việc học bù, phụ đạo</p>
+                  </div>
+               </div>
+
+               <div className="space-y-6">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block pl-2">Chọn phòng học</label>
+                    <select
+                      className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 text-[11px] font-black outline-none focus:ring-4 focus:ring-uneti-blue/5 transition-all appearance-none"
+                      defaultValue={addingSession.roomId}
+                      onChange={e => setAddingSession({ ...addingSession, roomId: e.target.value })}
+                    >
+                      <option value="">-- Chọn phòng --</option>
+                      {rooms.map(r => (
+                        <option key={r.id} value={r.id}>{r.name} - Sức chứa {r.capacity}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block pl-2">Ngày học</label>
+                    <input
+                      type="date"
+                      className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 text-[11px] font-black outline-none focus:ring-4 focus:ring-uneti-blue/5 transition-all"
+                      defaultValue={addingSession.date}
+                      onChange={e => setAddingSession({ ...addingSession, date: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block pl-2">Ca học</label>
+                    <select
+                      className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 text-[11px] font-black outline-none focus:ring-4 focus:ring-uneti-blue/5 transition-all appearance-none"
+                      defaultValue={addingSession.startShift}
+                      onChange={e => setAddingSession({ ...addingSession, startShift: parseInt(e.target.value) })}
+                    >
+                      <option value={1}>Ca 1 (Tiết 1-3)</option>
+                      <option value={4}>Ca 2 (Tiết 4-6)</option>
+                      <option value={7}>Ca 3 (Tiết 7-9)</option>
+                      <option value={10}>Ca 4 (Tiết 10-12)</option>
+                    </select>
+                  </div>
+               </div>
+
+               <div className="flex gap-3 mt-10">
+                  <button
+                    onClick={handleAddManualSession}
+                    className="flex-1 py-4 bg-emerald-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-emerald-500/20 hover:bg-slate-900 transition-all"
+                  >
+                    Xác nhận tạo
+                  </button>
+                  <button
+                    onClick={() => setAddingSession(null)}
+                    className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
+                  >
+                    Hủy bỏ
+                  </button>
+               </div>
+            </div>
+          </div>
+         )}
       </div>
 
       <style jsx>{`

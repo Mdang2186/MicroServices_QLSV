@@ -105,13 +105,7 @@ export default function StaffAttendancePage() {
 
     return (
         <div className="min-h-screen p-4 md:p-8 space-y-6 bg-[#fbfcfd]">
-            <CompactLecturerHeader 
-                userName={user?.fullName || "Cán bộ Quản lý"} 
-                userId={`CB-${user?.username || "UNETI"}`}
-                minimal={true}
-                title={`Xem điểm danh: ${courseClass?.subject?.name || "Lớp học phần"}`}
-                onSemesterChange={() => {}} 
-            />
+
 
             {/* Compact Action Bar */}
             <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm flex items-center justify-between gap-6">
@@ -124,8 +118,8 @@ export default function StaffAttendancePage() {
                         {courseClass?.name || courseClass?.subject?.name}
                     </h1>
                     <div className="flex items-center gap-3 mt-1 underline decoration-uneti-blue/20 decoration-2 underline-offset-4">
-                         <span className="text-[10px] font-black text-slate-400 uppercase italic leading-none">{courseClass?.code}</span>
-                         <span className="text-[10px] font-black text-emerald-600 uppercase tracking-tighter leading-none">{courseClass?.semester?.name}</span>
+                        <span className="text-[10px] font-black text-slate-400 uppercase italic leading-none">{courseClass?.code}</span>
+                        <span className="text-[10px] font-black text-emerald-600 uppercase tracking-tighter leading-none">{courseClass?.semester?.name}</span>
                     </div>
                 </div>
 
@@ -133,8 +127,8 @@ export default function StaffAttendancePage() {
                     <div className="relative" onClick={(e) => { e.stopPropagation(); setIsCalendarOpen(!isCalendarOpen); }}>
                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5 text-right">Ngày học</p>
                         <div className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 px-2 py-1 rounded-lg transition-all border border-transparent hover:border-slate-100">
-                             <CalendarIcon size={14} className="text-indigo-500" />
-                             <span className="text-sm font-black text-slate-800">{new Date(date).toLocaleDateString('vi-VN')}</span>
+                            <CalendarIcon size={14} className="text-indigo-500" />
+                            <span className="text-sm font-black text-slate-800">{new Date(date).toLocaleDateString('vi-VN')}</span>
                         </div>
                         {isCalendarOpen && (
                             <div className="absolute top-full right-0 mt-2 z-50 bg-white border border-slate-200 rounded-2xl shadow-2xl p-4 w-[280px]" onClick={e => e.stopPropagation()}>
@@ -158,7 +152,7 @@ export default function StaffAttendancePage() {
                                         const hasSchedule = isDateInSchedule(d);
 
                                         return (
-                                            <div 
+                                            <div
                                                 key={i}
                                                 onClick={() => { if (isCurrentMonth) { setDate(toYYYYMMDD(d)); setIsCalendarOpen(false); } }}
                                                 className={cn(

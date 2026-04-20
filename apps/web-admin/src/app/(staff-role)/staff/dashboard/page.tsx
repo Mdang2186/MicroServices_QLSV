@@ -37,10 +37,12 @@ export default function StaffDashboard() {
     const [user, setUser] = useState<any>(null);
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [selectedSemesterId, setSelectedSemesterId] = useState<string>("");
+    const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+    const [keyword, setKeyword] = useState<string>("");
     const [selectedFacultyId, setSelectedFacultyId] = useState<string>("all");
     const [selectedMajorId, setSelectedMajorId] = useState<string>("all");
     const [selectedIntake, setSelectedIntake] = useState<string>("all");
+    const [quickAction, setQuickAction] = useState<string | null>(null);
 
     useEffect(() => {
         const c = Cookies.get("admin_user");
@@ -50,7 +52,8 @@ export default function StaffDashboard() {
     useEffect(() => {
         setLoading(true);
         const params = new URLSearchParams();
-        if (selectedSemesterId) params.append("semesterId", selectedSemesterId);
+        if (selectedDate) params.append("date", selectedDate);
+        if (keyword) params.append("keyword", keyword);
         if (selectedFacultyId && selectedFacultyId !== "all") params.append("facultyId", selectedFacultyId);
         if (selectedMajorId && selectedMajorId !== "all") params.append("majorId", selectedMajorId);
         if (selectedIntake && selectedIntake !== "all") params.append("intake", selectedIntake);
@@ -71,7 +74,7 @@ export default function StaffDashboard() {
                 setStats(null);
             })
             .finally(() => setLoading(false));
-    }, [selectedSemesterId, selectedFacultyId, selectedMajorId, selectedIntake]);
+    }, [selectedDate, keyword, selectedFacultyId, selectedMajorId, selectedIntake]);
 
     if (loading && !stats) return (
         <div className="flex min-h-screen items-center justify-center bg-[#fbfcfd]">
@@ -120,35 +123,13 @@ export default function StaffDashboard() {
                 roleName="Phòng Đào Tạo" 
                 userName={`Cán bộ ${user?.username || "Giáo vụ"}`} 
                 userId={`Mã Cán bộ: ${user?.id?.substring(0, 8).toUpperCase() || "STAFF-01"}`}
-                onSemesterChange={setSelectedSemesterId}
+                onDateChange={setSelectedDate}
+                onKeywordChange={setKeyword}
                 onFacultyChange={setSelectedFacultyId}
                 onMajorChange={setSelectedMajorId}
                 onIntakeChange={setSelectedIntake}
+                onQuickAction={setQuickAction}
             />
-
-            {/* Quick Actions Bar */}
-            <div className="flex flex-wrap items-center gap-4 bg-white p-3 rounded-2xl border border-slate-100 shadow-sm transition-all hover:shadow-md">
-                <div className="flex items-center gap-3 px-4 border-r border-slate-100">
-                    <div className="w-8 h-8 rounded-lg bg-uneti-blue-light flex items-center justify-center text-uneti-blue">
-                        <Zap size={16} />
-                    </div>
-                    <span className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Thao tác nhanh</span>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                    <Link href="/staff/students" className="px-4 py-2 rounded-xl bg-slate-50 text-[10px] font-black text-slate-600 uppercase tracking-widest hover:bg-uneti-blue hover:text-white transition-all flex items-center gap-2">
-                         Quản lý Sinh viên
-                    </Link>
-                    <Link href="/staff/courses" className="px-4 py-2 rounded-xl bg-slate-50 text-[10px] font-black text-slate-600 uppercase tracking-widest hover:bg-uneti-blue hover:text-white transition-all flex items-center gap-2">
-                         Quản lý Lớp học
-                    </Link>
-                    <Link href="/staff/grades" className="px-4 py-2 rounded-xl bg-slate-50 text-[10px] font-black text-slate-600 uppercase tracking-widest hover:bg-uneti-blue hover:text-white transition-all flex items-center gap-2">
-                         Quản lý Điểm
-                    </Link>
-                    <Link href="/staff/lecturers" className="px-4 py-2 rounded-xl bg-slate-50 text-[10px] font-black text-slate-600 uppercase tracking-widest hover:bg-uneti-blue hover:text-white transition-all flex items-center gap-2">
-                         Giảng viên
-                    </Link>
-                </div>
-            </div>
 
             <StatsGrid stats={staffStats} />
 
@@ -175,7 +156,7 @@ export default function StaffDashboard() {
                                 { icon: Users, text: "Sinh viên", href: "/staff/students", color: "text-blue-500", bg: "bg-blue-50", desc: "Hồ sơ, Khen thưởng" },
                                 { icon: CreditCard, text: "Học phí", href: "/staff/tuition", color: "text-emerald-500", bg: "bg-emerald-50", desc: "Quản lý nộp phí" },
                                 { icon: Building2, text: "Khoa/Viện", href: "/staff/departments", color: "text-orange-500", bg: "bg-orange-50", desc: "Cơ cấu tổ chức" },
-                                { icon: LayoutDashboard, text: "Học phần", href: "/staff/subjects", color: "text-cyan-500", bg: "bg-cyan-50", desc: "Chương trình đào tạo" },
+                                { icon: LayoutDashboard, text: "Học phần", href: "/staff/courses", color: "text-cyan-500", bg: "bg-cyan-50", desc: "Lớp học phần vận hành" },
                             ].map((item, i) => (
                                 <Link key={i} href={item.href} className="p-6 rounded-[28px] border border-slate-50 bg-slate-50/30 hover:bg-white hover:border-uneti-blue/10 hover:shadow-xl transition-all group flex flex-col items-center text-center">
                                     <div className={`w-14 h-14 rounded-2xl ${item.bg} ${item.color} flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform mb-4`}>
@@ -219,20 +200,13 @@ export default function StaffDashboard() {
                 {/* Right Column: Business Insights (1/3) */}
                 <div className="space-y-8 h-full">
                     <OperationalInsights stats={stats?.operationalStats} />
-                    <FacultyChart 
-                        title="Phân bổ Ghi danh Khoa" 
-                        data={stats?.operationalStats?.facultyDistribution || []} 
-                        iconType="building" 
-                        totalLabel="Tổng Sinh viên Học kỳ" 
-                    />
                     
-                    {/* Additional charts section */}
                     <div className="grid grid-cols-1 gap-8">
                         <FacultyChart 
                             title="Tỷ lệ Sinh viên theo Ngành" 
                             data={stats?.majorDistribution || []} 
                             iconType="compass"
-                            totalLabel="Tổng Mọi Học kỳ" 
+                            totalLabel="Học kỳ đang chọn" 
                         />
                         <FacultyChart 
                             title="Tỷ lệ Sinh viên theo Khóa" 
@@ -240,9 +214,59 @@ export default function StaffDashboard() {
                             iconType="graduation"
                             totalLabel="Phân bổ qua các Khóa" 
                         />
+                         <FacultyChart 
+                            title="Xếp loại GPA Sinh viên" 
+                            data={stats?.gpaDistribution || []} 
+                            iconType="graduation" 
+                            totalLabel="Tất cả dữ liệu" 
+                        />
+                        <FacultyChart 
+                            title="Tình trạng Học tập" 
+                            data={stats?.statusDistribution || []} 
+                            iconType="building" 
+                            totalLabel="Theo bộ lọc" 
+                        />
                     </div>
                 </div>
             </div>
+
+            {/* QUICK ACTION POPUPS */}
+            {quickAction && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setQuickAction(null)} />
+                    <div className="relative w-full max-w-lg bg-white rounded-[40px] shadow-2xl p-10 animate-in zoom-in-95 duration-300">
+                        <div className="flex flex-col items-center text-center gap-4 mb-8">
+                            <div className="w-16 h-16 bg-uneti-blue/10 text-uneti-blue rounded-[24px] flex items-center justify-center">
+                                <Zap size={32} />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-black tracking-tight text-slate-900 uppercase">
+                                    Thao tác: {quickAction === 'student' ? 'Thêm sinh viên' : 'Tạo lớp học'}
+                                </h3>
+                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1">Nghiệp vụ thực hiện nhanh tại Dashboard</p>
+                            </div>
+                        </div>
+                        
+                        <div className="space-y-4">
+                            <p className="text-[12px] font-medium text-slate-500 text-center px-10">Bạn đang thực hiện thao tác nhanh. Để quản lý chi tiết hơn, vui lòng truy cập danh mục nghiệp vụ tương ứng.</p>
+                            <div className="flex gap-4 mt-6">
+                                <Link 
+                                    href={quickAction === 'student' ? '/staff/students' : '/staff/courses'}
+                                    className="flex-1 py-4 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest text-center hover:bg-uneti-blue transition-all"
+                                >
+                                    Vào trang quản lý
+                                </Link>
+                                <button 
+                                    onClick={() => setQuickAction(null)}
+                                    className="flex-1 py-4 bg-slate-100 text-slate-400 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all font-montserrat"
+                                >
+                                    Hủy bỏ
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

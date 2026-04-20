@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 const DEFAULT_PERIODS_PER_SESSION = 3;
 const DEFAULT_SESSIONS_PER_WEEK = 1;
+const DEFAULT_TEACHING_WEEKS = 15;
 const CLASS_SHIFTS = [1, 4, 7, 10, 13];
 
 @Injectable()
@@ -78,12 +79,208 @@ export class SemesterPlanService {
       .replace(/[^A-Z0-9]/g, '');
   }
 
+  private countTeachingWeeks(startDate?: Date | string | null, endDate?: Date | string | null) {
+    if (!startDate || !endDate) {
+      return DEFAULT_TEACHING_WEEKS;
+    }
+
+    const start = this.toDateOnly(startDate);
+    const end = this.toDateOnly(endDate);
+    if (end < start) {
+      return DEFAULT_TEACHING_WEEKS;
+    }
+
+    const diffDays =
+      Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+    return Math.max(1, Math.ceil(diffDays / 7));
+  }
+
+  private isPracticeOrientedSubject(
+    subject: any,
+    rawTheoryPeriods: number,
+    rawPracticePeriods: number,
+  ) {
+    const normalizedExamType = this.normalizeComparable(subject?.examType);
+    const normalizedExamForm = this.normalizeComparable(subject?.examForm);
+    const hasPracticeSignal =
+      rawPracticePeriods > rawTheoryPeriods ||
+      (rawPracticePeriods > 0 && rawTheoryPeriods <= 0) ||
+      normalizedExamType.includes('THUCHANH') ||
+      normalizedExamForm.includes('THUCHANH') ||
+      normalizedExamForm.includes('MAYTINH');
+
+    return hasPracticeSignal;
+  }
+
+  private getTargetTotalPeriods(subject: any, input: any = {}) {
+    const credits = this.positive(subject?.credits);
+    const creditPeriods = credits * 15;
+    
+    const explicitTheoryPeriods = this.numericOrNull(input?.theoryPeriods);
+    const explicitPracticePeriods = this.numericOrNull(input?.practicePeriods);
+    
+    const rawTheoryPeriods =
+      explicitTheoryPeriods !== null
+        ? Math.max(explicitTheoryPeriods, 0)
+        : this.positive(
+            subject?.theoryPeriods,
+            this.positive(subject?.theoryHours),
+          );
+    const rawPracticePeriods =
+      explicitPracticePeriods !== null
+        ? Math.max(explicitPracticePeriods, 0)
+        : this.positive(
+            subject?.practicePeriods,
+            this.positive(subject?.practiceHours),
+          );
+          
+    const rawTotalPeriods = rawTheoryPeriods + rawPracticePeriods;
+
+    // If we have credits, the total MUST be credits * 15
+    if (credits > 0) {
+      return creditPeriods;
+    }
+
+    return Math.max(rawTotalPeriods, 15);
+  }
+
+  private normalizePeriodSplit(subject: any, input: any = {}) {
+    const targetTotalPeriods = this.getTargetTotalPeriods(subject, input);
+    const explicitTheoryPeriods = this.numericOrNull(input?.theoryPeriods);
+    const explicitPracticePeriods = this.numericOrNull(input?.practicePeriods);
+    const rawTheoryPeriods =
+      explicitTheoryPeriods !== null
+        ? Math.max(explicitTheoryPeriods, 0)
+        : this.positive(
+            subject?.theoryPeriods,
+            this.positive(subject?.theoryHours),
+          );
+    const rawPracticePeriods =
+      explicitPracticePeriods !== null
+        ? Math.max(explicitPracticePeriods, 0)
+        : this.positive(
+            subject?.practicePeriods,
+            this.positive(subject?.practiceHours),
+          );
+    const rawTotalPeriods = rawTheoryPeriods + rawPracticePeriods;
+    const practiceOriented = this.isPracticeOrientedSubject(
+      subject,
+      rawTheoryPeriods,
+      rawPracticePeriods,
+    );
+
+    if (rawTheoryPeriods > 0 && rawPracticePeriods > 0) {
+      const theoryRatio = rawTheoryPeriods / rawTotalPeriods;
+      const theoryPeriods = Math.round(targetTotalPeriods * theoryRatio);
+      return {
+        theoryPeriods,
+        practicePeriods: Math.max(targetTotalPeriods - theoryPeriods, 0),
+      };
+    }
+
+    if (practiceOriented) {
+      return {
+        theoryPeriods: 0,
+        practicePeriods: targetTotalPeriods,
+      };
+    }
+
+    return {
+      theoryPeriods: targetTotalPeriods,
+      practicePeriods: 0,
+    };
+  }
+
+  private resolveSessionsPerWeek(
+    totalPeriods: number,
+    configuredSessionsPerWeek: number | null,
+  ) {
+    if (totalPeriods <= 0) {
+      return 0;
+    }
+
+    const configured =
+      configuredSessionsPerWeek !== null
+        ? Math.max(configuredSessionsPerWeek, 0)
+        : 0;
+
+    return configured || DEFAULT_SESSIONS_PER_WEEK;
+  }
+
+  private resolvePeriodsPerSession(
+    blocks: Array<{ totalPeriods: number; sessionsPerWeek: number }>,
+    configuredPeriodsPerSession: number | null,
+    availableWeeks: number,
+  ) {
+    const configured =
+      configuredPeriodsPerSession !== null
+        ? Math.max(configuredPeriodsPerSession, 0)
+        : 0;
+
+    const minimumPeriodsPerSession = blocks.reduce((max, block) => {
+      if (block.totalPeriods <= 0 || block.sessionsPerWeek <= 0) {
+        return max;
+      }
+
+      const requiredPeriods = Math.ceil(
+        block.totalPeriods /
+          Math.max(availableWeeks, 1) /
+          Math.max(block.sessionsPerWeek, 1),
+      );
+
+      return Math.max(max, requiredPeriods);
+    }, 0);
+
+    return Math.max(configured || 0, minimumPeriodsPerSession || 1, 1);
+  }
+
+  private shouldUsePracticeRoom(
+    subject: any,
+    theoryPeriods: number,
+    practicePeriods: number,
+  ) {
+    if (practicePeriods <= 0) {
+      return false;
+    }
+
+    if (theoryPeriods <= 0) {
+      return true;
+    }
+
+    if (practicePeriods > theoryPeriods) {
+      return true;
+    }
+
+    if (practicePeriods === theoryPeriods) {
+      return this.isPracticeOrientedSubject(
+        subject,
+        theoryPeriods,
+        practicePeriods,
+      );
+    }
+
+    return false;
+  }
+
   private normalizeMajorCode(value?: string | null) {
     const raw = `${value || ''}`
       .trim()
       .toUpperCase()
       .replace(/^M[_-]/, '');
     return this.normalizeComparable(raw);
+  }
+
+  private isSplitAdminClassCode(code?: string | null, cohort?: string | null) {
+    const normalizedCode = `${code || ''}`.trim().toUpperCase();
+    const normalizedCohort = `${cohort || ''}`.trim().toUpperCase();
+    if (!normalizedCode || !normalizedCohort) {
+      return false;
+    }
+
+    return (
+      normalizedCode.startsWith(`${normalizedCohort}-`) ||
+      normalizedCode.startsWith(`${normalizedCohort}_`)
+    );
   }
 
   private shuffle<T>(array: T[]): T[] {
@@ -93,6 +290,14 @@ export class SemesterPlanService {
       [result[i], result[j]] = [result[j], result[i]];
     }
     return result;
+  }
+
+  private chunkArray<T>(items: T[], size = 50) {
+    const chunks: T[][] = [];
+    for (let index = 0; index < items.length; index += size) {
+      chunks.push(items.slice(index, index + size));
+    }
+    return chunks;
   }
 
   private buildCourseClassCode(
@@ -109,15 +314,13 @@ export class SemesterPlanService {
   }
 
   private parseConceptualSemester(semester: any) {
-    const candidates = [semester?.code, semester?.name];
+    const candidates = [semester?.name, semester?.code];
     for (const candidate of candidates) {
       const normalized = `${candidate || ''}`;
-      const match =
-        normalized.match(/HK\s*([1-8])/i) ||
-        normalized.match(/H[OỌ]C\s*K[YỲ]\s*([1-8])/i) ||
-        normalized.match(/SEMESTER\s*([1-8])/i);
-      if (match) {
-        return Number(match[1]);
+      // Look for "HKx - Năm y" pattern which is cohort-relative
+      const cohortRelativeMatch = normalized.match(/HK\s*([1-8])\s*-\s*Năm\s*(\d)/i);
+      if (cohortRelativeMatch) {
+        return Number(cohortRelativeMatch[1]);
       }
     }
     return null;
@@ -214,191 +417,109 @@ export class SemesterPlanService {
     return message.includes(hint.toLowerCase());
   }
 
-  private snapshotFromSubject(subject: any, input: any = {}) {
-    const explicitTheoryPeriods = this.numericOrNull(input.theoryPeriods);
-    const explicitPracticePeriods = this.numericOrNull(input.practicePeriods);
-    const rawTheoryPeriods =
-      explicitTheoryPeriods !== null
-        ? Math.max(explicitTheoryPeriods, 0)
-        : this.positive(
-            subject?.theoryPeriods,
-            this.positive(subject?.theoryHours),
-          );
-    const rawPracticePeriods =
-      explicitPracticePeriods !== null
-        ? Math.max(explicitPracticePeriods, 0)
-        : this.positive(
-            subject?.practicePeriods,
-            this.positive(subject?.practiceHours),
-          );
-    const hasManualSplit =
-      input.theoryPeriods !== undefined ||
-      input.practicePeriods !== undefined ||
-      input.theorySessionsPerWeek !== undefined ||
-      input.practiceSessionsPerWeek !== undefined;
-    const combinedPeriods =
-      rawTheoryPeriods + rawPracticePeriods ||
-      Math.max(this.positive(subject?.credits) * 15, 15);
-    const hasConfiguredSessions =
-      this.positive(input.theorySessionsPerWeek) > 0 ||
-      this.positive(input.practiceSessionsPerWeek) > 0;
-    const hasConfiguredPeriodsPerSession =
-      this.positive(input.periodsPerSession) > 0;
-    const defaultPeriodsPerWeek = Math.max(1, Math.ceil(combinedPeriods / 15));
-    const theoryPeriods = hasManualSplit
-      ? rawTheoryPeriods || combinedPeriods
-      : combinedPeriods;
-    const practicePeriods = hasManualSplit ? rawPracticePeriods : 0;
+  private snapshotFromSubject(
+    subject: any,
+    input: any = {},
+    options: { availableWeeks?: number } = {},
+  ) {
+    const availableWeeks = this.positive(
+      options.availableWeeks,
+      DEFAULT_TEACHING_WEEKS,
+    );
+    const { theoryPeriods, practicePeriods } = this.normalizePeriodSplit(
+      subject,
+      input,
+    );
+    const theoryConfig = this.numericOrNull(
+      input.theorySessionsPerWeek ?? input.sessionsPerWeek,
+    );
+    const practiceConfig = this.numericOrNull(
+      input.practiceSessionsPerWeek ?? input.sessionsPerWeek,
+    );
+    const theorySessionsPerWeek = this.resolveSessionsPerWeek(
+      theoryPeriods,
+      theoryConfig,
+    );
+    const practiceSessionsPerWeek = this.resolveSessionsPerWeek(
+      practicePeriods,
+      practiceConfig,
+    );
+    const combinedSessionsPerWeek = Math.max(
+      theorySessionsPerWeek,
+      practiceSessionsPerWeek,
+      DEFAULT_SESSIONS_PER_WEEK,
+    );
+    const combinedTotalPeriods = theoryPeriods + practicePeriods;
 
+    const periodsPerSession = this.resolvePeriodsPerSession(
+      [
+        {
+          totalPeriods: combinedTotalPeriods,
+          sessionsPerWeek: combinedSessionsPerWeek,
+        },
+      ],
+      this.numericOrNull(input.periodsPerSession),
+      availableWeeks,
+    );
+
+    // CRITICAL: Capping total periods at the target split to prevent semester-duration inflation
     return {
       theoryPeriods,
       practicePeriods,
-      theorySessionsPerWeek: (() => {
-        const explicit = this.numericOrNull(input.theorySessionsPerWeek);
-        if (explicit !== null) return Math.max(explicit, 0);
-        const configured = this.positive(
-          input.theorySessionsPerWeek,
-          this.positive(subject?.theorySessionsPerWeek),
-        );
-        if (configured > 0) return configured;
-        return theoryPeriods > 0 ? DEFAULT_SESSIONS_PER_WEEK : 0;
-      })(),
-      practiceSessionsPerWeek: (() => {
-        const explicit = this.numericOrNull(input.practiceSessionsPerWeek);
-        if (explicit !== null) return Math.max(explicit, 0);
-        const configured = this.positive(
-          input.practiceSessionsPerWeek,
-          this.positive(subject?.practiceSessionsPerWeek),
-        );
-        if (!hasManualSplit && theoryPeriods > 0) return 0;
-        if (configured > 0) return configured;
-        return theoryPeriods > 0 ? 0 : practicePeriods > 0 ? 1 : 0;
-      })(),
-      periodsPerSession: this.positive(
-        input.periodsPerSession,
-        hasConfiguredSessions || hasConfiguredPeriodsPerSession
-          ? DEFAULT_PERIODS_PER_SESSION
-          : defaultPeriodsPerWeek,
-      ),
+      theorySessionsPerWeek,
+      practiceSessionsPerWeek,
+      periodsPerSession,
     };
   }
 
   private buildScheduleBlocks(snapshot: any, subject: any, fallback?: any) {
-    const explicitTheoryPeriods = this.numericOrNull(snapshot?.theoryPeriods);
-    const explicitPracticePeriods = this.numericOrNull(
-      snapshot?.practicePeriods,
+    const normalized = this.snapshotFromSubject(
+      subject,
+      { ...(fallback || {}), ...(snapshot || {}) },
+      { availableWeeks: fallback?.availableWeeks },
     );
-    let theoryPeriods =
-      explicitTheoryPeriods !== null
-        ? Math.max(explicitTheoryPeriods, 0)
-        : this.positive(
-            subject?.theoryPeriods,
-            this.positive(subject?.theoryHours),
-          );
-    let practicePeriods =
-      explicitPracticePeriods !== null
-        ? Math.max(explicitPracticePeriods, 0)
-        : this.positive(
-            subject?.practicePeriods,
-            this.positive(subject?.practiceHours),
-          );
-    const normalizedExamType = this.normalizeComparable(subject?.examType);
-    const normalizedExamForm = this.normalizeComparable(subject?.examForm);
-    const requiresDedicatedPracticeBlock =
-      normalizedExamType.includes('THUCHANH') ||
-      normalizedExamForm.includes('THUCHANH') ||
-      normalizedExamForm.includes('MAYTINH');
-    const periodsPerSession = this.positive(
-      snapshot?.periodsPerSession,
-      this.positive(fallback?.periodsPerSession, DEFAULT_PERIODS_PER_SESSION),
+    const totalPeriods =
+      normalized.theoryPeriods + normalized.practicePeriods;
+    if (totalPeriods <= 0) {
+      return [];
+    }
+    const sessionsPerWeek = Math.max(
+      normalized.theorySessionsPerWeek,
+      normalized.practiceSessionsPerWeek,
+      DEFAULT_SESSIONS_PER_WEEK,
+    );
+    const usePracticeRoom = this.shouldUsePracticeRoom(
+      subject,
+      normalized.theoryPeriods,
+      normalized.practicePeriods,
     );
 
-    if (!theoryPeriods && !practicePeriods) {
-      theoryPeriods = Math.max(this.positive(subject?.credits) * 15, 15);
-    }
-
-    const shouldMergePracticeIntoMainBlock =
-      theoryPeriods > 0 && practicePeriods > 0;
-
-    if (shouldMergePracticeIntoMainBlock) {
-      theoryPeriods += practicePeriods;
-      practicePeriods = 0;
-    }
-
-    const explicitTheorySessionsPerWeek = this.numericOrNull(
-      snapshot?.theorySessionsPerWeek,
-    );
-    const explicitPracticeSessionsPerWeek = this.numericOrNull(
-      snapshot?.practiceSessionsPerWeek,
-    );
-    let theorySessionsPerWeek =
-      explicitTheorySessionsPerWeek !== null
-        ? Math.max(explicitTheorySessionsPerWeek, 0)
-        : this.positive(
-            subject?.theorySessionsPerWeek,
-            this.positive(fallback?.theorySessionsPerWeek),
-          );
-    let practiceSessionsPerWeek =
-      explicitPracticeSessionsPerWeek !== null
-        ? Math.max(explicitPracticeSessionsPerWeek, 0)
-        : this.positive(
-            subject?.practiceSessionsPerWeek,
-            this.positive(fallback?.practiceSessionsPerWeek),
-          );
-
-    if (!theorySessionsPerWeek && !practiceSessionsPerWeek) {
-      if (theoryPeriods > 0) {
-        theorySessionsPerWeek = DEFAULT_SESSIONS_PER_WEEK;
-      } else if (practicePeriods > 0) {
-        practiceSessionsPerWeek = DEFAULT_SESSIONS_PER_WEEK;
-      }
-    }
-
-    if (theoryPeriods > 0 && practicePeriods === 0) {
-      theorySessionsPerWeek =
-        theorySessionsPerWeek || DEFAULT_SESSIONS_PER_WEEK;
-      practiceSessionsPerWeek = 0;
-    }
-
-    const blocks: any[] = [];
-    if (theoryPeriods > 0) {
-      blocks.push({
-        type:
-          requiresDedicatedPracticeBlock && !snapshot?.theoryPeriods
-            ? 'PRACTICE'
-            : 'THEORY',
-        roomType:
-          requiresDedicatedPracticeBlock && !snapshot?.theoryPeriods
-            ? 'PRACTICE'
-            : 'THEORY',
-        totalPeriods: theoryPeriods,
-        sessionsPerWeek: theorySessionsPerWeek || DEFAULT_SESSIONS_PER_WEEK,
-        periodsPerSession,
-      });
-    }
-
-    if (practicePeriods > 0) {
-      blocks.push({
-        type: 'PRACTICE',
-        roomType: 'PRACTICE',
-        totalPeriods: practicePeriods,
-        sessionsPerWeek: practiceSessionsPerWeek || DEFAULT_SESSIONS_PER_WEEK,
-        periodsPerSession,
-      });
-    }
-
-    return blocks;
+    return [
+      {
+        type: usePracticeRoom ? 'PRACTICE' : 'THEORY',
+        roomType: usePracticeRoom ? 'PRACTICE' : 'THEORY',
+        totalPeriods,
+        sessionsPerWeek,
+        periodsPerSession: normalized.periodsPerSession,
+      },
+    ];
   }
 
-  private getCourseClassTotals(snapshot: any, subject: any) {
-    const blocks = this.buildScheduleBlocks(snapshot, subject);
+  private getCourseClassTotals(
+    snapshot: any,
+    subject: any,
+    options: { availableWeeks?: number } = {},
+  ) {
+    const blocks = this.buildScheduleBlocks(snapshot, subject, options);
+    const primaryBlock = blocks[0];
     return {
       totalPeriods: blocks.reduce((sum, block) => sum + block.totalPeriods, 0),
-      sessionsPerWeek:
-        blocks.reduce((sum, block) => sum + block.sessionsPerWeek, 0) ||
+      sessionsPerWeek: this.positive(
+        primaryBlock?.sessionsPerWeek ?? snapshot?.sessionsPerWeek,
         DEFAULT_SESSIONS_PER_WEEK,
+      ),
       periodsPerSession: this.positive(
-        snapshot?.periodsPerSession,
+        primaryBlock?.periodsPerSession ?? snapshot?.periodsPerSession,
         DEFAULT_PERIODS_PER_SESSION,
       ),
     };
@@ -488,31 +609,34 @@ export class SemesterPlanService {
       throw new NotFoundException('Học kỳ không tồn tại.');
     }
 
-    const direct = this.parseConceptualSemester(semester);
-    if (direct) {
-      return { semester, conceptualSemester: direct };
-    }
-
     const cohortMeta = await this.getCohort(cohort);
     if (!cohortMeta) {
-      return { semester, conceptualSemester: 1 };
+      const direct = this.parseConceptualSemester(semester);
+      return { semester, conceptualSemester: direct || 1 };
     }
 
+    // Always calculate based on dates if cohort info is available
     const startDate = this.toDateOnly(semester.startDate);
     const month = startDate.getMonth() + 1;
-    let conceptualSemester = 1;
+    let calculatedSemester = 1;
 
     if (month >= 7) {
-      conceptualSemester =
+      calculatedSemester =
         (startDate.getFullYear() - cohortMeta.startYear) * 2 + 1;
     } else {
-      conceptualSemester =
+      calculatedSemester =
         (startDate.getFullYear() - cohortMeta.startYear - 1) * 2 + 2;
     }
 
+    // Refinement: If name explicitly says HKx - Năm y, use it if it's within range
+    const namedSemester = this.parseConceptualSemester(semester);
+    const finalSemester = (namedSemester && Math.abs(namedSemester - calculatedSemester) <= 1) 
+      ? namedSemester 
+      : calculatedSemester;
+
     return {
       semester,
-      conceptualSemester: Math.min(Math.max(conceptualSemester, 1), 8),
+      conceptualSemester: Math.min(Math.max(finalSemester, 1), 8),
     };
   }
 
@@ -679,7 +803,10 @@ export class SemesterPlanService {
 
     const exact = await load([majorId]);
     if (exact.length > 0) {
-      return exact;
+      const splitPreferred = exact.filter((adminClass) =>
+        this.isSplitAdminClassCode(adminClass.code, cohort),
+      );
+      return splitPreferred.length > 0 ? splitPreferred : exact;
     }
 
     const equivalentMajorIds = await this.resolveEquivalentMajorIds(majorId);
@@ -693,7 +820,10 @@ export class SemesterPlanService {
         `AdminClass fallback by equivalent major ids for major ${majorId}, cohort ${cohort}: ${equivalentMajorIds.join(', ')}`,
       );
     }
-    return fallback;
+    const splitPreferred = fallback.filter((adminClass) =>
+      this.isSplitAdminClassCode(adminClass.code, cohort),
+    );
+    return splitPreferred.length > 0 ? splitPreferred : fallback;
   }
 
   private async listCandidateLecturers(
@@ -1072,13 +1202,19 @@ export class SemesterPlanService {
       });
     }
 
+    const semesterStart = this.toDateOnly(context.semester.startDate);
+    const semesterEnd = this.toDateOnly(context.semester.endDate);
     const blocks = this.buildScheduleBlocks(
       context.snapshot,
       context.subject,
-      options.fallback,
+      {
+        ...(options.fallback || {}),
+        availableWeeks: this.countTeachingWeeks(
+          context.semester?.startDate,
+          context.semester?.endDate,
+        ),
+      },
     );
-    const semesterStart = this.toDateOnly(context.semester.startDate);
-    const semesterEnd = this.toDateOnly(context.semester.endDate);
     const plannedSessions: any[] = [];
     let persistedCount = 0;
     const issues: string[] = [];
@@ -1486,13 +1622,36 @@ export class SemesterPlanService {
       item.subject.code,
       item.adminClass.code,
     );
-    const totals = this.getCourseClassTotals(item, item.subject);
+    const availableWeeks = this.countTeachingWeeks(
+      item.semesterPlan?.semester?.startDate,
+      item.semesterPlan?.semester?.endDate,
+    );
+    const totals = this.getCourseClassTotals(item, item.subject, {
+      availableWeeks,
+    });
     const maxSlots = Math.max(item.expectedStudentCount + 5, 10);
 
-    const existing = await prisma.courseClass.findUnique({
-      where: { code },
-      include: { adminClasses: true },
-    });
+    const existing =
+      (item.generatedCourseClassId
+        ? await prisma.courseClass.findFirst({
+            where: { id: item.generatedCourseClassId },
+            include: { adminClasses: true },
+          })
+        : null) ||
+      (await prisma.courseClass.findFirst({
+        where: {
+          semesterId: item.semesterPlan.semesterId,
+          subjectId: item.subjectId,
+          adminClasses: {
+            some: { id: item.adminClassId },
+          },
+        },
+        include: { adminClasses: true },
+      })) ||
+      (await prisma.courseClass.findUnique({
+        where: { code },
+        include: { adminClasses: true },
+      }));
 
     const data = {
       subjectId: item.subjectId,
@@ -1948,6 +2107,14 @@ export class SemesterPlanService {
   async generateExecution(semesterId: string, majorId: string, cohort: string) {
     try {
       await this.ensureCohortExists(cohort);
+      const semester = await this.prisma.semester.findFirst({
+        where: { id: semesterId },
+        select: { startDate: true, endDate: true },
+      });
+      const availableWeeks = this.countTeachingWeeks(
+        semester?.startDate,
+        semester?.endDate,
+      );
       const publishedTemplate = await this.getLatestPublishedTemplate(
         majorId,
         cohort,
@@ -2047,6 +2214,11 @@ export class SemesterPlanService {
                     plannedLecturerLoad,
                   );
             const lecturerId = lecturer?.id || existingItem?.lecturerId || null;
+            const defaultSnapshot = this.buildDefaultStudySnapshot(
+              templateItem.subject,
+              templateItem,
+              availableWeeks,
+            );
 
             const data = {
               lecturerId,
@@ -2056,11 +2228,12 @@ export class SemesterPlanService {
                 : lecturerId
                   ? 'READY'
                   : 'DRAFT',
-              theoryPeriods: templateItem.theoryPeriods,
-              practicePeriods: templateItem.practicePeriods,
-              theorySessionsPerWeek: templateItem.theorySessionsPerWeek,
-              practiceSessionsPerWeek: templateItem.practiceSessionsPerWeek,
-              periodsPerSession: templateItem.periodsPerSession,
+              theoryPeriods: defaultSnapshot.theoryPeriods,
+              practicePeriods: defaultSnapshot.practicePeriods,
+              theorySessionsPerWeek: defaultSnapshot.theorySessionsPerWeek,
+              practiceSessionsPerWeek:
+                defaultSnapshot.practiceSessionsPerWeek,
+              periodsPerSession: defaultSnapshot.periodsPerSession,
             };
 
             if (existingItem) {
@@ -2241,6 +2414,15 @@ export class SemesterPlanService {
       return;
     }
 
+    const semester = await this.prisma.semester.findFirst({
+      where: { id: semesterId },
+      select: { startDate: true, endDate: true },
+    });
+    const availableWeeks = this.countTeachingWeeks(
+      semester?.startDate,
+      semester?.endDate,
+    );
+
     const plannedLoad = new Map<
       string,
       { itemCount: number; totalPeriods: number }
@@ -2250,6 +2432,7 @@ export class SemesterPlanService {
       const totalPeriods = this.getCourseClassTotals(
         item,
         item.subject,
+        { availableWeeks },
       ).totalPeriods;
       this.addPlannedLecturerLoad(plannedLoad, item.lecturerId, totalPeriods);
     }
@@ -2257,7 +2440,9 @@ export class SemesterPlanService {
     let dirty = false;
 
     for (const item of items) {
-      const snapshot = this.snapshotFromSubject(item.subject, item);
+      const snapshot = this.snapshotFromSubject(item.subject, item, {
+        availableWeeks,
+      });
       const missingScheduleConfig =
         !this.positive(item.theoryPeriods) &&
         !this.positive(item.practicePeriods);
@@ -2279,6 +2464,7 @@ export class SemesterPlanService {
           const totalPeriods = this.getCourseClassTotals(
             snapshot,
             item.subject,
+            { availableWeeks },
           ).totalPeriods;
           this.addPlannedLecturerLoad(
             plannedLoad,
@@ -2343,7 +2529,9 @@ export class SemesterPlanService {
           missingSessionPlan ||
           missingPeriodsPerSession)
       ) {
-        const totals = this.getCourseClassTotals(snapshot, item.subject);
+        const totals = this.getCourseClassTotals(snapshot, item.subject, {
+          availableWeeks,
+        });
         await this.prisma.courseClass.update({
           where: { id: item.generatedCourseClassId },
           data: {
@@ -2479,6 +2667,7 @@ export class SemesterPlanService {
       createdClasses: 0,
       enrolledCount: 0,
       scheduledClasses: 0,
+      alreadyScheduledClasses: 0,
       conflicts: [] as string[],
       executionId: execution.id,
     };
@@ -2590,6 +2779,10 @@ export class SemesterPlanService {
               scheduleResult.scheduledSessions > 0
             ) {
               summary.scheduledClasses += 1;
+            }
+
+            if (scheduleResult.alreadyScheduled) {
+              summary.alreadyScheduledClasses += 1;
             }
 
             if (
@@ -2710,6 +2903,255 @@ export class SemesterPlanService {
     };
   }
 
+  private buildDefaultStudySnapshot(
+    subject: any,
+    input: any = {},
+    availableWeeks = DEFAULT_TEACHING_WEEKS,
+  ) {
+    return this.snapshotFromSubject(
+      subject,
+      {
+        theoryPeriods: input?.theoryPeriods,
+        practicePeriods: input?.practicePeriods,
+        periodsPerSession: input?.periodsPerSession,
+        theorySessionsPerWeek: null,
+        practiceSessionsPerWeek: null,
+        sessionsPerWeek: null,
+      },
+      { availableWeeks },
+    );
+  }
+
+  private async syncOneSessionPerWeekDefaults(semesterId?: string) {
+    const subjects = await this.prisma.subject.findMany({
+      select: {
+        id: true,
+        credits: true,
+        theoryHours: true,
+        practiceHours: true,
+        theoryPeriods: true,
+        practicePeriods: true,
+        theorySessionsPerWeek: true,
+        practiceSessionsPerWeek: true,
+        examType: true,
+        examForm: true,
+      },
+    });
+    const subjectUpdates = subjects
+      .map((subject) => {
+        const snapshot = this.buildDefaultStudySnapshot(subject);
+        const needsUpdate =
+          Number(subject.theoryHours || 0) !== snapshot.theoryPeriods ||
+          Number(subject.practiceHours || 0) !== snapshot.practicePeriods ||
+          Number(subject.theoryPeriods || 0) !== snapshot.theoryPeriods ||
+          Number(subject.practicePeriods || 0) !== snapshot.practicePeriods ||
+          Number(subject.theorySessionsPerWeek || 0) !==
+            snapshot.theorySessionsPerWeek ||
+          Number(subject.practiceSessionsPerWeek || 0) !==
+            snapshot.practiceSessionsPerWeek;
+
+        if (!needsUpdate) {
+          return null;
+        }
+
+        return this.prisma.subject.update({
+          where: { id: subject.id },
+          data: {
+            theoryHours: snapshot.theoryPeriods,
+            practiceHours: snapshot.practicePeriods,
+            theoryPeriods: snapshot.theoryPeriods,
+            practicePeriods: snapshot.practicePeriods,
+            theorySessionsPerWeek: snapshot.theorySessionsPerWeek,
+            practiceSessionsPerWeek: snapshot.practiceSessionsPerWeek,
+          },
+        });
+      })
+      .filter(Boolean);
+
+    for (const batch of this.chunkArray(subjectUpdates)) {
+      if (!batch.length) continue;
+      try {
+        await this.prisma.$transaction(batch as any[]);
+      } catch (error) {
+        this.logger.error(
+          `Failed to sync subject normalization batch: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    this.logger.log('Syncing template items normalization...');
+    const templateItems = await this.prismaCompat.trainingPlanTemplateItem.findMany(
+      {
+        include: {
+          subject: true,
+        },
+      },
+    );
+    const templateItemUpdates = templateItems
+      .map((item: any) => {
+        const snapshot = this.buildDefaultStudySnapshot(item.subject, item);
+        const needsUpdate =
+          Number(item.theoryPeriods || 0) !== snapshot.theoryPeriods ||
+          Number(item.practicePeriods || 0) !== snapshot.practicePeriods ||
+          Number(item.theorySessionsPerWeek || 0) !==
+            snapshot.theorySessionsPerWeek ||
+          Number(item.practiceSessionsPerWeek || 0) !==
+            snapshot.practiceSessionsPerWeek ||
+          Number(item.periodsPerSession || 0) !== snapshot.periodsPerSession;
+
+        if (!needsUpdate) {
+          return null;
+        }
+
+        return this.prismaCompat.trainingPlanTemplateItem.update({
+          where: { id: item.id },
+          data: {
+            theoryPeriods: snapshot.theoryPeriods,
+            practicePeriods: snapshot.practicePeriods,
+            theorySessionsPerWeek: snapshot.theorySessionsPerWeek,
+            practiceSessionsPerWeek: snapshot.practiceSessionsPerWeek,
+            periodsPerSession: snapshot.periodsPerSession,
+          },
+        });
+      })
+      .filter(Boolean);
+
+    for (const batch of this.chunkArray(templateItemUpdates)) {
+      if (!batch.length) continue;
+      try {
+        await this.prismaCompat.$transaction(batch as any[]);
+      } catch (error) {
+        this.logger.error(
+          `Failed to sync template items normalization batch: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    this.logger.log('Syncing execution items normalization...');
+    const executionItems = await this.prismaCompat.semesterPlanItem.findMany({
+      where: semesterId ? { semesterPlan: { semesterId } } : undefined,
+      include: {
+        subject: true,
+        semesterPlan: {
+          include: {
+            semester: {
+              select: {
+                startDate: true,
+                endDate: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    const executionItemUpdates = executionItems
+      .map((item: any) => {
+        const availableWeeks = this.countTeachingWeeks(
+          item?.semesterPlan?.semester?.startDate,
+          item?.semesterPlan?.semester?.endDate,
+        );
+        const snapshot = this.buildDefaultStudySnapshot(
+          item.subject,
+          item,
+          availableWeeks,
+        );
+        const needsUpdate =
+          Number(item.theoryPeriods || 0) !== snapshot.theoryPeriods ||
+          Number(item.practicePeriods || 0) !== snapshot.practicePeriods ||
+          Number(item.theorySessionsPerWeek || 0) !==
+            snapshot.theorySessionsPerWeek ||
+          Number(item.practiceSessionsPerWeek || 0) !==
+            snapshot.practiceSessionsPerWeek ||
+          Number(item.periodsPerSession || 0) !== snapshot.periodsPerSession;
+
+        if (!needsUpdate) {
+          return null;
+        }
+
+        return this.prismaCompat.semesterPlanItem.update({
+          where: { id: item.id },
+          data: {
+            theoryPeriods: snapshot.theoryPeriods,
+            practicePeriods: snapshot.practicePeriods,
+            theorySessionsPerWeek: snapshot.theorySessionsPerWeek,
+            practiceSessionsPerWeek: snapshot.practiceSessionsPerWeek,
+            periodsPerSession: snapshot.periodsPerSession,
+          },
+        });
+      })
+      .filter(Boolean);
+
+    for (const batch of this.chunkArray(executionItemUpdates)) {
+      if (!batch.length) continue;
+      await this.prisma.$transaction(batch as any[]);
+    }
+
+    return {
+      updatedSubjects: subjectUpdates.length,
+      updatedTemplateItems: templateItemUpdates.length,
+      updatedExecutionItems: executionItemUpdates.length,
+    };
+  }
+
+  private async clearStudySessions(prisma: any, semesterId?: string) {
+    const studySessionWhere = {
+      ...(semesterId ? { semesterId } : {}),
+      type: { not: 'EXAM' },
+    };
+    const sessions = await prisma.classSession.findMany({
+      where: studySessionWhere,
+      select: { id: true },
+    });
+
+    if (!sessions.length) {
+      return {
+        clearedAttendances: 0,
+        clearedSessions: 0,
+      };
+    }
+
+    let clearedAttendances = 0;
+    for (const batch of this.chunkArray(
+      sessions.map((session: any) => session.id),
+      200,
+    )) {
+      // FIX: Delete attendances instead of setting sessionId to null (which fails if NOT NULL)
+      const result = await prisma.attendance.deleteMany({
+        where: { sessionId: { in: batch } },
+      });
+      clearedAttendances += result.count || 0;
+    }
+
+    const deleted = await prisma.classSession.deleteMany({
+      where: studySessionWhere,
+    });
+
+    return {
+      clearedAttendances,
+      clearedSessions: deleted.count || 0,
+    };
+  }
+
+  private compactExecutionResponse(execution: any) {
+    if (!execution) {
+      return null;
+    }
+
+    return {
+      id: execution.id,
+      semesterId: execution.semesterId,
+      majorId: execution.majorId,
+      cohort: execution.cohort,
+      templateId: execution.templateId,
+      templateVersion: execution.templateVersion,
+      conceptualSemester: execution.conceptualSemester,
+      status: execution.status,
+      executedAt: execution.executedAt,
+      createdAt: execution.createdAt,
+      updatedAt: execution.updatedAt,
+    };
+  }
+
   async executeExecution(id: string) {
     try {
       const result = await this.executeExecutionInternal(id, {
@@ -2722,6 +3164,7 @@ export class SemesterPlanService {
       );
       return {
         ...result,
+        execution: this.compactExecutionResponse(result.execution),
         gradeInitialization,
       };
     } catch (error) {
@@ -2748,9 +3191,103 @@ export class SemesterPlanService {
       );
       return {
         ...result,
+        execution: this.compactExecutionResponse(result.execution),
         gradeInitialization,
       };
     } catch (error) {
+      if (this.isTrainingPlanStorageError(error)) {
+        this.throwTrainingPlanStorageError(error);
+      }
+      throw error;
+    }
+  }
+
+  async resetStudySchedules(semesterId?: string) {
+    this.logger.log(`Starting resetStudySchedules for semesterId: ${semesterId || 'ALL'}`);
+    try {
+      this.logger.log('Normalizing study defaults...');
+      const normalization = await this.syncOneSessionPerWeekDefaults(
+        semesterId,
+      );
+
+      this.logger.log('Clearing existing study sessions...');
+      const cleared = await this.clearStudySessions(this.prisma, semesterId);
+      this.logger.log(`Cleared ${cleared.clearedSessions} sessions and ${cleared.clearedAttendances} attendances.`);
+
+      const executions = await this.prismaCompat.semesterPlan.findMany({
+        where: {
+          ...(semesterId ? { semesterId } : {}),
+          items: {
+            some: {
+              generatedCourseClassId: { not: null },
+            },
+          },
+        },
+        select: {
+          id: true,
+          semesterId: true,
+        },
+        orderBy: [{ semesterId: 'asc' }, { updatedAt: 'asc' }],
+      });
+
+      this.logger.log(`Found ${executions.length} plans to rebuild.`);
+
+      const conflicts: string[] = [];
+      let rebuiltExecutions = 0;
+      let rebuiltClasses = 0;
+      let initializedGrades = 0;
+
+      for (const execution of executions) {
+        try {
+          this.logger.log(`Rebuilding plan execution: ${execution.id}`);
+          const result = await this.executeExecutionInternal(execution.id, {
+            createSchedules: true,
+            clearExistingSchedules: false,
+            markExecuted: true,
+          });
+          const gradeInitialization =
+            await this.initializeGradesForCourseClasses(result.execution);
+          rebuiltExecutions += 1;
+          rebuiltClasses += Number(result?.summary?.scheduledClasses || 0);
+          initializedGrades += Number(
+            gradeInitialization?.createdGrades || 0,
+          );
+          if (result?.summary?.conflicts?.length) {
+            conflicts.push(...result.summary.conflicts);
+          }
+        } catch (error) {
+          this.logger.error(`Error rebuilding execution ${execution.id}: ${error.message}`);
+          conflicts.push(
+            `Không thể dựng lại lịch cho execution ${execution.id}: ${(error as Error).message}`,
+          );
+        }
+      }
+
+      this.logger.log('Counting orphan classes...');
+      const orphanCourseClasses = await this.prisma.courseClass.count({
+        where: {
+          ...(semesterId ? { semesterId } : {}),
+          generatedPlanItems: {
+            none: {},
+          },
+        },
+      });
+
+      this.logger.log('Reset process completed.');
+      return {
+        status: conflicts.length ? 'partial' : 'success',
+        semesterId: semesterId || null,
+        normalization,
+        ...cleared,
+        rebuiltExecutions,
+        totalExecutions: executions.length,
+        rebuiltClasses,
+        initializedGrades,
+        orphanCourseClasses,
+        conflicts,
+      };
+    } catch (error) {
+      this.logger.error(`Reset process failed critically: ${error.message}`, error.stack);
       if (this.isTrainingPlanStorageError(error)) {
         this.throwTrainingPlanStorageError(error);
       }
@@ -3195,6 +3732,348 @@ export class SemesterPlanService {
     });
   }
 
+  async deleteExecutionClass(classId: string) {
+    const courseClass = await this.prisma.courseClass.findUnique({
+      where: { id: classId },
+    });
+
+    if (!courseClass) {
+      throw new NotFoundException(
+        `Không tìm thấy lớp học phần với ID ${classId}`,
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const existingGrades = await tx.grade.findMany({
+        where: { courseClassId: classId },
+        select: {
+          id: true,
+          isLocked: true,
+          attendanceScore: true,
+          totalScore10: true,
+          examScore1: true,
+          examScore2: true,
+          finalScore1: true,
+          finalScore2: true,
+        },
+      });
+
+      const hasProtectedGrades = existingGrades.some((grade) => {
+        return (
+          grade.isLocked === true ||
+          grade.attendanceScore !== null ||
+          grade.totalScore10 !== null ||
+          grade.examScore1 !== null ||
+          grade.examScore2 !== null ||
+          grade.finalScore1 !== null ||
+          grade.finalScore2 !== null
+        );
+      });
+
+      if (hasProtectedGrades) {
+        throw new BadRequestException(
+          `Lớp ${courseClass.code} đã có điểm hoặc đã khóa điểm, không thể xóa để làm lại.`,
+        );
+      }
+
+      const linkedItems = await tx.semesterPlanItem.findMany({
+        where: { generatedCourseClassId: classId },
+        select: {
+          id: true,
+          lecturerId: true,
+          subject: { select: { credits: true } },
+          subjectId: true,
+          adminClassId: true,
+          semesterPlanId: true,
+          theoryPeriods: true,
+          practicePeriods: true,
+          theorySessionsPerWeek: true,
+          practiceSessionsPerWeek: true,
+          periodsPerSession: true,
+        },
+      });
+
+      // 1. Unlink from SemesterPlanItems
+      await tx.semesterPlanItem.updateMany({
+        where: { generatedCourseClassId: classId },
+        data: {
+          generatedCourseClassId: null,
+        },
+      });
+
+      // 2. Cleanup sessions and attendances (attendances are onDelete: NoAction)
+      const sessions = await tx.classSession.findMany({
+        where: { courseClassId: classId },
+        select: { id: true },
+      });
+      const sessionIds = sessions.map((s) => s.id);
+      if (sessionIds.length > 0) {
+        await tx.attendance.deleteMany({
+          where: { sessionId: { in: sessionIds } },
+        });
+      }
+
+      await tx.classSession.deleteMany({
+        where: { courseClassId: classId },
+      });
+
+      // 3. Cleanup exam assignments linked to grades/class
+      const grades = await tx.grade.findMany({
+        where: { courseClassId: classId },
+        select: { id: true },
+      });
+      const gradeIds = grades.map((grade) => grade.id);
+
+      if (gradeIds.length > 0) {
+        await tx.examStudentAssignment.deleteMany({
+          where: {
+            OR: [{ courseClassId: classId }, { gradeId: { in: gradeIds } }],
+          },
+        });
+      }
+
+      await tx.grade.deleteMany({
+        where: { courseClassId: classId },
+      });
+
+      // 4. Cleanup Enrollments
+      await tx.enrollment.deleteMany({
+        where: { courseClassId: classId },
+      });
+
+      // 5. Cleanup TeachingPlans and Schedules
+      const teachingPlans = await tx.teachingPlan.findMany({
+        where: { courseClassId: classId },
+        select: { id: true },
+      });
+      const tpIds = teachingPlans.map((tp) => tp.id);
+      if (tpIds.length > 0) {
+        await tx.classSchedule.deleteMany({
+          where: { planId: { in: tpIds } },
+        });
+        await tx.teachingPlan.deleteMany({
+          where: { courseClassId: classId },
+        });
+      }
+
+      // 6. Reset item defaults after class removal
+      for (const item of linkedItems) {
+        const semesterPlan = await tx.semesterPlan.findFirst({
+          where: { id: item.semesterPlanId },
+          include: {
+            semester: {
+              select: {
+                startDate: true,
+                endDate: true,
+              },
+            },
+          },
+        });
+        const subject = await tx.subject.findFirst({
+          where: { id: item.subjectId },
+        });
+
+        if (!subject || !semesterPlan?.semester) {
+          continue;
+        }
+
+        const availableWeeks = this.countTeachingWeeks(
+          semesterPlan.semester.startDate,
+          semesterPlan.semester.endDate,
+        );
+        const snapshot = this.buildDefaultStudySnapshot(
+          subject,
+          item,
+          availableWeeks,
+        );
+
+        await tx.semesterPlanItem.update({
+          where: { id: item.id },
+          data: {
+            theoryPeriods: snapshot.theoryPeriods,
+            practicePeriods: snapshot.practicePeriods,
+            theorySessionsPerWeek: snapshot.theorySessionsPerWeek,
+            practiceSessionsPerWeek: snapshot.practiceSessionsPerWeek,
+            periodsPerSession: snapshot.periodsPerSession,
+            status: item.lecturerId ? 'READY' : 'DRAFT',
+          },
+        });
+      }
+
+      // 7. Delete the class itself
+      const deletedClass = await tx.courseClass.delete({
+        where: { id: classId },
+      });
+
+      const affectedPlanIds = [
+        ...new Set(linkedItems.map((item) => item.semesterPlanId).filter(Boolean)),
+      ];
+      for (const semesterPlanId of affectedPlanIds) {
+        const statuses = await tx.semesterPlanItem.findMany({
+          where: { semesterPlanId },
+          select: { status: true },
+        });
+        await tx.semesterPlan.update({
+          where: { id: semesterPlanId },
+          data: { status: this.derivePlanStatus(statuses) },
+        });
+      }
+
+      return deletedClass;
+    });
+  }
+
+  async resetExecutionClasses(executionId: string) {
+    const execution = await this.prismaCompat.semesterPlan.findFirst({
+      where: { id: executionId },
+      include: {
+        semester: {
+          select: {
+            startDate: true,
+            endDate: true,
+          },
+        },
+        items: {
+          include: {
+            subject: true,
+            adminClass: {
+              include: {
+                students: {
+                  where: { status: 'STUDYING' },
+                  select: { id: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!execution) {
+      throw new NotFoundException('Semester plan không tồn tại.');
+    }
+
+    const template = await this.getLatestPublishedTemplate(
+      execution.majorId,
+      execution.cohort,
+    );
+    const desiredAdminClassIds = new Set(
+      (
+        await this.getAdminClassesForExecution(
+          execution.majorId,
+          execution.cohort,
+        )
+      ).map((adminClass) => adminClass.id),
+    );
+    const desiredSubjectIds = new Set(
+      (template?.items || [])
+        .filter(
+          (item: any) =>
+            item.conceptualSemester === execution.conceptualSemester,
+        )
+        .map((item: any) => item.subjectId),
+    );
+
+    const generatedClassIds = [
+      ...new Set(
+        (execution.items || [])
+          .map((item: any) => `${item.generatedCourseClassId || ''}`.trim())
+          .filter(Boolean),
+      ),
+    ] as string[];
+
+    let removedClasses = 0;
+    const protectedClassIds = new Set<string>();
+    const skippedProtectedClasses: string[] = [];
+    for (const classId of generatedClassIds) {
+      try {
+        await this.deleteExecutionClass(classId);
+        removedClasses += 1;
+      } catch (error: any) {
+        const message = `${error?.message || error}`;
+        if (message.includes('không thể xóa để làm lại')) {
+          protectedClassIds.add(classId);
+          skippedProtectedClasses.push(message);
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    const availableWeeks = this.countTeachingWeeks(
+      execution?.semester?.startDate,
+      execution?.semester?.endDate,
+    );
+
+    const removableItemIds = (execution.items || [])
+      .filter(
+        (item: any) =>
+          !protectedClassIds.has(`${item.generatedCourseClassId || ''}`.trim()) &&
+          (
+            (desiredSubjectIds.size > 0 &&
+              !desiredSubjectIds.has(item.subjectId)) ||
+            (desiredAdminClassIds.size > 0 &&
+              !desiredAdminClassIds.has(item.adminClassId))
+          ),
+      )
+      .map((item: any) => item.id);
+
+    await this.prisma.$transaction(async (tx) => {
+      if (removableItemIds.length > 0) {
+        await tx.semesterPlanItem.deleteMany({
+          where: { id: { in: removableItemIds } },
+        });
+      }
+
+      for (const item of execution.items || []) {
+        if (removableItemIds.includes(item.id)) {
+          continue;
+        }
+
+        const snapshot = this.buildDefaultStudySnapshot(
+          item.subject,
+          item,
+          availableWeeks,
+        );
+
+        await tx.semesterPlanItem.update({
+          where: { id: item.id },
+          data: {
+            generatedCourseClassId: null,
+            expectedStudentCount: item.adminClass?.students?.length || 0,
+            theoryPeriods: snapshot.theoryPeriods,
+            practicePeriods: snapshot.practicePeriods,
+            theorySessionsPerWeek: snapshot.theorySessionsPerWeek,
+            practiceSessionsPerWeek: snapshot.practiceSessionsPerWeek,
+            periodsPerSession: snapshot.periodsPerSession,
+            status: item.lecturerId ? 'READY' : 'DRAFT',
+          },
+        });
+      }
+
+      const statuses = await tx.semesterPlanItem.findMany({
+        where: { semesterPlanId: execution.id },
+        select: { status: true },
+      });
+      await tx.semesterPlan.update({
+        where: { id: execution.id },
+        data: {
+          status: this.derivePlanStatus(statuses),
+          executedAt: null,
+        },
+      });
+    });
+
+    return {
+      execution: await this.getExecution(execution.id),
+      removedClasses,
+      removedItems: removableItemIds.length,
+      keptItems:
+        (execution.items || []).length - removableItemIds.length,
+      skippedProtectedClasses,
+    };
+  }
+
   async automateScheduling(
     semesterId: string,
     config: { periodsPerSession?: number; sessionsPerWeek?: number } = {},
@@ -3217,6 +4096,10 @@ export class SemesterPlanService {
 
     const failures: string[] = [];
     let scheduledClasses = 0;
+    const availableWeeks = this.countTeachingWeeks(
+      semester?.startDate,
+      semester?.endDate,
+    );
 
     for (const courseClass of classes) {
       try {
@@ -3250,7 +4133,10 @@ export class SemesterPlanService {
             },
             {
               clearExisting: false,
-              fallback: config,
+              fallback: {
+                ...config,
+                availableWeeks,
+              },
             },
           ),
         );

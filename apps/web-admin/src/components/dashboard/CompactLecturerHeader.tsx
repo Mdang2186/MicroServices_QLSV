@@ -63,6 +63,8 @@ interface CompactLecturerHeaderProps {
     onSemesterChange: (id: string) => void;
     selectedSemesterId?: string;
     semesterOptions?: Semester[];
+    hideSemester?: boolean;
+    semesterFilter?: "past-current" | "all";
 }
 
 export function CompactLecturerHeader({
@@ -73,13 +75,18 @@ export function CompactLecturerHeader({
     onSemesterChange,
     selectedSemesterId: selectedSemesterIdProp,
     semesterOptions: semesterOptionsProp,
+    hideSemester = false,
+    semesterFilter = "past-current",
 }: CompactLecturerHeaderProps) {
     const [semesters, setSemesters] = useState<Semester[]>([]);
     const [selectedSemesterId, setSelectedSemesterId] = useState<string>("");
 
     const fetchSemesters = async () => {
         if (semesterOptionsProp?.length) {
-            const filteredSemesters = semesterOptionsProp.filter(isPastOrCurrentSemester);
+            const filteredSemesters =
+                semesterFilter === "all"
+                    ? semesterOptionsProp
+                    : semesterOptionsProp.filter(isPastOrCurrentSemester);
             const safeSemesters = filteredSemesters.length > 0 ? filteredSemesters : semesterOptionsProp;
             setSemesters(safeSemesters);
             const current =
@@ -98,9 +105,12 @@ export function CompactLecturerHeader({
             const r = await fetch("/api/semesters");
             const data = await r.json();
             if (Array.isArray(data)) {
-                const filteredSemesters = data.filter((semester: Semester) =>
-                    isPastOrCurrentSemester(semester),
-                );
+                const filteredSemesters =
+                    semesterFilter === "all"
+                        ? data
+                        : data.filter((semester: Semester) =>
+                            isPastOrCurrentSemester(semester),
+                        );
                 const safeSemesters = filteredSemesters.length > 0 ? filteredSemesters : data;
                 setSemesters(safeSemesters);
                 const today = new Date();
@@ -187,27 +197,29 @@ export function CompactLecturerHeader({
                 </div>
             )}
 
-            <div className="flex items-center gap-3 self-end md:self-center">
-                <div className="relative">
-                    <select 
-                        value={selectedSemesterId}
-                        onChange={(e) => handleSemesterChange(e.target.value)}
-                        className="min-w-[280px] appearance-none bg-slate-50 pl-9 pr-10 py-2.5 rounded-xl border border-slate-100 text-[11px] font-black text-slate-600 hover:border-uneti-blue focus:outline-none focus:ring-2 focus:ring-uneti-blue/10 transition-all cursor-pointer shadow-sm"
-                    >
-                        {semesters.map(s => (
-                            <option key={s.selectionKey || s.id} value={s.selectionKey || s.id}>
-                                {formatSemesterOptionLabel(s)}{s.isCurrent ? " ★" : ""}
-                            </option>
-                        ))}
-                    </select>
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-uneti-blue">
-                        <CalendarDays size={14} />
-                    </div>
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                        <ChevronRight size={14} className="rotate-90" />
+            {!hideSemester && (
+                <div className="flex items-center gap-3 self-end md:self-center">
+                    <div className="relative">
+                        <select 
+                            value={selectedSemesterId}
+                            onChange={(e) => handleSemesterChange(e.target.value)}
+                            className="min-w-[280px] appearance-none bg-slate-50 pl-9 pr-10 py-2.5 rounded-xl border border-slate-100 text-[11px] font-black text-slate-600 hover:border-uneti-blue focus:outline-none focus:ring-2 focus:ring-uneti-blue/10 transition-all cursor-pointer shadow-sm"
+                        >
+                            {semesters.map(s => (
+                                <option key={s.selectionKey || s.id} value={s.selectionKey || s.id}>
+                                    {formatSemesterOptionLabel(s)}{s.isCurrent ? " ★" : ""}
+                                </option>
+                            ))}
+                        </select>
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-uneti-blue">
+                            <CalendarDays size={14} />
+                        </div>
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <ChevronRight size={14} className="rotate-90" />
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 }

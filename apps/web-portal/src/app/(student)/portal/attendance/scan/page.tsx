@@ -7,21 +7,22 @@ import { Html5QrcodeScanner, Html5QrcodeScanType } from "html5-qrcode";
 import { ArrowLeft, CheckCircle2, XCircle, Camera, Loader2, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { io, Socket } from "socket.io-client";
-import { getStudentProfileId, readStudentSessionUser } from "@/lib/student-session";
+import { resolveCurrentStudentContext } from "@/lib/current-student";
 
 export default function QRScannerPage() {
     const router = useRouter();
     const [scanResult, setScanResult] = useState<{ success: boolean; message: string } | null>(null);
     const [isScanning, setIsScanning] = useState(true);
-    const [user, setUser] = useState<any>(null);
+    const [studentId, setStudentId] = useState("");
 
     useEffect(() => {
-        const sessionUser = readStudentSessionUser();
-        if (sessionUser) setUser(sessionUser);
+        resolveCurrentStudentContext()
+            .then((context) => setStudentId(context.studentId || ""))
+            .catch(() => setStudentId(""));
     }, []);
 
     useEffect(() => {
-        if (!user || !isScanning) return;
+        if (!studentId || !isScanning) return;
 
         const scanner = new Html5QrcodeScanner(
             "reader",
@@ -38,9 +39,6 @@ export default function QRScannerPage() {
                 if (payload.type !== 'UNETI_ATTENDANCE' || !payload.sessionId || !payload.otp) {
                     throw new Error("Mã QR không hợp lệ của hệ thống.");
                 }
-
-                const studentId = getStudentProfileId(user);
-                if (!studentId) throw new Error("Vui lòng đăng nhập lại.");
 
                 // Connect to WS and send scan request
                 const socket = io("http://localhost:3004");
@@ -76,7 +74,7 @@ export default function QRScannerPage() {
         return () => {
              scanner.clear().catch(console.error);
         };
-    }, [isScanning, user]);
+    }, [isScanning, studentId]);
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col items-center pt-8 px-4 pb-20">

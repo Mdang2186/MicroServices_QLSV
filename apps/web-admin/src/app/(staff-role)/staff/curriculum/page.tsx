@@ -193,7 +193,7 @@ export default function CurriculumPage() {
         <div className="w-14 h-14 bg-indigo-600 rounded-3xl flex items-center justify-center shadow-xl animate-bounce">
           <Layers size={26} className="text-white" />
         </div>
-        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Đang tải dữ liệu...</p>
+        <p className="text-[10px] font-black text-slate-900 font-extrabold uppercase tracking-[0.3em]">Đang tải dữ liệu...</p>
       </div>
     </div>
   );
@@ -211,8 +211,8 @@ export default function CurriculumPage() {
               <Layers size={18} className="text-white" />
             </div>
             <div>
-              <p className="text-sm font-black text-slate-900 leading-none">Kế hoạch Đào tạo</p>
-              <p className="text-[10px] text-slate-400 font-bold mt-0.5 uppercase tracking-wider">Xây dựng lộ trình theo học kỳ</p>
+              <p className="text-sm font-black text-slate-950 leading-none">Kế hoạch Đào tạo</p>
+              <p className="text-[10px] text-slate-900 font-black mt-0.5 uppercase tracking-wider">Xây dựng lộ trình theo học kỳ</p>
             </div>
           </div>
 
@@ -220,7 +220,7 @@ export default function CurriculumPage() {
 
           {/* Cohort chips */}
           <div className="flex items-center gap-1.5">
-            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">Khóa</span>
+            <span className="text-[9px] font-black text-slate-950 font-extrabold uppercase tracking-widest mr-1">Khóa</span>
             {COHORTS.map(c => (
               <button key={c} onClick={() => setCohort(c)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${cohort === c ? "bg-indigo-600 text-white shadow-md" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
@@ -233,10 +233,10 @@ export default function CurriculumPage() {
 
           {/* Major dropdown */}
           <div className="flex items-center gap-2">
-            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Ngành</span>
+            <span className="text-[9px] font-black text-slate-950 font-extrabold uppercase tracking-widest">Ngành</span>
             <select value={selectedMajor?.id || ""}
               onChange={e => { const m = majors.find(x => x.id === e.target.value); if (m) setSelectedMajor(m); }}
-              className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:ring-2 ring-indigo-200 transition-all">
+              className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-950 outline-none focus:ring-2 ring-indigo-200 transition-all">
               {majors.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
@@ -245,7 +245,7 @@ export default function CurriculumPage() {
 
           {/* Semester dropdown */}
           <div className="flex items-center gap-2">
-            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Kỳ</span>
+            <span className="text-[9px] font-black text-slate-950 font-extrabold uppercase tracking-widest">Kỳ</span>
             <select value={activeSem}
               onChange={e => { setActiveSem(parseInt(e.target.value)); setSearch(""); }}
               className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:ring-2 ring-indigo-200 transition-all min-w-[160px]">
@@ -299,7 +299,7 @@ export default function CurriculumPage() {
             {currentSemSubs.length > 0 ? (
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Môn đã chọn</p>
+                  <p className="text-[9px] font-black text-slate-950 font-extrabold uppercase tracking-[0.2em]">Môn đã chọn</p>
                   <button onClick={() => setBlueprint(prev => ({ ...prev, [activeSem]: [] }))}
                     className="text-[9px] font-black text-rose-400 hover:text-rose-600 uppercase">Xóa tất cả</button>
                 </div>
@@ -321,14 +321,14 @@ export default function CurriculumPage() {
             ) : (
               <div className="border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center">
                 <BookOpen size={28} className="text-slate-200 mx-auto mb-2" />
-                <p className="text-[10px] font-bold text-slate-400">Chưa có môn nào</p>
-                <p className="text-[9px] text-slate-300 mt-0.5">Chọn môn từ danh sách bên phải</p>
+                <p className="text-[10px] font-bold text-slate-900 font-extrabold">Chưa có môn nào</p>
+                <p className="text-[9px] text-slate-600 font-bold mt-0.5">Chọn môn từ danh sách bên phải</p>
               </div>
             )}
 
             {/* TC per semester overview */}
             <div className="bg-slate-50 rounded-2xl p-4">
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Tổng quan kế hoạch</p>
+              <p className="text-[9px] font-black text-slate-950 font-extrabold uppercase tracking-[0.2em] mb-3">Tổng quan kế hoạch</p>
               <div className="space-y-1">
                 {[1,2,3,4,5,6,7,8].map(n => {
                   const cr = semCredits(n); const cnt = (blueprint[n] || []).length;
@@ -347,7 +347,7 @@ export default function CurriculumPage() {
                 })}
               </div>
               <div className="mt-2 pt-2 border-t border-slate-200 flex justify-between">
-                <span className="text-[9px] font-black text-slate-400 uppercase">Tổng toàn khóa</span>
+                <span className="text-[9px] font-black text-slate-950 font-extrabold uppercase">Tổng toàn khóa</span>
                 <span className={`text-sm font-black ${totalCredits >= 120 ? "text-emerald-600" : "text-amber-500"}`}>{totalCredits} TC</span>
               </div>
             </div>
@@ -358,7 +358,7 @@ export default function CurriculumPage() {
                 <Zap size={16} className="text-amber-400" fill="currentColor" />
                 <p className="font-black text-sm">Áp dụng vào kỳ thực</p>
               </div>
-              <p className="text-slate-400 text-[10px] font-medium mb-3 leading-relaxed">
+              <p className="text-slate-200 text-[10px] font-bold mb-3 leading-relaxed">
                 Tự động tạo lớp, gán GV cho <strong className="text-white">{SEM_LABELS[activeSem]}</strong>.
               </p>
               <select defaultValue=""
@@ -399,7 +399,7 @@ export default function CurriculumPage() {
                 </button>
               )}
             </div>
-            <span className="text-xs text-slate-400 font-bold shrink-0">{filteredSubs.length} môn</span>
+            <span className="text-xs text-slate-950 font-black shrink-0">{filteredSubs.length} môn</span>
             <button
               onClick={() => {
                 const toAdd = filteredSubs.filter(s =>
@@ -412,7 +412,7 @@ export default function CurriculumPage() {
             </button>
             <button
               onClick={() => setBlueprint(prev => ({ ...prev, [activeSem]: [] }))}
-              className="text-[10px] font-black text-slate-400 hover:text-slate-600 uppercase tracking-wider shrink-0 transition-colors">
+              className="text-[10px] font-black text-slate-900 hover:text-slate-950 uppercase tracking-wider shrink-0 transition-colors">
               Bỏ chọn
             </button>
           </div>
@@ -422,8 +422,8 @@ export default function CurriculumPage() {
             {filteredSubs.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <Search size={44} className="text-slate-200 mb-3" />
-                <p className="text-sm font-bold text-slate-400">Không tìm thấy môn học</p>
-                <p className="text-xs text-slate-300 mt-1">Thử thay đổi từ khóa tìm kiếm</p>
+                <p className="text-sm font-black text-slate-900 uppercase">Không tìm thấy môn học</p>
+                <p className="text-xs text-slate-600 font-bold mt-1">Thử thay đổi từ khóa tìm kiếm</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -459,10 +459,10 @@ export default function CurriculumPage() {
                       </p>
 
                       {/* Code + dept */}
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">{s.code}</p>
-                      {s.department?.name && (
-                        <p className="text-[9px] text-slate-300 font-bold mt-0.5 truncate">{s.department.name}</p>
-                      )}
+                        <p className="text-[9px] font-black text-slate-900 font-extrabold uppercase tracking-wider">{s.code}</p>
+                        {s.department?.name && (
+                          <p className="text-[9px] text-slate-900 font-black mt-0.5 truncate">{s.department.name}</p>
+                        )}
 
                       {/* Badge: already in other semester */}
                       {blocked && (

@@ -1,31 +1,135 @@
-"use client";
-
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import Cookies from "js-cookie";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
-    ChevronRight,
-    Save,
-    Users,
-    Search,
-    AlertCircle,
-    CheckCircle2,
-    Calculator,
-    Info,
-    GraduationCap,
-    Lock,
-    ShieldAlert,
-    FileText
+    ChevronRight, Save, Search, AlertCircle, CheckCircle2,
+    Lock, Bell, ShieldAlert, Info, RefreshCw, FileText
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+// ===== UTILITY FUNCTIONS =====
+
+/** Tính điểm hệ 10 → hệ 4 */
+function score10to4(s: number): number {
+    if (s >= 8.5) return 4.0;
+    if (s >= 7.8) return 3.5;
+    if (s >= 7.0) return 3.0;
+    if (s >= 6.3) return 2.5;
+    if (s >= 5.5) return 2.0;
+    if (s >= 4.8) return 1.5;
+    if (s >= 4.0) return 1.0;
+    return 0.0;
+}
+
+/** Tính điểm hệ 10 → điểm chữ */
+function score10toLetter(s: number): string {
+    if (s >= 8.5) return "A";
+    if (s >= 7.8) return "B+";
+    if (s >= 7.0) return "B";
+    if (s >= 6.3) return "C+";
+    if (s >= 5.5) return "C";
+    if (s >= 4.8) return "D+";
+    if (s >= 4.0) return "D";
+    if (s >= 3.0) return "F+";
+    return "F";
+}
+
+/** Điểm chữ → xếp loại */
+function letterToRank(l: string): string {
+    if (l === "A") return "Xuất sắc";
+    if (l === "B+") return "Giỏi";
+    if (l === "B") return "Khá";
+    if (l === "C+") return "Khá TB";
+    if (l === "C") return "Trung bình";
+    if (l === "D+" || l === "D") return "Yếu";
+    return "Kém";
+}
+
+/** Parse JSON score array safely */
+function parseScores(json: string | null | undefined): (number | null)[] {
+    if (!json || json === "null") return [];
+    try {
+        const parsed = JSON.parse(json);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+/** Serialize score array to JSON */
+function serializeScores(arr: (number | null)[]): string {
+    return JSON.stringify(arr);
+}
+
+/**
+ * Tính TB Thường Kỳ chuẩn UNETI
+ */
+function calcTbThuongKy(
+    cc: number | null,
+    credits: number,
+    regular: (number | null)[],
+    coef1: (number | null)[],
+    coef2: (number | null)[],
+    practice: (number | null)[],
+    isTheory: boolean
+): number {
+    const sumVal = (arr: (number | null)[]) => arr.reduce((a, b) => (a || 0) + (b || 0), 0) as number;
+    let weightTotal = 0;
+
+    if (isTheory) {
+        weightTotal = credits + regular.length + coef1.length + coef2.length * 2;
+        if (weightTotal === 0) return 0;
+        return ((cc || 0) * credits + sumVal(regular) + sumVal(coef1) + sumVal(coef2) * 2) / weightTotal;
+    } else {
+        weightTotal = 1 + practice.length;
+        if (weightTotal === 0) return 0;
+        return ((cc || 0) * 1 + sumVal(practice)) / weightTotal;
+    }
+}
+
+/** Tính Điểm Tổng Kết: 40% TB TK + 60% Điểm thi */
+function calcFinalScore(tb: number, exam: number | null): number | null {
+    if (exam === null) return null;
+    return Math.round((tb * 0.4 + exam * 0.6) * 10) / 10;
+}
+
+// ===== TYPES =====
+interface GradeRow {
+    id: string;
+    studentId: string;
+    student?: { fullName: string; studentCode: string };
+    attendanceScore: number | null;
+    regularScores: string | null;   // JSON
+    coef1Scores: string | null;     // JSON
+    coef2Scores: string | null;     // JSON
+    practiceScores: string | null;  // JSON
+    tbThuongKy: number | null;
+    isEligibleForExam: boolean;
+    isAbsentFromExam: boolean;
+    examScore1: number | null;
+    examScore2: number | null;
+    finalScore1: number | null;
+    finalScore2: number | null;
+    totalScore10: number | null;
+    totalScore4: number | null;
+    letterGrade: string | null;
+    isPassed: boolean;
+    isLocked: boolean;
+    status: string;
+    notes: string | null;
+    // ---- local parsed ----
+    _coef1: (number | null)[];
+    _coef2: (number | null)[];
+    _practice: (number | null)[];
+    _regularScores: (number | null)[];
+}
+
 export default function LecturerGradeEntryPage() {
     const { id: classId } = useParams();
-    const router = useRouter();
-    const [enrollments, setEnrollments] = useState<any[]>([]);
+    const [rows, setRows] = useState<GradeRow[]>([]);
     const [courseClass, setCourseClass] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -34,42 +138,34 @@ export default function LecturerGradeEntryPage() {
 
     const TOKEN = Cookies.get("admin_accessToken");
 
+    // ===== FETCH DATA =====
     useEffect(() => {
         if (!classId || !TOKEN) return;
-
+        setLoading(true);
         const fetchData = async () => {
             try {
                 const [gradeRes, classRes, enrollmentRes] = await Promise.all([
-                    fetch(`/api/grades/class/${classId}`, {
-                        headers: { Authorization: `Bearer ${TOKEN}` }
-                    }),
-                    fetch(`/api/courses/classes/${classId}`, {
-                        headers: { Authorization: `Bearer ${TOKEN}` }
-                    }),
-                    fetch(`/api/enrollments/admin/classes/${classId}/enrollments`, {
-                        headers: { Authorization: `Bearer ${TOKEN}` }
-                    })
+                    fetch(`/api/grades/class/${classId}`, { headers: { Authorization: `Bearer ${TOKEN}` } }),
+                    fetch(`/api/courses/classes/${classId}`, { headers: { Authorization: `Bearer ${TOKEN}` } }),
+                    fetch(`/api/enrollments/admin/classes/${classId}/enrollments`, { headers: { Authorization: `Bearer ${TOKEN}` } })
                 ]);
 
-                if (gradeRes.ok && classRes.ok && enrollmentRes.ok) {
+                if (gradeRes.ok && classRes.ok) {
                     let gradeData = await gradeRes.json();
                     const classData = await classRes.json();
-                    const enrollmentData = await enrollmentRes.json();
+                    const enrollData = enrollmentRes.ok ? await enrollmentRes.json() : [];
                     
                     setCourseClass(classData);
 
-                    // If no grades but students enrolled, initialize
-                    if (gradeData.length === 0 && enrollmentData.length > 0) {
+                    // Initialize grades if empty (Lecturer specific logic)
+                    if (gradeData.length === 0 && enrollData.length > 0) {
                         const initRes = await fetch(`/api/grades/initialize`, {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                Authorization: `Bearer ${TOKEN}`
-                            },
+                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
                             body: JSON.stringify({
                                 classId: classId,
                                 subjectId: classData.subjectId,
-                                studentIds: enrollmentData.map((e: any) => e.studentId)
+                                studentIds: enrollData.map((e: any) => e.studentId)
                             })
                         });
                         if (initRes.ok) {
@@ -77,149 +173,188 @@ export default function LecturerGradeEntryPage() {
                         }
                     }
 
-                    // Merge attendance info into grades + auto-calculate CC score
-                    const merged = gradeData.map((g: any) => {
-                        const enr = enrollmentData.find((e: any) => e.studentId === g.studentId);
-                        const attendances = enr?.attendances || [];
-                        const totalPeriods = attendances.length;
-                        const absentPeriods = attendances.filter((a: any) =>
-                            a.status === 'ABSENT' || a.status === 'ABSENT_UNEXCUSED'
-                        ).length;
+                    const creditsVal = classData?.subject?.credits ?? 3;
 
-                        // Tính % vắng và điểm CC theo quy chế UNETI
-                        const missedPct = totalPeriods > 0 ? (absentPeriods / totalPeriods) * 100 : 0;
-                        let autoCC: number | null = null;
-                        let isIneligible = g.isEligibleForExam === false;
-                        if (totalPeriods > 0) {
-                            if (missedPct === 0)       autoCC = 10;
-                            else if (missedPct < 10)   autoCC = 8;
-                            else if (missedPct < 20)   autoCC = 6;
-                            else if (missedPct < 35)   autoCC = 4;
-                            else if (missedPct < 50)   autoCC = 2;
-                            else { autoCC = 0; isIneligible = true; } // >= 50%: cấm thi
-                        }
-
-                        return { 
+                    const merged: GradeRow[] = gradeData.map((g: any) => {
+                        const coef1 = parseScores(g.coef1Scores);
+                        const coef2 = parseScores(g.coef2Scores);
+                        const practice = parseScores(g.practiceScores);
+                        const regular = parseScores(g.regularScores);
+                        // Pad arrays to credits length
+                        while (coef1.length < creditsVal) coef1.push(null);
+                        while (coef2.length < creditsVal) coef2.push(null);
+                        while (practice.length < 2) practice.push(null);
+                        while (regular.length < 3) regular.push(null);
+                        return {
                             ...g,
-                            // Override CC với giá trị tự động nếu có dữ liệu điểm danh
-                            attendanceScore: autoCC !== null ? autoCC : (g.attendanceScore ?? null),
-                            attendanceAutoCalc: autoCC !== null,
-                            isLocked: g.status !== 'DRAFT',
-                            isIneligible,
-                            totalPeriods,
-                            absentPeriods,
-                            missedPct: Math.round(missedPct * 10) / 10
+                            _coef1: coef1,
+                            _coef2: coef2,
+                            _practice: practice,
+                            _regularScores: regular,
+                            isLocked: g.status !== 'DRAFT'
                         };
                     });
-                    
-                    setEnrollments(merged);
+                    setRows(merged);
                 }
-            } catch (error) {
-                console.error("Failed to fetch data:", error);
+            } catch (e) {
+                console.error(e);
             } finally {
                 setLoading(false);
             }
         };
-
         fetchData();
     }, [classId, TOKEN]);
 
-    // ─── Helpers ─────────────────────────────────────────────────────────────
-    const mapGradeLetter = (score: number): string => {
-        if (score >= 8.5) return 'A';
-        if (score >= 7.8) return 'B+';
-        if (score >= 7.0) return 'B';
-        if (score >= 6.3) return 'C+';
-        if (score >= 5.5) return 'C';
-        if (score >= 4.8) return 'D+';
-        if (score >= 4.0) return 'D';
-        if (score >= 3.0) return 'F+';
-        return 'F';
-    };
+    const credits = courseClass?.subject?.credits ?? 3;
+    const theoryHours = courseClass?.subject?.theoryHours ?? 0;
+    const practiceHours = courseClass?.subject?.practiceHours ?? 0;
+    const hasPractice = practiceHours > 0;
+    const isTheory = theoryHours > 0 || hasPractice === false;
 
-    const handleGradeChange = (gradeId: string, field: string, value: string) => {
-        const numValue = value === "" ? null : parseFloat(value);
-        if (numValue !== null && (numValue < 0 || numValue > 10)) return;
+    // ===== UPDATE A SCORE FIELD =====
+    const updateScore = useCallback((rowId: string, field: string, value: number | null, arrayIndex?: number) => {
+        setRows(prev => prev.map(row => {
+            if (row.id !== rowId) return row;
+            if (row.isLocked) return row;
+            let updated = { ...row };
 
-        setEnrollments(prev => prev.map(g => {
-            if (g.id === gradeId) {
-                if (g.isLocked) return g;
-                const updated = { ...g, [field]: numValue };
-                
-                const credits = courseClass?.subject?.credits ?? 3;
-                const isTheory = (courseClass?.subject?.theoryHours ?? 0) > 0
-                    || (courseClass?.subject?.practiceHours ?? 0) === 0;
-
-                const cc  = updated.attendanceScore ?? 0;  // Chuyên cần (hệ số = credits)
-                const dkd = updated.regularScore1   ?? 0;  // ĐKĐ        (hệ số 2)
-                const tx  = updated.regularScore2   ?? 0;  // TX         (hệ số 1)
-                const fin = updated.finalScore       ?? 0;  // Thi kết thúc
-
-                let processAvg = 0;
-                let total10    = 0;
-
-                const effectiveFin = updated.isIneligible ? 0 : fin;
-
-                if (isTheory) {
-                    /**
-                     * Điều 1a - LT: QT = (CC×TC + ĐKĐ×2 + TX×1) / (TC+3)
-                     *              HP = QT×0.4 + Thi×0.6
-                     */
-                    const qt = (cc * credits + dkd * 2 + tx * 1) / (credits + 3);
-                    processAvg = Math.round(qt * 10) / 10;
-                    total10    = Math.round((processAvg * 0.4 + effectiveFin * 0.6) * 10) / 10;
-                } else {
-                    /**
-                     * Điều 2a - TH: HP = (CC×1 + ĐKĐ×1) / 2
-                     */
-                    total10    = Math.round(((cc + dkd) / 2) * 10) / 10;
-                    processAvg = total10;
-                }
-
-                updated.midtermScore  = processAvg;
-                updated.totalScore10  = total10;
-                updated.letterGrade   = mapGradeLetter(total10);
-                updated.isPassed      = total10 >= 5.5;
-
-                return updated;
+            if (field === "attendanceScore") updated.attendanceScore = value;
+            else if (field === "coef1" && arrayIndex !== undefined) {
+                const arr = [...updated._coef1];
+                arr[arrayIndex] = value;
+                updated._coef1 = arr;
+                updated.coef1Scores = serializeScores(arr);
             }
-            return g;
+            else if (field === "coef2" && arrayIndex !== undefined) {
+                const arr = [...updated._coef2];
+                arr[arrayIndex] = value;
+                updated._coef2 = arr;
+                updated.coef2Scores = serializeScores(arr);
+            }
+            else if (field === "practice" && arrayIndex !== undefined) {
+                const arr = [...updated._practice];
+                arr[arrayIndex] = value;
+                updated._practice = arr;
+                updated.practiceScores = serializeScores(arr);
+            }
+            else if (field === "examScore1") {
+                updated.examScore1 = updated.isAbsentFromExam ? 0 : value;
+            }
+            else if (field === "examScore2") updated.examScore2 = value;
+            else if (field === "notes") return { ...row, notes: value as any };
+
+            // ---- Recalculate ----
+            let tb = calcTbThuongKy(
+                updated.attendanceScore,
+                credits,
+                updated._regularScores,
+                updated._coef1,
+                updated._coef2,
+                updated._practice,
+                isTheory
+            );
+            tb = Math.round(tb * 10) / 10;
+            updated.tbThuongKy = tb;
+            updated.isEligibleForExam = updated.attendanceScore !== 0; 
+
+            const exam1 = updated.isAbsentFromExam ? 0 : updated.examScore1;
+            const tk1 = calcFinalScore(tb, exam1);
+            const tk2 = calcFinalScore(tb, updated.examScore2);
+            updated.finalScore1 = tk1;
+            updated.finalScore2 = tk2;
+
+            const best = Math.max(tk1 ?? -Infinity, tk2 ?? -Infinity);
+            const total10 = best === -Infinity ? null : Math.round(best * 10) / 10;
+            updated.totalScore10 = total10;
+            if (total10 !== null) {
+                updated.totalScore4 = score10to4(total10);
+                updated.letterGrade = score10toLetter(total10);
+                updated.isPassed = total10 >= 4.0;
+            } else {
+                updated.totalScore4 = null;
+                updated.letterGrade = null;
+                updated.isPassed = false;
+            }
+            return updated;
+        }));
+    }, [credits, isTheory]);
+
+    // ===== TOGGLE ABSENT =====
+    const toggleAbsent = (rowId: string) => {
+        setRows(prev => prev.map(row => {
+            if (row.id !== rowId) return row;
+            if (row.isLocked) return row;
+            const absent = !row.isAbsentFromExam;
+            const updated = { ...row, isAbsentFromExam: absent };
+            if (absent) updated.examScore1 = 0;
+            const tb = updated.tbThuongKy ?? 0;
+            const exam1 = absent ? 0 : updated.examScore1;
+            const tk1 = calcFinalScore(tb, exam1);
+            const tk2 = calcFinalScore(tb, updated.examScore2);
+            updated.finalScore1 = tk1;
+            updated.finalScore2 = tk2;
+            const best = Math.max(tk1 ?? -Infinity, tk2 ?? -Infinity);
+            const total10 = best === -Infinity ? null : Math.round(best * 10) / 10;
+            updated.totalScore10 = total10;
+            if (total10 !== null) {
+                updated.totalScore4 = score10to4(total10);
+                updated.letterGrade = score10toLetter(total10);
+                updated.isPassed = total10 >= 4.0;
+            }
+            return updated;
         }));
     };
 
+    // ===== SAVE =====
     const handleSave = async (showMsg = true) => {
         setSaving(true);
         if (showMsg) setMessage({ text: "", type: "" });
-
         try {
+            const payload = rows.map(r => ({
+                id: r.id,
+                studentId: r.studentId,
+                courseClassId: classId,
+                attendanceScore: r.attendanceScore,
+                coef1Scores: r.coef1Scores,
+                coef2Scores: r.coef2Scores,
+                practiceScores: r.practiceScores,
+                regularScores: r.regularScores,
+                tbThuongKy: r.tbThuongKy,
+                isEligibleForExam: r.isEligibleForExam,
+                isAbsentFromExam: r.isAbsentFromExam,
+                examScore1: r.examScore1,
+                examScore2: r.examScore2,
+                finalScore1: r.finalScore1,
+                finalScore2: r.finalScore2,
+                totalScore10: r.totalScore10,
+                totalScore4: r.totalScore4,
+                letterGrade: r.letterGrade,
+                isPassed: r.isPassed,
+                notes: r.notes,
+            }));
             const res = await fetch(`/api/grades/bulk`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${TOKEN}`
-                },
-                body: JSON.stringify({ grades: enrollments })
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${TOKEN}` },
+                body: JSON.stringify({ grades: payload })
             });
-
             if (res.ok) {
                 if (showMsg) {
-                    setMessage({ text: "Đã lưu bảng điểm thành công", type: "success" });
+                    setMessage({ text: "Đã lưu bản nháp thành công", type: "success" });
                     setTimeout(() => setMessage({ text: "", type: "" }), 3000);
                 }
                 return true;
-            } else {
-                throw new Error("Lỗi khi lưu dữ liệu");
-            }
-        } catch (error) {
-            if (showMsg) setMessage({ text: "Có lỗi xảy ra, vui lòng thử lại.", type: "error" });
+            } else throw new Error();
+        } catch {
+            if (showMsg) setMessage({ text: "Có lỗi xảy ra khi lưu điểm", type: "error" });
             return false;
         } finally {
             setSaving(false);
         }
     };
 
+    // ===== SUBMIT / LOCK =====
     const handleLock = async () => {
-        if (!confirm("Sau khi 'Gửi điểm', bạn sẽ không thể chỉnh sửa trừ khi có yêu cầu mở khóa. Trạng thái sẽ chuyển thành 'Chờ phê duyệt'. Bạn có chắc chắn?")) return;
+        if (!confirm("Sau khi 'Gửi điểm', bạn sẽ không thể chỉnh sửa nữa. Dữ liệu sẽ được gửi lên phòng Đào tạo để chốt điểm và công bố cho Sinh viên. Bạn có chắc chắn gửi?")) return;
         
         const saved = await handleSave(false);
         if (!saved) return;
@@ -232,349 +367,294 @@ export default function LecturerGradeEntryPage() {
             });
 
             if (res.ok) {
-                setMessage({ text: "Bảng điểm đã được gửi và đang chờ phê duyệt", type: "success" });
-                setEnrollments(prev => prev.map(e => ({ 
+                setMessage({ text: "Bảng điểm đã được gửi phòng Đào tạo chờ chốt điểm", type: "success" });
+                setRows(prev => prev.map(e => ({ 
                     ...e, 
                     isLocked: true, 
                     status: 'PENDING_APPROVAL' 
                 })));
+            } else {
+                setMessage({ text: "Lỗi khi gửi bảng điểm", type: "error" });
             }
-        } catch (error) {
-            setMessage({ text: "Lỗi khi gửi bảng điểm", type: "error" });
+        } catch {
+            setMessage({ text: "Có lỗi xảy ra khi gửi bảng điểm", type: "error" });
         } finally {
             setSaving(false);
         }
     };
 
-    const filtered = enrollments.filter(e =>
-        e.student?.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        e.student?.studentCode?.toLowerCase().includes(searchQuery.toLowerCase())
+    // ===== SCORE INPUT CELL =====
+    const ScoreInput = ({ value, onChange, disabled, highlight }: {
+        value: number | null; onChange: (v: number | null) => void; disabled?: boolean; highlight?: "blue" | "green" | "red";
+    }) => {
+        const bgMap = { blue: "bg-blue-50 border-blue-200", green: "bg-emerald-50 border-emerald-200", red: "bg-rose-50 border-rose-200" };
+        return (
+            <input
+                type="number" step="0.5" min="0" max="10"
+                disabled={disabled}
+                value={value ?? ""}
+                onChange={e => {
+                    const v = e.target.value === "" ? null : Math.min(10, Math.max(0, parseFloat(e.target.value)));
+                    onChange(v);
+                }}
+                className={cn(
+                    "w-[52px] text-center text-[11px] font-bold py-1.5 px-1 border rounded focus:outline-none focus:ring-1 focus:ring-uneti-blue transition-colors",
+                    disabled ? "bg-slate-100 text-slate-300 cursor-not-allowed border-slate-100" : (highlight ? bgMap[highlight] : "bg-white border-slate-200 hover:border-uneti-blue/40"),
+                )}
+            />
+        );
+    };
+
+    const filtered = rows.filter(r =>
+        r.student?.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.student?.studentCode?.toLowerCase().includes(searchQuery.toLowerCase())
     );
+
+    // ===== Summary Stats =====
+    const totalStudents = rows.length;
+    const passedCount = rows.filter(r => r.isPassed).length;
+    const absentCount = rows.filter(r => r.isAbsentFromExam).length;
+    const ineligibleCount = rows.filter(r => !r.isEligibleForExam).length;
 
     if (loading) {
         return (
-            <div className="flex min-h-[80vh] items-center justify-center">
-                <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600"></div>
+            <div className="flex min-h-screen items-center justify-center">
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-uneti-blue" />
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen p-6 space-y-6">
-            {/* Header / Breadcrumbs */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    <Link href="/lecturer/grades" className="hover:text-blue-600 transition-colors">Lớp học phần</Link>
-                    <ChevronRight size={12} />
-                    <span className="text-blue-600 bg-blue-50 px-2 py-0.5 rounded">Nhập điểm</span>
+        <div className="min-h-screen space-y-5 pb-20 max-w-full p-4">
+            {/* ===== HEADER ===== */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                        <Link href="/lecturer/grades" className="hover:text-uneti-blue flex items-center gap-1">
+                            <RefreshCw size={10} className="rotate-180" /> Quản lý Điểm
+                        </Link>
+                        <ChevronRight size={10} />
+                        <span className="text-uneti-blue px-2 py-0.5 bg-blue-50 rounded-lg">Nhập Điểm Chi Tiết</span>
+                    </div>
+                    <h1 className="text-xl font-black text-slate-800 tracking-tight flex flex-wrap items-center gap-3">
+                        {courseClass?.subject?.name}
+                        <span className="text-[10px] font-black text-slate-400 border border-slate-200 px-2 py-0.5 rounded-lg">{courseClass?.code}</span>
+                        <span className="text-[10px] font-black text-uneti-blue border border-blue-100 bg-blue-50 px-2 py-0.5 rounded-lg">{credits} TC</span>
+                        {hasPractice && <span className="text-[10px] font-black text-purple-600 border border-purple-100 bg-purple-50 px-2 py-0.5 rounded-lg">Có Thực Hành</span>}
+                    </h1>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                        LOẠI: {isTheory ? 'LÝ THUYẾT' : 'THỰC HÀNH / ĐỒ ÁN'} • {totalStudents} Sinh viên
+                    </p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <Button
-                        variant="ghost"
-                        onClick={() => handleSave()}
-                        disabled={saving || enrollments.some(e => e.isLocked)}
-                        className="h-10 px-4 text-xs font-bold text-slate-600 hover:bg-slate-100"
-                    >
-                        <Save className="mr-2 h-4 w-4" /> Lưu nháp
+                    <Button variant="outline" onClick={() => handleSave()} disabled={saving || rows.some(e => e.isLocked)}
+                        className="h-10 rounded-xl px-4 text-[10px] font-black uppercase tracking-wider bg-white border-slate-200 hover:bg-slate-50 shadow-sm transition-all active:scale-95">
+                        <Save className="mr-1.5 h-3.5 w-3.5" /> Lưu nháp
                     </Button>
-                    <Button
-                        onClick={handleLock}
-                        disabled={saving || enrollments.some(e => e.isLocked)}
-                        className="h-10 px-6 text-xs font-black text-white bg-[#4338ca] hover:bg-[#3730a3] shadow-lg shadow-[#4338ca]/20 rounded-lg uppercase tracking-wider transition-all active:scale-95"
-                    >
-                        {saving ? <div className="h-4 w-4 animate-spin border-2 border-white/20 border-t-white rounded-full" /> : <ShieldAlert className="mr-2 h-4 w-4" />}
-                        Gửi điểm & Khóa
+                    <Button onClick={handleLock} disabled={saving || rows.some(e => e.isLocked)}
+                        className="h-10 rounded-xl px-6 text-[10px] font-black text-white bg-blue-600 hover:bg-blue-700 shadow-lg tracking-widest uppercase transition-all active:scale-95">
+                        {saving ? <div className="h-3.5 w-3.5 animate-spin border-2 border-white/20 border-t-white rounded-full mr-1.5" /> : <ShieldAlert className="mr-1.5 h-3.5 w-3.5" />}
+                        Gửi Điểm Lên Đào Tạo
                     </Button>
                 </div>
             </div>
 
-            {/* Title Block */}
-            <div className="flex items-center justify-between">
-                 <h1 className="text-xl font-black text-slate-800 tracking-tight flex items-center gap-3 uppercase">
-                    Cổng thông tin giảng viên
-                    <span className="text-blue-600">/ Nhập điểm</span>
-                </h1>
+            {/* ===== STATS ===== */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[
+                    { label: "Tổng số SV", value: totalStudents, color: "text-slate-800", bg: "bg-white" },
+                    { label: "Tỉ lệ đạt", value: totalStudents > 0 ? `${Math.round((passedCount/totalStudents)*100)}%` : "0%", color: "text-emerald-600", bg: "bg-emerald-50" },
+                    { label: "Vắng thi", value: absentCount, color: "text-amber-600", bg: "bg-amber-50" },
+                    { label: "Cấm thi", value: ineligibleCount, color: "text-rose-600", bg: "bg-rose-50" },
+                ].map((s, i) => (
+                    <div key={i} className={cn("rounded-2xl px-5 py-4 border border-slate-100 shadow-sm", s.bg)}>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{s.label}</p>
+                        <p className={cn("text-xl font-black leading-none", s.color)}>{s.value}</p>
+                    </div>
+                ))}
             </div>
 
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white rounded-xl border border-slate-100 p-6 flex items-center justify-between shadow-sm">
-                    <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Sinh viên</p>
-                        <h3 className="text-2xl font-black text-slate-800 tabular-nums">
-                            {enrollments.length} <span className="text-xs text-slate-400 font-bold ml-1">Người</span>
-                        </h3>
+            <div className="bg-white border border-slate-100 shadow-sm rounded-2xl overflow-hidden">
+                {/* Table toolbar */}
+                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/60 gap-4 flex-wrap">
+                    <div className="flex items-center gap-2">
+                        <FileText size={16} className="text-uneti-blue" />
+                        <h2 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">
+                            BẢNG ĐIỂM CHI TIẾT — {isTheory ? "Lý Thuyết" : "Thực Hành"}
+                        </h2>
                     </div>
-                    <div className="h-12 w-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-200">
-                        <Users size={24} />
-                    </div>
-                </div>
-                <div className="bg-white rounded-xl border border-slate-100 p-6 flex items-center justify-between shadow-sm">
-                    <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Đã nhập</p>
-                        <h3 className="text-2xl font-black text-emerald-600 tabular-nums">
-                            {enrollments.filter(e => e.finalScore !== null).length} <span className="text-xs text-slate-400 font-bold ml-1">Hoàn thiện</span>
-                        </h3>
-                    </div>
-                    <div className="h-12 w-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-300">
-                        <CheckCircle2 size={24} />
-                    </div>
-                </div>
-                <div className="bg-white rounded-xl border border-slate-100 p-6 flex items-center justify-between shadow-sm">
-                    <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Cơ cấu điểm</p>
-                        <h3 className="text-2xl font-black text-blue-600 tabular-nums">
-                            40% – 60% <span className="text-xs text-slate-400 font-bold ml-1">(QT – Thi)</span>
-                        </h3>
-                        <p className="text-[9px] text-slate-400 font-bold mt-1">
-                            QT = (CC×{courseClass?.subject?.credits ?? 3} + ĐKĐ×2 + TX×1) / {(courseClass?.subject?.credits ?? 3) + 3}
-                        </p>
-                    </div>
-                    <div className="h-12 w-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-300">
-                        <FileText size={24} />
-                    </div>
-                </div>
-            </div>
-
-            {/* Main Content Card */}
-            <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden min-h-[500px]">
-                <div className="px-8 py-6 border-b border-slate-50 flex items-center justify-between">
-                    <div className="space-y-1">
-                        <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight">Bảng ghi điểm học phần</h2>
-                        <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400">
-                            <Info size={12} className="text-blue-500" />
-                            <span>Trọng số: CC(×{courseClass?.subject?.credits ?? 3}) + ĐKĐ(×2) + TX(×1) · ĐHP = QT×40% + Thi×60%</span>
-                        </div>
-                    </div>
-                    <div className="relative w-80">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                        <input
-                            type="text"
-                            placeholder="Tìm sinh viên..."
-                            className="w-full pl-12 pr-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 focus:bg-white transition-all"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
+                    <div className="relative w-64">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={13} />
+                        <input type="text" placeholder="Tìm sinh viên..." value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 text-[10px] font-bold rounded-xl outline-none focus:ring-1 focus:ring-uneti-blue/30" />
                     </div>
                 </div>
 
                 <div className="overflow-x-auto">
-                    <table className="w-full border-collapse">
+                    <table className="w-full border-collapse text-[10px]" style={{ minWidth: "1400px" }}>
                         <thead>
-                            <tr className="bg-slate-50/50">
-                                <th className="py-4 px-8 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">STT</th>
-                                <th className="py-4 px-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Sinh viên</th>
-                                <th className="py-4 px-2 text-center text-[9px] font-black text-blue-600 uppercase tracking-widest bg-blue-50/30" title="Chuyên cần — tự động tính từ % vắng — hệ số bằng số tín chỉ">
-                                    CC (×{courseClass?.subject?.credits ?? 3})
-                                </th>
-                                <th className="py-4 px-2 text-center text-[9px] font-black text-emerald-600 uppercase tracking-widest bg-emerald-50/30" title="Kiểm tra Định kỳ — hệ số 2">
-                                    ĐKĐ (×2)
-                                </th>
-                                <th className="py-4 px-2 text-center text-[9px] font-black text-teal-600 uppercase tracking-widest bg-teal-50/30" title="Kiểm tra Thường xuyên — hệ số 1">
-                                    TX (×1)
-                                </th>
-                                <th className="py-4 px-2 text-center text-[9px] font-black text-amber-600 uppercase tracking-widest bg-amber-50/30" title="Điểm Quá trình tự tính — chiếm 40%">
-                                    ĐQT (40%)
-                                </th>
-                                <th className="py-4 px-2 text-center text-[9px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50/30" title="Điểm thi kết thúc học phần — chiếm 60%">
-                                    Thi (60%)
-                                </th>
-                                <th className="py-4 px-8 text-center text-[10px] font-black text-slate-800 uppercase tracking-widest border-l border-slate-100">Tổng kết</th>
-                                <th className="py-4 px-8 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Ghi chú</th>
+                            <tr className="bg-slate-50 border-b border-slate-200">
+                                <th rowSpan={3} className="py-2 px-3 text-center font-black text-slate-400 uppercase border-r border-slate-100 w-10">STT</th>
+                                <th rowSpan={3} className="py-2 px-3 text-left font-black text-slate-600 uppercase border-r border-slate-100 w-40">Sinh viên</th>
+                                <th rowSpan={3} className="py-2 px-2 text-center font-black text-slate-500 uppercase border-r border-slate-100 w-12">TC</th>
+                                <th rowSpan={3} className="py-2 px-2 text-center font-black text-slate-500 uppercase border-r border-slate-100 w-14 bg-amber-50">CC</th>
+                                <th colSpan={3} className="py-2 px-2 text-center font-black text-slate-500 uppercase border-r border-slate-100 bg-sky-50">Thường Kỳ</th>
+                                <th colSpan={credits} className="py-2 px-2 text-center font-black text-slate-500 uppercase border-r border-slate-100 bg-indigo-50">LT Hệ số 1</th>
+                                <th colSpan={credits} className="py-2 px-2 text-center font-black text-slate-500 uppercase border-r border-slate-100 bg-violet-50">LT Hệ số 2</th>
+                                {hasPractice && <th colSpan={2} className="py-2 px-2 text-center font-black text-slate-500 uppercase border-r border-slate-100 bg-teal-50">Thực Hành</th>}
+                                <th rowSpan={3} className="py-2 px-2 text-center font-black text-slate-700 uppercase border-r border-slate-100 w-16 bg-orange-50">TB TK</th>
+                                <th rowSpan={3} className="py-2 px-2 text-center font-black text-slate-700 uppercase border-r border-slate-100 w-16 bg-orange-50">Dự thi</th>
+                                <th colSpan={3} className="py-2 px-2 text-center font-black text-rose-600 uppercase border-r border-slate-100 bg-rose-50">Cuối Kỳ</th>
+                                <th colSpan={2} className="py-2 px-2 text-center font-black text-emerald-700 uppercase border-r border-slate-100 bg-emerald-50">Tổng Kết</th>
+                                <th rowSpan={3} className="py-2 px-2 text-center font-black text-slate-600 uppercase border-r border-slate-100 w-14 bg-slate-100">Hệ 4</th>
+                                <th rowSpan={3} className="py-2 px-2 text-center font-black text-slate-600 uppercase border-r border-slate-100 w-12 bg-slate-100">Chữ</th>
+                                <th rowSpan={3} className="py-2 px-2 text-center font-black text-slate-600 uppercase border-r border-slate-100 w-20 bg-slate-100">Xếp loại</th>
+                                <th rowSpan={3} className="py-2 px-2 text-center font-black text-slate-400 uppercase w-14">Ghi chú</th>
+                            </tr>
+                            <tr className="bg-slate-50 border-b border-slate-100">
+                                <th className="py-1.5 px-1 text-center font-bold text-slate-400 border-r border-slate-100 bg-sky-50/60">TX1</th>
+                                <th className="py-1.5 px-1 text-center font-bold text-slate-400 border-r border-slate-100 bg-sky-50/60">TX2</th>
+                                <th className="py-1.5 px-1 text-center font-bold text-slate-400 border-r border-slate-100 bg-sky-50/60">TX3</th>
+                                {Array.from({ length: credits }).map((_, i) => (
+                                    <th key={`c1h-${i}`} className="py-1.5 px-1 text-center font-bold text-indigo-400 border-r border-slate-100 bg-indigo-50/60">{i + 1}</th>
+                                ))}
+                                {Array.from({ length: credits }).map((_, i) => (
+                                    <th key={`c2h-${i}`} className="py-1.5 px-1 text-center font-bold text-violet-400 border-r border-slate-100 bg-violet-50/60">{i + 1}</th>
+                                ))}
+                                {hasPractice && <>
+                                    <th className="py-1.5 px-1 text-center font-bold text-teal-400 border-r border-slate-100 bg-teal-50/60">TH1</th>
+                                    <th className="py-1.5 px-1 text-center font-bold text-teal-400 border-r border-slate-100 bg-teal-50/60">TH2</th>
+                                </>}
+                                <th className="py-1.5 px-1 text-center font-bold text-rose-400 border-r border-slate-100 bg-rose-50/60">Điểm 1</th>
+                                <th className="py-1.5 px-1 text-center font-bold text-rose-400 border-r border-slate-100 bg-rose-50/60">Vắng</th>
+                                <th className="py-1.5 px-1 text-center font-bold text-rose-400 border-r border-slate-100 bg-rose-50/60">Điểm 2</th>
+                                <th className="py-1.5 px-1 text-center font-bold text-emerald-500 border-r border-slate-100 bg-emerald-50/60">TK 1</th>
+                                <th className="py-1.5 px-1 text-center font-bold text-emerald-500 border-r border-slate-100 bg-emerald-50/60">TK 2</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {filtered.map((g, idx) => (
-                                <tr key={g.id} className="border-b border-slate-50 hover:bg-slate-50/30 transition-colors group">
-                                    <td className="py-5 px-8">
-                                        <span className="text-[11px] font-black text-slate-300 tabular-nums">{(idx + 1).toString().padStart(2, '0')}</span>
-                                    </td>
-                                    <td className="py-5 px-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="h-9 w-9 rounded-xl bg-slate-50 flex items-center justify-center text-[10px] font-black text-slate-400 border border-slate-100 group-hover:bg-blue-600 group-hover:text-white transition-all">
-                                                {g.student?.fullName?.charAt(0)}
-                                            </div>
-                                            <div className="space-y-0.5">
-                                                <p className="text-xs font-black text-slate-800 leading-none">{g.student?.fullName}</p>
-                                                <p className="text-[9px] font-bold text-blue-600 uppercase">{g.student?.studentCode}</p>
-                                            </div>
-                                            {g.isIneligible && (
-                                                <div className="bg-rose-50 text-rose-600 p-1 rounded-md border border-rose-100" title={`VẮNG ${g.unexcusedAbsences} BUỔI - KHÔNG ĐỦ ĐK THI`}>
-                                                    <ShieldAlert size={14} className="animate-pulse" />
-                                                </div>
-                                            )}
-                                        </div>
-                                    </td>
-                                    {/* CC — Chuyên cần: tự động nếu có dữ liệu điểm danh */}
-                                    <td className="py-5 px-2 bg-blue-50/10">
-                                        <div className="flex flex-col items-center gap-0.5">
-                                            <input
-                                                type="number"
-                                                step="1"
-                                                readOnly={g.attendanceAutoCalc}
-                                                disabled={g.isLocked}
-                                                className={cn(
-                                                    "w-14 mx-auto text-center text-xs font-black py-1.5 outline-none border rounded-lg transition-all shadow-sm",
-                                                    g.attendanceAutoCalc
-                                                        ? "bg-blue-50 border-blue-200 text-blue-700 cursor-not-allowed shadow-none"
-                                                        : "bg-white border-slate-200 focus:ring-2 focus:ring-blue-400",
-                                                    g.isLocked && "bg-slate-50 text-slate-400 border-dashed shadow-none"
-                                                )}
-                                                value={g.attendanceScore ?? ""}
-                                                onChange={(e) => !g.attendanceAutoCalc && handleGradeChange(g.id, 'attendanceScore', e.target.value)}
-                                                title={g.attendanceAutoCalc
-                                                    ? `Tự động: vắng ${g.absentPeriods}/${g.totalPeriods} buổi (${g.missedPct}%)`
-                                                    : "Nhập điểm chuyên cần"}
-                                            />
-                                            {g.attendanceAutoCalc && (
-                                                <span className="text-[8px] text-blue-400 font-bold">Tự động</span>
-                                            )}
-                                        </div>
-                                    </td>
-                                    {/* ĐKĐ — Kiểm tra Định kỳ (hệ số 2) */}
-                                    <td className="py-5 px-2 bg-emerald-50/10">
-                                        <input
-                                            type="number"
-                                            step="0.1"
-                                            disabled={g.isLocked}
-                                            className={cn(
-                                                "w-14 mx-auto bg-white border border-slate-200 rounded-lg text-center text-xs font-black py-1.5 focus:ring-2 focus:ring-emerald-400 outline-none transition-all shadow-sm",
-                                                g.isLocked && "bg-slate-50 text-slate-400 border-dashed shadow-none"
-                                            )}
-                                            value={g.regularScore1 ?? ""}
-                                            onChange={(e) => handleGradeChange(g.id, 'regularScore1', e.target.value)}
-                                        />
-                                    </td>
-                                    {/* TX — Kiểm tra Thường xuyên (hệ số 1) */}
-                                    <td className="py-5 px-2 bg-teal-50/10">
-                                        <input
-                                            type="number"
-                                            step="0.1"
-                                            disabled={g.isLocked}
-                                            className={cn(
-                                                "w-14 mx-auto bg-white border border-slate-200 rounded-lg text-center text-xs font-black py-1.5 focus:ring-2 focus:ring-teal-400 outline-none transition-all shadow-sm",
-                                                g.isLocked && "bg-slate-50 text-slate-400 border-dashed shadow-none"
-                                            )}
-                                            value={g.regularScore2 ?? ""}
-                                            onChange={(e) => handleGradeChange(g.id, 'regularScore2', e.target.value)}
-                                        />
-                                    </td>
-                                    {/* ĐQT — Điểm Quá trình (tự tính, chỉ đọc) */}
-                                    <td className="py-5 px-2 bg-amber-50/10">
-                                        <div className="flex flex-col items-center gap-0.5">
-                                            <span className="text-[13px] font-black text-amber-700 tabular-nums">
-                                                {g.midtermScore?.toFixed(1) ?? "—"}
+                            {filtered.map((row, idx) => {
+                                const tb = row.tbThuongKy ?? 0;
+                                const eligible = row.isEligibleForExam;
+                                const passed = row.isPassed;
+
+                                return (
+                                    <tr key={row.id} className={cn(
+                                        "border-b border-slate-50 hover:bg-blue-50/20 transition-colors",
+                                        !eligible && "bg-rose-50/20",
+                                        row.isLocked && "opacity-60 pointer-events-none"
+                                    )}>
+                                        <td className="py-2.5 px-3 text-center text-slate-300 font-bold border-r border-slate-50">{idx + 1}</td>
+                                        <td className="py-2.5 px-3 border-r border-slate-50 min-w-[140px]">
+                                            <p className="font-black text-slate-800 text-[11px] leading-tight uppercase">{row.student?.fullName}</p>
+                                            <p className="text-uneti-blue font-bold text-[9px] mt-0.5">{row.student?.studentCode}</p>
+                                        </td>
+                                        <td className="py-2.5 px-2 text-center font-black text-slate-500 border-r border-slate-50">{credits}</td>
+                                        <td className="py-2.5 px-2 text-center border-r border-slate-50 bg-amber-50/30">
+                                            <ScoreInput value={row.attendanceScore} onChange={v => updateScore(row.id, "attendanceScore", v)} />
+                                        </td>
+                                        {(row._regularScores || []).map((val, i) => (
+                                            <td key={`tx-${i}`} className="py-2.5 px-1 text-center border-r border-slate-50 bg-sky-50/20">
+                                                <ScoreInput value={val} onChange={v => {
+                                                    const arr = [...row._regularScores]; arr[i] = v;
+                                                    setRows(prev => prev.map(r => r.id === row.id ? { ...r, _regularScores: arr, regularScores: serializeScores(arr) } : r));
+                                                }} />
+                                            </td>
+                                        ))}
+                                        {(row._coef1 || []).map((val, i) => (
+                                            <td key={`c1-${i}`} className="py-2.5 px-1 text-center border-r border-slate-50 bg-indigo-50/20">
+                                                <ScoreInput value={val} onChange={v => updateScore(row.id, "coef1", v, i)} highlight="blue" />
+                                            </td>
+                                        ))}
+                                        {(row._coef2 || []).map((val, i) => (
+                                            <td key={`c2-${i}`} className="py-2.5 px-1 text-center border-r border-slate-50 bg-violet-50/20">
+                                                <ScoreInput value={val} onChange={v => updateScore(row.id, "coef2", v, i)} />
+                                            </td>
+                                        ))}
+                                        {hasPractice && (row._practice || []).map((val, i) => (
+                                            <td key={`th-${i}`} className="py-2.5 px-1 text-center border-r border-slate-50 bg-teal-50/20">
+                                                <ScoreInput value={val} onChange={v => updateScore(row.id, "practice", v, i)} />
+                                            </td>
+                                        ))}
+                                        <td className="py-2.5 px-2 text-center border-r border-slate-100 bg-orange-50/30">
+                                            <span className={cn("font-black text-[12px]", tb >= 3 ? "text-orange-700" : "text-rose-600")}>
+                                                {tb > 0 ? tb.toFixed(2) : "—"}
                                             </span>
-                                            <span className="text-[8px] text-amber-400 font-bold">Tự tính</span>
-                                        </div>
-                                    </td>
-                                    {/* Thi — Giảng viên nhập, khóa nếu cấm thi */}
-                                    <td className="py-5 px-2 bg-indigo-50/10">
-                                        <input
-                                            type="number"
-                                            step="0.1"
-                                            disabled={g.isLocked || g.isIneligible}
-                                            className={cn(
-                                                "w-14 mx-auto bg-white border border-indigo-200 rounded-lg text-center text-xs font-black py-1.5 focus:ring-2 focus:ring-indigo-400 outline-none transition-all shadow-sm",
-                                                (g.isLocked || g.isIneligible) && "bg-slate-50 text-slate-400 border-dashed shadow-none cursor-not-allowed"
-                                            )}
-                                            value={g.finalScore ?? ""}
-                                            onChange={(e) => handleGradeChange(g.id, 'finalScore', e.target.value)}
-                                            title={g.isIneligible ? "SV bị cấm thi (vắng ≥ 50%)" : "Điểm thi kết thúc học phần"}
-                                        />
-                                    </td>
-                                    <td className="py-5 px-8 text-center border-l border-slate-100">
-                                        <div className="flex flex-col items-center gap-0.5">
-                                            <span className={cn(
-                                                "text-[13px] font-black tracking-tight",
-                                                g.totalScore10 >= 4.0 ? "text-slate-900" : "text-rose-600"
-                                            )}>
-                                                {g.totalScore10?.toFixed(1) || "-"}
+                                        </td>
+                                        <td className="py-2.5 px-2 text-center border-r border-slate-100 bg-orange-50/30">
+                                            {eligible
+                                                ? <span className="text-emerald-600 font-black text-[9px] px-1.5 py-0.5 bg-emerald-50 border border-emerald-100 rounded-full">✓ Đạt</span>
+                                                : <span className="text-rose-600 font-black text-[9px] px-1.5 py-0.5 bg-rose-50 border border-rose-100 rounded-full">✕ Cấm</span>
+                                            }
+                                        </td>
+                                        <td className="py-2.5 px-2 text-center border-r border-slate-50 bg-rose-50/20">
+                                            <ScoreInput value={row.isAbsentFromExam ? 0 : row.examScore1} disabled={!eligible || row.isAbsentFromExam}
+                                                onChange={v => updateScore(row.id, "examScore1", v)} highlight="red" />
+                                        </td>
+                                        <td className="py-2.5 px-2 text-center border-r border-slate-50 bg-rose-50/20">
+                                            <input type="checkbox" checked={row.isAbsentFromExam} onChange={() => toggleAbsent(row.id)} className="w-4 h-4 rounded accent-rose-500 cursor-pointer" />
+                                        </td>
+                                        <td className="py-2.5 px-2 text-center border-r border-slate-100 bg-rose-50/20">
+                                            <ScoreInput value={row.examScore2} disabled={eligible && !row.isAbsentFromExam && row.isPassed}
+                                                onChange={v => updateScore(row.id, "examScore2", v)} highlight="red" />
+                                        </td>
+                                        <td className="py-2.5 px-2 text-center border-r border-slate-50 bg-emerald-50/20">
+                                            <span className="font-black text-[12px] text-emerald-700">{row.finalScore1 !== null ? row.finalScore1.toFixed(2) : "—"}</span>
+                                        </td>
+                                        <td className="py-2.5 px-2 text-center border-r border-slate-100 bg-emerald-50/20">
+                                            <span className="font-black text-[12px] text-emerald-600">{row.finalScore2 !== null ? row.finalScore2.toFixed(2) : "—"}</span>
+                                        </td>
+                                        <td className="py-2.5 px-2 text-center border-r border-slate-100 bg-slate-50">
+                                            <span className="font-black text-[12px] text-slate-700">{row.totalScore4 !== null ? row.totalScore4?.toFixed(1) : "—"}</span>
+                                        </td>
+                                        <td className="py-2.5 px-2 text-center border-r border-slate-100 bg-slate-50">
+                                            <span className={cn("font-black text-[13px]",
+                                                row.letterGrade === "A" ? "text-blue-600" :
+                                                row.letterGrade?.startsWith("B") ? "text-emerald-600" :
+                                                row.letterGrade?.startsWith("C") ? "text-orange-500" :
+                                                row.letterGrade === "D" || row.letterGrade === "D+" ? "text-amber-600" : "text-rose-600")}>
+                                                {row.letterGrade || "—"}
                                             </span>
-                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{g.letterGrade || ""}</span>
-                                        </div>
-                                    </td>
-                                    <td className="py-5 px-8">
-                                        <input
-                                            type="text"
-                                            placeholder="..."
-                                            disabled={g.isLocked}
-                                            className={cn(
-                                                "w-full bg-slate-50/50 border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-600 outline-none focus:bg-white focus:ring-1 focus:ring-slate-300 transition-all",
-                                                g.isLocked && "opacity-50 border-dashed"
-                                            )}
-                                            value={g.note || ""}
-                                            onChange={(e) => {
-                                                const val = e.target.value;
-                                                setEnrollments(prev => prev.map(enr => 
-                                                    enr.id === g.id ? { ...enr, note: val } : enr
-                                                ));
-                                            }}
-                                        />
-                                    </td>
-                                </tr>
-                            ))}
+                                        </td>
+                                        <td className="py-2.5 px-2 text-center border-r border-slate-100 bg-slate-50">
+                                            <span className={cn("text-[9px] font-black px-1.5 py-0.5 rounded-full border", passed ? "text-emerald-700 bg-emerald-50 border-emerald-100" : "text-rose-600 bg-rose-50 border-rose-100")}>
+                                                {row.letterGrade ? letterToRank(row.letterGrade) : "—"}
+                                            </span>
+                                        </td>
+                                        <td className="py-2.5 px-2">
+                                            <input type="text" value={row.notes ?? ""} onChange={e => setRows(prev => prev.map(r => r.id === row.id ? { ...r, notes: e.target.value } : r))}
+                                                className="w-full text-[10px] border border-slate-100 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-slate-200 text-slate-600" />
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
 
-                {/* Footer Info */}
-                <div className="px-8 py-6 bg-slate-50/50 border-t border-slate-50 flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    <span>Cổng thông tin giảng viên UNETI</span>
-                    <div className="flex items-center gap-6">
-                        <div className="flex items-center gap-2">
-                             <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                             Quy chế: CC(×TC) + ĐKĐ(×2) + TX(×1)
-                        </div>
-                        <div className="flex items-center gap-2">
-                             <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
-                             ĐHP = QT×40% + Thi×60%
-                        </div>
-                        <div className="flex items-center gap-2">
-                             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                             CC tự động tính từ dữ liệu điểm danh
-                        </div>
-                    </div>
+                {/* Legend */}
+                <div className="p-6 bg-slate-50 border-t border-slate-100 gap-6 flex flex-wrap text-[9px] font-black uppercase tracking-wider text-slate-500">
+                    <span className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-amber-200" /> CC: Chuyên Cần</span>
+                    <span className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-sky-200" /> TX: Thường Kỳ</span>
+                    <span className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-indigo-200" /> Hệ số 1 (Số cột = Tín chỉ)</span>
+                    <span className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-violet-200" /> Hệ số 2 (Số cột = Tín chỉ)</span>
+                    <span className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-orange-200" /> TB TK: Trung Bình Thường Kỳ</span>
+                    <span className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-rose-200" /> TB TK &lt; 3.0 → Cấm thi</span>
+                    <span className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-emerald-200" /> Tổng kết = 40% TB TK + 60% Thi</span>
                 </div>
             </div>
 
-            {/* Notification Toast (Absolute) */}
             <AnimatePresence>
                 {message.text && (
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                        className={cn(
-                            "fixed bottom-8 left-1/2 -translate-x-1/2 px-8 py-4 rounded-3xl shadow-2xl border flex items-center gap-4 z-[100] min-w-[320px]",
-                            message.type === 'success' ? "bg-emerald-600 border-emerald-500 text-white shadow-emerald-600/20" : "bg-rose-600 border-rose-500 text-white shadow-rose-600/20"
-                        )}
-                    >
-                        {message.type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
-                        <p className="text-sm font-black uppercase tracking-wider">{message.text}</p>
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
+                        className={cn("fixed bottom-8 left-1/2 -translate-x-1/2 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 z-[100]",
+                            message.type === 'success' ? "bg-emerald-600 text-white" : "bg-rose-600 text-white")}>
+                        {message.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
+                        <p className="text-[11px] font-black uppercase tracking-widest">{message.text}</p>
                     </motion.div>
                 )}
             </AnimatePresence>
         </div>
     );
-}
-
-function TrendingUp(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
-      <polyline points="16 7 22 7 22 13" />
-    </svg>
-  )
 }

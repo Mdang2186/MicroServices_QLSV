@@ -6,6 +6,11 @@ export const StudentService = {
         return response.data;
     },
 
+    getProfileByStudentId: async (studentId: string) => {
+        const response = await api.get(`/api/students/${studentId}`);
+        return response.data;
+    },
+
     // Helper to get current logged in student's profile if ID is not known but stored in token/state
     // However, usually we store user ID in state. 
     // Let's assume we pass the ID.
@@ -30,6 +35,11 @@ export const StudentService = {
         return response.data;
     },
 
+    getStudentSemesterFees: async (studentId: string, semesterId: string) => {
+        const response = await api.get(`/api/student-fees/student/${studentId}/semester/${semesterId}`);
+        return response.data;
+    },
+
     getFeeTransactions: async (studentId: string) => {
         const response = await api.get(`/api/student-fees/student/${studentId}/transactions`);
         return response.data;
@@ -48,5 +58,15 @@ export const StudentService = {
     getCurriculumProgress: async (studentId: string) => {
         const response = await api.get(`/api/students/${studentId}/curriculum-progress`);
         return response.data;
-    }
+    },
+
+    getSemesters: async () => {
+        const response = await api.get("/api/semesters");
+        return response.data;
+    },
+
+    getCohorts: async () => {
+        const response = await api.get("/api/cohorts");
+        return response.data;
+    },
 };

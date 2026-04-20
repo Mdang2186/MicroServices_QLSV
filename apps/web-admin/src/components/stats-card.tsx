@@ -30,8 +30,8 @@ export function StatsCard({ title, value, icon: Icon, trend, trendLabel, trendUp
 
             <div className="flex justify-between items-start relative z-10">
                 <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{title}</p>
-                    <h3 className="text-2xl font-black mt-1 text-slate-800 tracking-tight">{value}</h3>
+                    <p className="text-[10px] font-bold text-slate-900 uppercase tracking-widest">{title}</p>
+                    <h3 className="text-2xl font-black mt-1 text-slate-950 tracking-tight">{value}</h3>
                 </div>
                 <div className={cn(`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm`, colorClasses[color])}>
                     <Icon className="w-5 h-5" />
@@ -48,7 +48,7 @@ export function StatsCard({ title, value, icon: Icon, trend, trendLabel, trendUp
                             {trendUp ? '↑' : '↓'} {trend}
                         </span>
                     )}
-                    {trendLabel && <span className="text-xs font-medium text-slate-400">{trendLabel}</span>}
+                    {trendLabel && <span className="text-xs font-medium text-slate-600">{trendLabel}</span>}
                 </div>
             )}
         </div>

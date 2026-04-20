@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarCheck, CalendarDays, ChevronLeft, ChevronRight, Clock3, Filter, Info, MapPin, Printer, UserSquare2 } from "lucide-react";
 import { StudentService } from "@/services/student.service";
-import { getStudentUserId, readStudentSessionUser } from "@/lib/student-session";
+import { resolveCurrentStudentContext } from "@/lib/current-student";
 
 type SemesterOption = {
   id: string;
@@ -19,6 +19,13 @@ type StudentCohortMeta = {
   code: string;
   startYear: number;
   endYear: number;
+};
+
+type CurriculumProgressPayload = {
+  semesters?: Array<{
+    semester?: number;
+    items?: any[];
+  }>;
 };
 
 const DAYS = [
@@ -46,7 +53,7 @@ const SESSION_BUCKETS = [
 const LEGEND = [
   { label: "Lý thuyết", className: "bg-white border-slate-300" },
   { label: "Thực hành", className: "bg-emerald-50 border-emerald-200" },
-  { label: "Lịch thi", className: "bg-amber-50 border-amber-200" },
+  { label: "Lịch thi", className: "bg-yellow-50 border-yellow-200" },
 ];
 
 const EMPTY_GRID_STYLE = {
@@ -133,7 +140,7 @@ const formatSemesterOptionLabel = (semester: Partial<SemesterOption>, studentInt
   const code = `${semester.code || ""}`.trim();
   const name = `${semester.name || ""}`.trim();
   const startDate = semester.startDate ? new Date(semester.startDate) : null;
-  
+
   const academicSemNumber = studentIntakeYear ? calculateAcademicSemester(studentIntakeYear, startDate) : null;
   const yearRange = startDate ? `${startDate.getFullYear()}-${startDate.getFullYear() + 1}` : "";
 
@@ -224,6 +231,35 @@ const getSemesterStartYear = (semester: Partial<SemesterOption> & { year?: numbe
 
   return Number(semester.year || 0);
 };
+
+const getSemesterFingerprint = (
+  semester?: Partial<SemesterOption> & { year?: number },
+) => {
+  if (!semester) return "";
+  const conceptualSemester = parseConceptualSemester(semester);
+  const startYear = getSemesterStartYear(semester);
+  if (!conceptualSemester || !startYear) return "";
+  return `HK${conceptualSemester}::${startYear}`;
+};
+
+const getSemesterMatchTokens = (
+  semester?: Partial<SemesterOption> & { year?: number },
+  explicitSemesterId?: string | null,
+  aliasKeys: string[] = [],
+) =>
+  new Set(
+    [
+      explicitSemesterId,
+      semester?.id,
+      semester?.code,
+      semester?.name,
+      getSemesterSelectionKey(semester),
+      getSemesterFingerprint(semester),
+      ...aliasKeys,
+    ]
+      .map((value) => `${value || ""}`.trim())
+      .filter(Boolean),
+  );
 
 const getSemesterHalfMatch = (
   semester: Partial<SemesterOption> & { year?: number },
@@ -435,7 +471,7 @@ const isDateWithinSemester = (date: Date, semester: SemesterOption | null) => {
 const getBucket = (startShift: number) => (startShift <= 6 ? "Sáng" : startShift <= 12 ? "Chiều" : "Tối");
 
 const getTone = (type?: string, roomName?: string) => {
-  if (type === "EXAM") return "border-amber-200 bg-amber-50 text-amber-800";
+  if (type === "EXAM") return "border-yellow-200 bg-yellow-50 text-yellow-800";
   if (type === "PRACTICE" || `${roomName || ""}`.toLowerCase().includes("lab")) {
     return "border-emerald-200 bg-emerald-50 text-emerald-800";
   }
@@ -450,12 +486,42 @@ const getRoomLabel = (room?: any, roomId?: string) => {
 const getBucketValue = (startShift: number) =>
   startShift <= 6 ? "morning" : startShift <= 12 ? "afternoon" : "evening";
 
-const getCourseClassSessions = (courseClass: any) =>
-  Array.isArray(courseClass?.sessions) && courseClass.sessions.length > 0
-    ? courseClass.sessions
-    : Array.isArray(courseClass?.schedules)
-      ? courseClass.schedules
-      : [];
+const getCourseClassSessions = (courseClass: any) => {
+  const mergedSchedules = [
+    ...(Array.isArray(courseClass?.schedules) ? courseClass.schedules : []),
+    ...(Array.isArray(courseClass?.sessions) ? courseClass.sessions : []),
+  ];
+
+  if (mergedSchedules.length === 0) {
+    return [];
+  }
+
+  const uniqueSchedules = new Map<string, any>();
+
+  mergedSchedules.forEach((session: any, index: number) => {
+    const key = [
+      session?.id || `session-${index}`,
+      session?.date || "",
+      session?.startShift || "",
+      session?.endShift || "",
+      session?.type || "",
+      session?.roomId || session?.room?.id || "",
+    ].join("::");
+
+    if (!uniqueSchedules.has(key)) {
+      uniqueSchedules.set(key, session);
+    }
+  });
+
+  return [...uniqueSchedules.values()].sort((left: any, right: any) => {
+    const leftDate = new Date(left?.date || 0).getTime();
+    const rightDate = new Date(right?.date || 0).getTime();
+    if (leftDate !== rightDate) {
+      return leftDate - rightDate;
+    }
+    return Number(left?.startShift || 0) - Number(right?.startShift || 0);
+  });
+};
 
 const getEnrollmentSemesterSelectionKey = (enrollment: any) =>
   getSemesterSelectionKey({
@@ -487,7 +553,7 @@ const dedupeEnrollments = (enrollments: any[]) => {
     // Include Class ID to allow multiple classes for the same subject (e.g. Theory & Practice)
     const classId = enrollment?.courseClassId || enrollment?.courseClass?.id || enrollment?.id;
     const key = semesterKey && subjectKey ? `${semesterKey}::${subjectKey}::${classId}` : `${classId}`;
-    
+
     const existing = deduped.get(key);
     if (!existing || getEnrollmentPriority(enrollment) > getEnrollmentPriority(existing)) {
       deduped.set(key, enrollment);
@@ -497,49 +563,82 @@ const dedupeEnrollments = (enrollments: any[]) => {
   return [...deduped.values()];
 };
 
+const getEnrollmentSubjectTokens = (enrollment: any) =>
+  new Set(
+    [
+      enrollment?.courseClass?.subjectId,
+      enrollment?.courseClass?.subject?.id,
+      enrollment?.courseClass?.subject?.code,
+      enrollment?.subjectId,
+    ]
+      .map((value) => `${value || ""}`.trim())
+      .filter(Boolean),
+  );
+
+const getCurriculumSubjectTokens = (item: any) =>
+  new Set(
+    [item?.subjectId, item?.id, item?.code]
+      .map((value) => `${value || ""}`.trim())
+      .filter(Boolean),
+  );
+
+const dedupeSemesterEnrollments = (enrollments: any[]) => {
+  const deduped = new Map<string, any>();
+
+  for (const enrollment of enrollments || []) {
+    const subjectKey =
+      `${enrollment?.courseClass?.subjectId || enrollment?.courseClass?.subject?.id || enrollment?.courseClass?.subject?.code || ""}`.trim() ||
+      `${enrollment?.courseClassId || enrollment?.courseClass?.id || enrollment?.id}`.trim();
+
+    const existing = deduped.get(subjectKey);
+    if (!existing || getEnrollmentPriority(enrollment) > getEnrollmentPriority(existing)) {
+      deduped.set(subjectKey, enrollment);
+    }
+  }
+
+  return [...deduped.values()];
+};
+
 const enrollmentMatchesSemester = (
   enrollment: any,
   selectedSemester: SemesterOption | null,
-  selectedSemesterId: string,
+  selectedSemesterKeys: Set<string>,
 ) => {
   if (!selectedSemester) return true;
 
   const semester = enrollment?.courseClass?.semester;
-  const semesterKey = getEnrollmentSemesterSelectionKey(enrollment);
-  const selectedKeys = new Set(
-    [
-      selectedSemesterId,
-      selectedSemester.selectionKey,
-      selectedSemester.id,
-      selectedSemester.code,
-    ].filter(Boolean),
+  const explicitSemesterKeys = getSemesterMatchTokens(
+    {
+      id: semester?.id,
+      code: semester?.code,
+      name: semester?.name,
+      startDate: semester?.startDate,
+      endDate: semester?.endDate,
+    },
+    enrollment?.courseClass?.semesterId,
+    [getEnrollmentSemesterSelectionKey(enrollment)],
   );
 
-  // Match by explicit ID/Code
-  if (semesterKey && selectedKeys.has(semesterKey)) {
-    return true;
+  // If the class already has semester metadata, it must match that semester exactly.
+  if (explicitSemesterKeys.size > 0) {
+    return [...explicitSemesterKeys].some((value) => selectedSemesterKeys.has(value));
   }
 
-  // FALLBACK: Match by date overlap
-  // If the class has ANY session that falls within the selected semester's range, show it.
-  const sessions = getCourseClassSessions(enrollment?.courseClass);
-  if (sessions.length > 0 && selectedSemester.startDate && selectedSemester.endDate) {
-      return sessions.some((session: any) => 
-          isDateInRange(session.date, selectedSemester.startDate, selectedSemester.endDate)
-      );
-  }
-
-  // FALLBACK 2: Match by Semester Object date equality
+  // Records missing ID/code can still match by the semester date window itself.
   if (
+    semester?.startDate &&
+    semester?.endDate &&
     sameDateValue(semester?.startDate, selectedSemester.startDate) &&
     sameDateValue(semester?.endDate, selectedSemester.endDate)
   ) {
     return true;
   }
 
-  if (!semester?.id && !semester?.code && !semester?.startDate && !semester?.endDate) {
-    return getCourseClassSessions(enrollment?.courseClass).some((session: any) =>
-      isDateInRange(session.date, selectedSemester.startDate, selectedSemester.endDate),
+  // Only legacy records without semester metadata fall back to session dates.
+  const sessions = getCourseClassSessions(enrollment?.courseClass);
+  if (sessions.length > 0 && selectedSemester.startDate && selectedSemester.endDate) {
+    return sessions.some((session: any) =>
+      isDateInRange(session.date, selectedSemester.startDate, selectedSemester.endDate)
     );
   }
 
@@ -549,7 +648,8 @@ const enrollmentMatchesSemester = (
 export default function ScheduleListView() {
   const [enrollments, setEnrollments] = useState<any[]>([]);
   const [allSemesters, setAllSemesters] = useState<any[]>([]);
-  const [studentProfile, setStudentProfile] = useState<any | null>(null);
+  const [studentCohortCode, setStudentCohortCode] = useState<string>("");
+  const [curriculumProgress, setCurriculumProgress] = useState<CurriculumProgressPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedSemesterId, setSelectedSemesterId] = useState("");
@@ -561,24 +661,33 @@ export default function ScheduleListView() {
   );
 
   useEffect(() => {
-    fetch("/api/semesters")
-      .then((response) => (response.ok ? response.json() : []))
-      .then((data) => setAllSemesters(Array.isArray(data) ? data : []))
-      .catch(() => setAllSemesters([]));
-  }, []);
-
-  useEffect(() => {
     const load = async () => {
       try {
-        const user = readStudentSessionUser();
-        const userId = getStudentUserId(user);
-        if (!userId) return;
-        const profile = await StudentService.getProfile(userId);
-        setStudentProfile(profile || null);
-        if (profile?.enrollments) {
-          setEnrollments(profile.enrollments);
-        } else if (profile?.id) {
-          setEnrollments((await StudentService.getEnrollments(profile.id)) || []);
+        const context = await resolveCurrentStudentContext();
+        if (!context.studentId) return;
+
+        const profile =
+          context.profile ||
+          (await StudentService.getProfileByStudentId(context.studentId).catch(() => null));
+        const [semesterData, curriculumData] = await Promise.all([
+          StudentService.getSemesters().catch(() => []),
+          StudentService.getCurriculumProgress(context.studentId).catch(() => null),
+        ]);
+
+        const enrichedEnrollments = Array.isArray(profile?.enrollments)
+          ? profile.enrollments
+          : [];
+
+        setAllSemesters(Array.isArray(semesterData) ? semesterData : []);
+        setCurriculumProgress(curriculumData);
+        setStudentCohortCode(
+          `${profile?.adminClass?.cohort || profile?.intake || ""}`.trim(),
+        );
+
+        if (enrichedEnrollments.length > 0) {
+          setEnrollments(enrichedEnrollments);
+        } else {
+          setEnrollments((await StudentService.getEnrollments(context.studentId)) || []);
         }
       } catch (error) {
         console.error("Failed to fetch schedule:", error);
@@ -590,136 +699,221 @@ export default function ScheduleListView() {
     load();
   }, []);
 
-  const cohortMeta = useMemo(() => {
-    const cohortCode =
-      studentProfile?.adminClass?.cohort ||
-      studentProfile?.intake ||
-      normalizedEnrollments[0]?.courseClass?.adminClasses?.[0]?.cohort ||
-      studentProfile?.course ||
-      "";
-    return inferCohortMeta(cohortCode);
-  }, [normalizedEnrollments, studentProfile]);
+  const cohortMeta = useMemo(
+    () => inferCohortMeta(studentCohortCode),
+    [studentCohortCode],
+  );
 
-  const semesterOptions = useMemo<SemesterOption[]>(() => {
-    const map = new Map<string, SemesterOption & { keys: Set<string> }>();
+  const semesterOptions = useMemo(() => {
+    const map = new Map<string, SemesterOption>();
 
-    allSemesters.forEach((semester) => {
+    for (const semester of allSemesters || []) {
       const selectionKey = getSemesterSelectionKey(semester);
-      if (!selectionKey || !semester?.id) return;
+      const id = `${semester?.id || selectionKey}`.trim();
+      if (!id) continue;
 
-      const existing = map.get(selectionKey);
-      if (existing) {
-        existing.id = existing.id || semester.id;
-        existing.code = existing.code || semester.code;
-        existing.name = existing.name || semester.name || semester.id;
-        existing.startDate = existing.startDate || toDate(semester.startDate);
-        existing.endDate = existing.endDate || toDate(semester.endDate);
-        return;
-      }
-
-      map.set(selectionKey, {
-        id: semester.id,
-        selectionKey,
-        code: semester.code,
-        name: semester.name || semester.id,
-        startDate: toDate(semester.startDate),
-        endDate: toDate(semester.endDate),
+      map.set(id, {
+        id,
+        selectionKey: selectionKey || id,
+        code: semester?.code || "",
+        name: semester?.name || id,
+        startDate: toDate(semester?.startDate),
+        endDate: toDate(semester?.endDate),
         sessionDates: [],
-        keys: new Set<string>(),
       });
-    });
+    }
 
-    normalizedEnrollments.forEach((enrollment) => {
-      const semester = enrollment.courseClass?.semester;
-      const semesterId = enrollment.courseClass?.semesterId || semester?.id;
-      const selectionKey = getSemesterSelectionKey({
-        id: semesterId,
-        code: semester?.code,
-      });
-      if (!selectionKey || !semesterId) return;
+    for (const enrollment of normalizedEnrollments) {
+      const semester = enrollment?.courseClass?.semester;
+      const selectionKey = getSemesterSelectionKey(semester);
+      const id =
+        `${enrollment?.courseClass?.semesterId || semester?.id || selectionKey}`.trim();
+      if (!id) continue;
 
-      if (!map.has(selectionKey)) {
-        map.set(selectionKey, {
-          id: semesterId,
-          selectionKey,
-          code: semester?.code,
-          name: semester?.name || semesterId,
-          startDate: toDate(semester?.startDate),
-          endDate: toDate(semester?.endDate),
-          sessionDates: [],
-          keys: new Set<string>(),
+      const existing = map.get(id);
+      const sessionDates = getCourseClassSessions(enrollment?.courseClass)
+        .map((session: any) => toDate(session?.date))
+        .filter(Boolean) as Date[];
+
+      if (existing) {
+        const dedupedDates = new Map(
+          existing.sessionDates.map((date) => [date.toISOString(), date]),
+        );
+        sessionDates.forEach((date) => {
+          dedupedDates.set(date.toISOString(), date);
         });
+        existing.sessionDates = [...dedupedDates.values()].sort(
+          (left, right) => left.getTime() - right.getTime(),
+        );
+        if (!existing.startDate && semester?.startDate) {
+          existing.startDate = toDate(semester.startDate);
+        }
+        if (!existing.endDate && semester?.endDate) {
+          existing.endDate = toDate(semester.endDate);
+        }
+        if (!existing.code && semester?.code) {
+          existing.code = semester.code;
+        }
+        if (!existing.name && semester?.name) {
+          existing.name = semester.name;
+        }
+        continue;
       }
 
-      const target = map.get(selectionKey)!;
-      target.id = target.id || semesterId;
-      target.code = target.code || semester?.code;
-      target.name = target.name || semester?.name || semesterId;
-      target.startDate = target.startDate || toDate(semester?.startDate);
-      target.endDate = target.endDate || toDate(semester?.endDate);
-      getCourseClassSessions(enrollment.courseClass)
-        .map((session: any) => toDate(session.date))
-        .filter(Boolean)
-        .forEach((date: any) => {
-          const key = date.toISOString();
-          if (!target.keys.has(key)) {
-            target.keys.add(key);
-            target.sessionDates.push(date);
-          }
-        });
-    });
+      map.set(id, {
+        id,
+        selectionKey: selectionKey || id,
+        code: semester?.code || "",
+        name: semester?.name || id,
+        startDate: toDate(semester?.startDate),
+        endDate: toDate(semester?.endDate),
+        sessionDates: [...new Map(
+          sessionDates.map((date) => [date.toISOString(), date]),
+        ).values()].sort((left, right) => left.getTime() - right.getTime()),
+      });
+    }
 
-    const baseSemesters = Array.from(map.values())
-      .map(({ keys, ...semester }) => ({
-        ...semester,
-        sessionDates: [...semester.sessionDates].sort((left, right) => left.getTime() - right.getTime()),
-      }))
-      .sort((left, right) => getSemesterSortTime(right) - getSemesterSortTime(left));
-
-    const cohortSemesters = getVisibleSemestersForCohort(
-      baseSemesters as (SemesterOption & { year?: number })[],
-      cohortMeta,
+    const merged = [...map.values()].sort(
+      (left, right) => getSemesterSortTime(right) - getSemesterSortTime(left),
     );
-
-    const visibleSemesters = cohortSemesters.length ? cohortSemesters : baseSemesters;
-    return limitToPastAndCurrentSemesters(visibleSemesters);
+    const scoped = cohortMeta
+      ? getVisibleSemestersForCohort(merged, cohortMeta)
+      : merged;
+    const limited = limitToPastAndCurrentSemesters(scoped);
+    return limited.length > 0 ? limited : merged;
   }, [allSemesters, cohortMeta, normalizedEnrollments]);
 
+  const selectedSemester = useMemo(
+    () =>
+      semesterOptions.find(
+        (semester) =>
+          semester.id === selectedSemesterId ||
+          semester.selectionKey === selectedSemesterId,
+      ) || null,
+    [selectedSemesterId, semesterOptions],
+  );
+
+  const selectedSemesterKeys = useMemo(() => {
+    if (!selectedSemester) {
+      return new Set<string>();
+    }
+
+    const fingerprint = getSemesterFingerprint(selectedSemester);
+    const aliasKeys = fingerprint
+      ? semesterOptions
+        .filter((semester) => getSemesterFingerprint(semester) === fingerprint)
+        .flatMap((semester) => [
+          semester.id,
+          semester.selectionKey,
+          semester.code,
+          semester.name,
+          getSemesterFingerprint(semester),
+        ])
+      : [];
+
+    return getSemesterMatchTokens(selectedSemester, selectedSemesterId, aliasKeys);
+  }, [selectedSemester, selectedSemesterId, semesterOptions]);
+
+  const selectedConceptualSemester = useMemo(
+    () => (selectedSemester ? parseConceptualSemester(selectedSemester) : null),
+    [selectedSemester],
+  );
+
+  const selectedCurriculumItems = useMemo(() => {
+    if (!selectedConceptualSemester) {
+      return [];
+    }
+
+    const semester = (curriculumProgress?.semesters || []).find(
+      (item) => Number(item?.semester || 0) === selectedConceptualSemester,
+    );
+
+    return Array.isArray(semester?.items) ? semester.items : [];
+  }, [curriculumProgress, selectedConceptualSemester]);
+
+  const selectedCurriculumSubjectKeys = useMemo(
+    () =>
+      new Set(
+        selectedCurriculumItems.flatMap((item) => [...getCurriculumSubjectTokens(item)]),
+      ),
+    [selectedCurriculumItems],
+  );
+
+  const weekDays = useMemo(() => {
+    const start = getWeekStart(selectedDate);
+    return Array.from({ length: 7 }, (_, index) => addDays(start, index));
+  }, [selectedDate]);
+
+  // Auto-resolve semester based on selectedDate
   useEffect(() => {
     if (!semesterOptions.length) {
       setSelectedSemesterId("");
       return;
     }
 
-    // Determine the most relevant semester for today
-    const currentSem = semesterOptions.find((s) => isCurrentSemester(s));
-    const latestWithData = [...semesterOptions]
-      .filter((s) => s.sessionDates.length > 0)
-      .sort((a, b) => getSemesterSortTime(b) - getSemesterSortTime(a))[0];
+    // Find semester that contains the selectedDate
+    const matchingSemester = semesterOptions.find((s) => isDateWithinSemester(selectedDate, s)) || 
+                             getCurrentOrLatestStartedSemester(semesterOptions);
 
-    const preferred =
-      currentSem || latestWithData || getCurrentOrLatestStartedSemester(semesterOptions) || semesterOptions[0];
-
-    setSelectedSemesterId((currentValue) => {
-      if (semesterOptions.some((s) => s.selectionKey === currentValue)) {
-        return currentValue;
-      }
-      return preferred.selectionKey;
-    });
-  }, [semesterOptions]);
-
-  const selectedSemester = useMemo(
-    () => semesterOptions.find((semester) => semester.selectionKey === selectedSemesterId) || null,
-    [semesterOptions, selectedSemesterId],
-  );
+    if (matchingSemester && matchingSemester.id !== selectedSemesterId) {
+      setSelectedSemesterId(matchingSemester.id);
+    }
+  }, [selectedDate, semesterOptions, selectedSemesterId]);
 
   const visibleEnrollments = useMemo(() => {
-    if (!selectedSemesterId || !selectedSemester) return normalizedEnrollments;
+    // We want to show all enrollments that have sessions in the currently viewed week
+    // OR belong to the currently resolved semester (to show curriculum/missing items)
+    
+    const weekStart = weekDays[0];
+    const weekEnd = weekDays[6];
 
-    return normalizedEnrollments.filter((enrollment) =>
-      enrollmentMatchesSemester(enrollment, selectedSemester, selectedSemesterId),
-    );
-  }, [normalizedEnrollments, selectedSemester, selectedSemesterId]);
+    return normalizedEnrollments.filter((enrollment) => {
+      // 1. Session is in this week
+      const sessions = getCourseClassSessions(enrollment.courseClass);
+      const hasSessionInWeek = sessions.some(s => isDateInRange(s.date, weekStart, weekEnd));
+      if (hasSessionInWeek) return true;
+
+      // 2. Or matches the resolved semester
+      if (selectedSemester && enrollmentMatchesSemester(enrollment, selectedSemester, selectedSemesterKeys)) {
+        return true;
+      }
+
+      return false;
+    });
+  }, [
+    normalizedEnrollments,
+    selectedSemester,
+    selectedSemesterKeys,
+    weekDays,
+  ]);
+
+  const scheduledSubjectSummaries = useMemo(
+    () =>
+      visibleEnrollments
+        .filter((enrollment) => getCourseClassSessions(enrollment.courseClass).length > 0)
+        .map((enrollment) => ({
+          key:
+            enrollment?.courseClassId ||
+            enrollment?.courseClass?.id ||
+            enrollment?.courseClass?.subjectId ||
+            enrollment?.id,
+          name: enrollment?.courseClass?.subject?.name || enrollment?.courseClass?.name,
+        })),
+    [visibleEnrollments],
+  );
+
+  const missingCurriculumItems = useMemo(() => {
+    if (selectedCurriculumItems.length === 0) {
+      return [];
+    }
+
+    return selectedCurriculumItems.filter((item) => {
+      const tokens = getCurriculumSubjectTokens(item);
+      return !visibleEnrollments.some((enrollment) =>
+        [...getEnrollmentSubjectTokens(enrollment)].some((token) => tokens.has(token)),
+      );
+    });
+  }, [selectedCurriculumItems, visibleEnrollments]);
 
   const visibleSessionDates = useMemo(
     () =>
@@ -730,16 +924,24 @@ export default function ScheduleListView() {
     [visibleEnrollments],
   );
 
+  // Remove effect that forces date back to semester start on semester change
+  // as we now want the date to be the primary driver.
+  /*
   useEffect(() => {
+    if (visibleSessionDates.length > 0) {
+      setSelectedDate(
+        pickAnchorDateFromSessionDates(selectedSemester, visibleSessionDates),
+      );
+      return;
+    }
+
     if (selectedSemester) {
-      setSelectedDate(pickAnchorDateFromSessionDates(selectedSemester, visibleSessionDates));
+      setSelectedDate(pickSemesterAnchorDate(selectedSemester));
     }
   }, [selectedSemester, visibleSessionDates]);
+  */
 
-  const weekDays = useMemo(() => {
-    const start = getWeekStart(selectedDate);
-    return Array.from({ length: 7 }, (_, index) => addDays(start, index));
-  }, [selectedDate]);
+  /* Moved weekDays up */
 
   const timetableRows = useMemo(
     () =>
@@ -765,6 +967,7 @@ export default function ScheduleListView() {
                   startShift: Number(session.startShift),
                   endShift: Number(session.endShift),
                   type: session.type || "THEORY",
+                  note: session.note || null,
                 })),
             )
             .sort((left, right) => left.startShift - right.startShift);
@@ -807,10 +1010,9 @@ export default function ScheduleListView() {
   };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-3 pb-12">
+    <div className="mx-auto max-w-[1400px] space-y-4 pb-12">
       {/* Compact Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-        {/* Left: filters + semester */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-[12px] font-semibold text-slate-600">
             <Filter className="h-3.5 w-3.5 text-slate-400" />
@@ -824,18 +1026,6 @@ export default function ScheduleListView() {
               </button>
             ))}
           </div>
-
-          <select
-            value={selectedSemesterId}
-            onChange={(event) => setSelectedSemesterId(event.target.value)}
-            className="h-9 min-w-[260px] rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-700 outline-none focus:border-blue-400 transition-colors"
-          >
-            {semesterOptions.map((semester) => (
-              <option key={semester.selectionKey} value={semester.selectionKey}>
-                {formatSemesterOptionLabel(semester, cohortMeta?.startYear)}
-              </option>
-            ))}
-          </select>
         </div>
 
         {/* Right: date picker + week nav */}
@@ -850,35 +1040,102 @@ export default function ScheduleListView() {
             className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-slate-700 outline-none focus:border-blue-400 transition-colors cursor-pointer"
           />
           <div className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
-            <button onClick={() => changeWeek(-7)} className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-white hover:shadow-sm text-slate-500 hover:text-blue-600 transition-all">
+            <button
+              onClick={() => changeWeek(-7)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-white hover:shadow-sm text-slate-500 hover:text-blue-600 transition-all font-bold"
+            >
               <ChevronLeft className="h-4 w-4" />
             </button>
             <div className="px-2 text-center select-none">
               <div className="text-[11px] font-bold text-slate-700 whitespace-nowrap">
-                {weekDays[0].toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })} – {weekDays[6].toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                {weekDays[0].toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })} – {weekDays[6].toLocaleDateString("vi-VN", {
+                  day: "2-digit",
+                  month: "2-digit",
+                  year: "numeric",
+                })}
               </div>
             </div>
-            <button onClick={() => changeWeek(7)} className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-white hover:shadow-sm text-slate-500 hover:text-blue-600 transition-all">
+            <button
+              onClick={() => changeWeek(7)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-white hover:shadow-sm text-slate-500 hover:text-blue-600 transition-all font-bold"
+            >
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
         </div>
       </div>
 
+      {selectedSemester ? (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-[12px] font-semibold text-slate-600">
+          Đang xem lịch của{" "}
+          <span className="font-black text-blue-700">
+            {formatSemesterOptionLabel(selectedSemester, cohortMeta?.startYear)}
+          </span>
+          {selectedSemester.startDate && selectedSemester.endDate ? (
+            <span className="ml-2 text-slate-500">
+              ({selectedSemester.startDate.toLocaleDateString("vi-VN")} -{" "}
+              {selectedSemester.endDate.toLocaleDateString("vi-VN")})
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {selectedSemester ? (
+        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold text-slate-600">
+            <span>
+              Học kỳ này có{" "}
+              <span className="font-black text-blue-700">
+                {scheduledSubjectSummaries.length}
+              </span>{" "}
+              học phần đã được xếp lịch theo đúng kế hoạch đào tạo.
+            </span>
+
+          </div>
+          {scheduledSubjectSummaries.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {scheduledSubjectSummaries.map((item) => (
+                <span
+                  key={item.key}
+                  className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-bold text-blue-700"
+                >
+                  <CalendarDays className="h-3.5 w-3.5" />
+                  {item.name}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {missingCurriculumItems.length > 0 ? (
+            <div className="mt-3 text-[12px] font-semibold text-rose-700">
+              Chưa thấy lớp hoặc lịch học cho:{" "}
+              {missingCurriculumItems
+                .map((item) => item?.name || item?.code)
+                .filter(Boolean)
+                .join(", ")}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* Warnings (compact) */}
-      {selectedSemester && visibleEnrollments.length > 0 && !hasSessions && (
+      {/* Removed "Tuần nằm ngoài học kỳ" warning as date is now the anchor */}
+
+
+      {visibleEnrollments.length > 0 && !hasSessions && (
         <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-[13px] font-semibold text-rose-700">
-          Bạn đã có học phần trong học kỳ này nhưng chưa có buổi học nào được xếp lịch.
+          Bạn đã có học phần nhưng chưa có buổi học hoặc lịch thi nào được xếp.
         </div>
       )}
 
       {/* Schedule Grid */}
+
+      {/* Schedule Grid */}
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="min-w-[1100px] w-full border-collapse">
+          <table className="min-w-[1240px] w-full border-collapse">
             <thead>
               <tr>
-                <th className="w-20 border-b border-r border-slate-200 bg-slate-50 px-2 py-2.5 text-center text-[10px] font-black uppercase tracking-widest text-blue-600">
+                <th className="w-20 border-b border-r border-slate-200 bg-slate-50 px-2 py-3 text-center text-[11px] font-black uppercase tracking-widest text-blue-600">
                   Ca
                 </th>
                 {DAYS.map((day, index) => {
@@ -888,8 +1145,8 @@ export default function ScheduleListView() {
                       key={day.value}
                       className={`min-w-[132px] border-b border-r border-slate-200 px-2 py-2.5 text-center ${isToday ? "bg-blue-50/60" : "bg-slate-50"}`}
                     >
-                      <div className={`text-[10px] font-black uppercase tracking-wider ${isToday ? "text-blue-600" : "text-slate-600"}`}>{day.name}</div>
-                      <div className={`text-[10px] font-semibold tabular-nums ${isToday ? "text-blue-500" : "text-slate-400"}`}>
+                      <div className={`text-[11px] font-black uppercase tracking-wider ${isToday ? "text-blue-600" : "text-slate-600"}`}>{day.name}</div>
+                      <div className={`text-[11px] font-semibold tabular-nums ${isToday ? "text-blue-500" : "text-slate-400"}`}>
                         {weekDays[index].toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })}
                       </div>
                     </th>
@@ -901,11 +1158,11 @@ export default function ScheduleListView() {
               {timetableRows.map((row) => (
                 <tr key={row.value}>
                   <td className="border-b border-r border-slate-200 bg-slate-50/60 p-0 align-middle">
-                    <div className="flex flex-col items-center justify-center gap-1 px-2 py-3 min-h-[120px]">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-600 [writing-mode:vertical-lr] rotate-180">
+                    <div className="flex flex-col items-center justify-center gap-1.5 px-2 py-4 min-h-[150px]">
+                      <span className="text-[11px] font-black uppercase tracking-wider text-slate-600 [writing-mode:vertical-lr] rotate-180">
                         {row.label}
                       </span>
-                      <span className="text-[9px] font-medium text-slate-400">
+                      <span className="text-[10px] font-bold text-slate-500">
                         {SESSION_BUCKETS.find((b) => b.value === row.value)?.time}
                       </span>
                     </div>
@@ -915,23 +1172,40 @@ export default function ScheduleListView() {
                     return (
                       <td
                         key={`${row.value}-${cell.day.value}`}
-                        className={`border-b border-r border-slate-200 p-1.5 align-top min-h-[120px] ${isToday ? "bg-blue-50/30" : ""}`}
+                        className={`border-b border-r border-slate-200 p-2 align-top min-h-[150px] ${isToday ? "bg-blue-50/30" : ""}`}
                       >
                         {cell.items.length === 0 ? (
-                          <div className="min-h-[120px]" />
+                          <div className="min-h-[150px]" />
                         ) : (
                           <div className="space-y-1.5">
                             {cell.items.map((item) => (
                               <div
                                 key={item.id}
-                                className={`rounded-lg border px-2.5 py-2 text-[10px] shadow-sm ${getTone(item.type, item.roomLabel)}`}
+                                className={`rounded-lg border px-3 py-2.5 text-xs shadow-sm ${getTone(item.type, item.roomLabel)}`}
                               >
-                                <h4 className="font-black leading-tight text-blue-700 line-clamp-2">{item.subjectName}</h4>
-                                <p className="text-[9px] font-semibold text-slate-500 mt-0.5">{item.classCode}</p>
-                                <div className="mt-1.5 border-t border-black/5 pt-1.5 space-y-0.5 text-[9px] font-semibold text-slate-600">
-                                  <div className="flex items-center gap-1"><Clock3 className="h-3 w-3 text-slate-400" />Tiết {item.startShift}–{item.endShift}</div>
-                                  <div className="flex items-center gap-1"><MapPin className="h-3 w-3 text-slate-400" />{item.roomLabel}</div>
-                                  <div className="flex items-center gap-1 truncate"><UserSquare2 className="h-3 w-3 text-slate-400" />{item.lecturerName}</div>
+                                <h4
+                                  className={`font-black leading-tight line-clamp-2 ${item.type === "EXAM" ? "text-yellow-800" : "text-blue-700"
+                                    }`}
+                                >
+                                  {item.subjectName}
+                                </h4>
+                                <p className="text-[10px] font-bold text-slate-500 mt-1">{item.classCode}</p>
+                                <div className="mt-2 border-t border-black/5 pt-2 space-y-1 text-[10px] font-bold text-slate-600">
+                                  <div className="flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5 text-slate-400" />Tiết {item.startShift}–{item.endShift}</div>
+                                  <div className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-slate-400" />{item.roomLabel}</div>
+                                  {item.type === "EXAM" ? (
+                                    <div className="flex items-start gap-1.5 text-yellow-800">
+                                      <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-yellow-700" />
+                                      <span className="line-clamp-2 italic">
+                                        {item.note || "Đã xếp lịch thi"}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-1.5 truncate">
+                                      <UserSquare2 className="h-3.5 w-3.5 text-slate-400" />
+                                      {item.lecturerName}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             ))}
@@ -947,11 +1221,11 @@ export default function ScheduleListView() {
         </div>
 
         {/* Legend footer inside table card */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/50 px-4 py-2.5 text-[10px] font-semibold text-slate-500">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/50 px-5 py-3 text-[11px] font-bold text-slate-400">
           <div className="flex flex-wrap items-center gap-4">
             {LEGEND.map((item) => (
               <span key={item.label} className="inline-flex items-center gap-1.5">
-                <span className={`h-2.5 w-5 rounded-sm border ${item.className}`} />
+                <span className={`h-2.5 w-6 rounded-sm border ${item.className}`} />
                 {item.label}
               </span>
             ))}

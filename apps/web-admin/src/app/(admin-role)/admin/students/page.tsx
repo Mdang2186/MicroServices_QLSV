@@ -75,6 +75,7 @@ export default function AdminStudentsPage() {
         partyDate: "",
         region: "",
         policyBeneficiary: "",
+        isActive: true,
     });
 
     const TOKEN = Cookies.get("admin_accessToken");
@@ -259,6 +260,7 @@ export default function AdminStudentsPage() {
             bankAccountName: "", bankAccountNumber: "",
             gpa: 0, cpa: 0, totalEarnedCredits: 0,
             youthUnionDate: "", partyDate: "", region: "", policyBeneficiary: "",
+            isActive: true,
         });
         setCreateAccount(true);
     };
@@ -302,6 +304,7 @@ export default function AdminStudentsPage() {
             partyDate: student.partyDate ? new Date(student.partyDate).toISOString().split('T')[0] : "",
             region: student.region || "",
             policyBeneficiary: student.policyBeneficiary || "",
+            isActive: student.user?.isActive !== false,
         });
         setIsEditModalOpen(true);
     };
@@ -318,11 +321,11 @@ export default function AdminStudentsPage() {
             <div className="space-y-4">
                 <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
                     <span className="w-1.5 h-6 bg-uneti-blue rounded-full"></span>
-                    <h3 className="text-[12px] font-black text-slate-800 uppercase tracking-wider">Thông tin cơ bản</h3>
+                    <h3 className="text-[12px] font-black text-slate-950 uppercase tracking-wider">Thông tin cơ bản</h3>
                 </div>
                 <div className="grid grid-cols-2 gap-5">
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mã sinh viên</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Mã sinh viên</label>
                         <input
                             type="text"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -332,7 +335,7 @@ export default function AdminStudentsPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Họ và tên</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Họ và tên</label>
                         <input
                             type="text"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -345,7 +348,7 @@ export default function AdminStudentsPage() {
 
                 <div className="grid grid-cols-2 gap-5">
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ngày sinh</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Ngày sinh</label>
                         <input
                             type="date"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -354,7 +357,7 @@ export default function AdminStudentsPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Giới tính</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Giới tính</label>
                         <select
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10 appearance-none"
                             value={formData.gender}
@@ -369,7 +372,7 @@ export default function AdminStudentsPage() {
 
                 <div className="grid grid-cols-2 gap-5">
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Số điện thoại</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Số điện thoại</label>
                         <input
                             type="text"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -379,7 +382,7 @@ export default function AdminStudentsPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Email (Tài khoản học tập)</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Email (Tài khoản học tập)</label>
                         <input
                             type="email"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -395,11 +398,11 @@ export default function AdminStudentsPage() {
             <div className="space-y-4 pt-4">
                 <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
                     <span className="w-1.5 h-6 bg-amber-500 rounded-full"></span>
-                    <h3 className="text-[12px] font-black text-slate-800 uppercase tracking-wider">Thông tin định danh</h3>
+                    <h3 className="text-[12px] font-black text-slate-950 uppercase tracking-wider">Thông tin định danh</h3>
                 </div>
                 <div className="grid grid-cols-2 gap-5">
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Số CCCD</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Số CCCD</label>
                         <input
                             type="text"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -409,7 +412,7 @@ export default function AdminStudentsPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ngày cấp</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Ngày cấp</label>
                         <input
                             type="date"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -419,7 +422,7 @@ export default function AdminStudentsPage() {
                     </div>
                 </div>
                 <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nơi cấp</label>
+                    <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Nơi cấp</label>
                     <input
                         type="text"
                         className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -434,11 +437,11 @@ export default function AdminStudentsPage() {
             <div className="space-y-4 pt-4">
                 <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
                     <span className="w-1.5 h-6 bg-emerald-500 rounded-full"></span>
-                    <h3 className="text-[12px] font-black text-slate-800 uppercase tracking-wider">Thông tin học vấn</h3>
+                    <h3 className="text-[12px] font-black text-slate-950 uppercase tracking-wider">Thông tin học vấn</h3>
                 </div>
                 <div className="grid grid-cols-2 gap-5">
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Khóa học</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Khóa học</label>
                         <input
                             type="text"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -448,7 +451,7 @@ export default function AdminStudentsPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Chuyên ngành</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Chuyên ngành</label>
                         <select
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10 appearance-none"
                             value={formData.majorId}
@@ -463,7 +466,7 @@ export default function AdminStudentsPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-5">
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Lớp danh nghĩa</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Lớp danh nghĩa</label>
                         <select
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10 appearance-none"
                             value={formData.adminClassId}
@@ -478,7 +481,7 @@ export default function AdminStudentsPage() {
                         </select>
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Chuyên ngành hẹp</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Chuyên ngành hẹp</label>
                         <select
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10 appearance-none disabled:opacity-50"
                             value={formData.specializationId}
@@ -494,7 +497,7 @@ export default function AdminStudentsPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-5">
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cơ sở</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Cơ sở</label>
                         <select
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10 appearance-none"
                             value={formData.campus}
@@ -506,7 +509,7 @@ export default function AdminStudentsPage() {
                         </select>
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Trạng thái hồ sơ</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Trạng thái hồ sơ</label>
                         <select
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10 appearance-none"
                             value={formData.status}
@@ -524,11 +527,11 @@ export default function AdminStudentsPage() {
             <div className="space-y-4 pt-4">
                 <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
                     <span className="w-1.5 h-6 bg-blue-500 rounded-full"></span>
-                    <h3 className="text-[12px] font-black text-slate-800 uppercase tracking-wider">Kết quả học tập</h3>
+                    <h3 className="text-[12px] font-black text-slate-950 uppercase tracking-wider">Kết quả học tập</h3>
                 </div>
                 <div className="grid grid-cols-3 gap-5">
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">GPA (Hệ 4)</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">GPA (Hệ 4)</label>
                         <input
                             type="number"
                             step="0.01"
@@ -538,7 +541,7 @@ export default function AdminStudentsPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">CPA</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">CPA</label>
                         <input
                             type="number"
                             step="0.01"
@@ -548,7 +551,7 @@ export default function AdminStudentsPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tín chỉ tích lũy</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Tín chỉ tích lũy</label>
                         <input
                             type="number"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -563,11 +566,11 @@ export default function AdminStudentsPage() {
             <div className="space-y-4 pt-4">
                 <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
                     <span className="w-1.5 h-6 bg-purple-500 rounded-full"></span>
-                    <h3 className="text-[12px] font-black text-slate-800 uppercase tracking-wider">Thông tin nhân thân</h3>
+                    <h3 className="text-[12px] font-black text-slate-950 uppercase tracking-wider">Thông tin nhân thân</h3>
                 </div>
                 <div className="grid grid-cols-2 gap-5">
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dân tộc</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Dân tộc</label>
                         <input
                             type="text"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -577,7 +580,7 @@ export default function AdminStudentsPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tôn giáo</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Tôn giáo</label>
                         <input
                             type="text"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -589,7 +592,7 @@ export default function AdminStudentsPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-5">
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Quốc tịch</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Quốc tịch</label>
                         <input
                             type="text"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -598,7 +601,7 @@ export default function AdminStudentsPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nơi sinh</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Nơi sinh</label>
                         <input
                             type="text"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -609,7 +612,7 @@ export default function AdminStudentsPage() {
                     </div>
                 </div>
                 <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Địa chỉ tạm trú</label>
+                    <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Địa chỉ tạm trú</label>
                     <input
                         type="text"
                         className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -619,7 +622,7 @@ export default function AdminStudentsPage() {
                     />
                 </div>
                 <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hộ khẩu thường trú</label>
+                    <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Hộ khẩu thường trú</label>
                     <input
                         type="text"
                         className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -634,11 +637,11 @@ export default function AdminStudentsPage() {
             <div className="space-y-4 pt-4">
                 <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
                     <span className="w-1.5 h-6 bg-red-500 rounded-full"></span>
-                    <h3 className="text-[12px] font-black text-slate-800 uppercase tracking-wider">Thông tin Đoàn - Đảng & Chính sách</h3>
+                    <h3 className="text-[12px] font-black text-slate-950 uppercase tracking-wider">Thông tin Đoàn - Đảng & Chính sách</h3>
                 </div>
                 <div className="grid grid-cols-2 gap-5">
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ngày vào Đoàn</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Ngày vào Đoàn</label>
                         <input
                             type="date"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -647,7 +650,7 @@ export default function AdminStudentsPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ngày vào Đảng</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Ngày vào Đảng</label>
                         <input
                             type="date"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -658,7 +661,7 @@ export default function AdminStudentsPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-5">
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Khu vực</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Khu vực</label>
                         <input
                             type="text"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -668,7 +671,7 @@ export default function AdminStudentsPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Đối tượng chính sách</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Đối tượng chính sách</label>
                         <input
                             type="text"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -684,11 +687,11 @@ export default function AdminStudentsPage() {
             <div className="space-y-4 pt-4 pb-8">
                 <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
                     <span className="w-1.5 h-6 bg-slate-900 rounded-full"></span>
-                    <h3 className="text-[12px] font-black text-slate-800 uppercase tracking-wider">Tài khoản ngân hàng</h3>
+                    <h3 className="text-[12px] font-black text-slate-950 uppercase tracking-wider">Tài khoản ngân hàng</h3>
                 </div>
                 <div className="grid grid-cols-2 gap-5">
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tên ngân hàng</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Tên ngân hàng</label>
                         <input
                             type="text"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -698,7 +701,7 @@ export default function AdminStudentsPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Số tài khoản</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Số tài khoản</label>
                         <input
                             type="text"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
@@ -733,7 +736,7 @@ export default function AdminStudentsPage() {
                                     <AlertTriangle size={12} /> Chỉ hồ sơ
                                 </span>
                             )}
-                            <span className="text-[11px] font-medium text-slate-400">{s.studentCode}</span>
+                            <span className="text-[11px] font-medium text-slate-600">{s.studentCode}</span>
                         </div>
                     </div>
                 </div>
@@ -745,7 +748,7 @@ export default function AdminStudentsPage() {
             cell: (s: any) => (
                 <div className="flex flex-col gap-1">
                     <span className="text-[13px] font-bold text-slate-700">{s.intake || "---"} - {s.adminClass?.code || "Chưa xếp lớp"}</span>
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                    <span className="text-[10px] font-black text-slate-600 uppercase tracking-wider">
                         {s.major?.name || "Chưa chọn ngành"}
                         {s.specialization?.name ? ` (${s.specialization.name})` : ''}
                     </span>
@@ -802,7 +805,7 @@ export default function AdminStudentsPage() {
                         <GraduationCap className="text-uneti-blue" size={32} />
                         Quản trị Sinh viên
                     </h1>
-                    <p className="text-[13px] font-medium text-slate-500 italic">"Hệ thống quản lý thông tin và tài khoản sinh viên tập trung"</p>
+                    <p className="text-[13px] font-medium text-slate-900 font-black italic">"Hệ thống quản lý thông tin và tài khoản sinh viên tập trung"</p>
                 </div>
                 <div className="flex items-center gap-3">
                     <button className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-[12px] font-black hover:bg-slate-50 transition-all shadow-sm uppercase tracking-wider">
@@ -820,25 +823,7 @@ export default function AdminStudentsPage() {
             </div>
 
             {/* Stats Overview */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {[
-                    { label: "Tổng sinh viên", value: stats.total, icon: Users, color: "blue" },
-                    { label: "Đang học tập", value: stats.active, icon: CheckCircle2, color: "emerald" },
-                ].map((s, i) => (
-                    <div key={i} className="bg-white p-6 rounded-[24px] border border-slate-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-24 h-24 bg-slate-50 rounded-full -mr-12 -mt-12 group-hover:scale-110 transition-transform duration-500"></div>
-                        <div className="relative z-10 flex flex-col justify-between h-full">
-                            <div className={`w-12 h-12 rounded-2xl bg-${s.color === 'blue' ? 'uneti-blue-light' : s.color + '-50'} flex items-center justify-center text-${s.color === 'blue' ? 'uneti-blue' : s.color + '-600'} mb-4`}>
-                                <s.icon size={22} />
-                            </div>
-                            <div>
-                                <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1">{s.label}</p>
-                                <p className="text-3xl font-black text-slate-900">{s.value}</p>
-                            </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
+
 
             <DataTable
                 data={students}
@@ -882,7 +867,7 @@ export default function AdminStudentsPage() {
                 maxWidth="4xl"
                 footer={
                     <div className="flex items-center justify-end gap-4 w-full">
-                        <button onClick={() => setIsAddModalOpen(false)} className="px-6 py-2.5 text-[12px] font-black text-slate-400 uppercase">Hủy</button>
+                        <button onClick={() => setIsAddModalOpen(false)} className="px-6 py-2.5 text-[12px] font-black text-slate-600 uppercase">Hủy</button>
                         <button
                             onClick={handleAddStudent}
                             disabled={formLoading}
@@ -898,12 +883,12 @@ export default function AdminStudentsPage() {
                     {/* Role Control */}
                     <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100 flex items-center justify-between mx-2 mb-4 shadow-sm">
                         <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-colors ${createAccount ? 'bg-uneti-blue text-white' : 'bg-slate-200 text-slate-500'}`}>
+                            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-colors ${createAccount ? 'bg-uneti-blue text-white' : 'bg-slate-200 text-slate-700'}`}>
                                 <Key size={20} />
                             </div>
                             <div>
-                                <p className="text-[12px] font-black text-slate-800">Cấp tài khoản đăng nhập</p>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cho phép sinh viên vào hệ thống</p>
+                                <p className="text-[12px] font-black text-slate-950">Cấp tài khoản đăng nhập</p>
+                                <p className="text-[10px] font-bold text-slate-900 uppercase tracking-widest">Cho phép sinh viên vào hệ thống</p>
                             </div>
                         </div>
                         <button
@@ -924,16 +909,38 @@ export default function AdminStudentsPage() {
                 title="Cập nhật sinh viên"
                 maxWidth="4xl"
                 footer={
-                    <div className="flex items-center justify-end gap-4 w-full">
-                        <button onClick={() => setIsEditModalOpen(false)} className="px-6 py-2.5 text-[12px] font-black text-slate-400 uppercase">Hủy</button>
-                        <button
-                            onClick={handleEditStudent}
-                            disabled={formLoading}
-                            className="px-8 py-2.5 bg-uneti-blue text-white rounded-2xl text-[12px] font-black hover:bg-slate-900 transition-all flex items-center gap-2"
-                        >
-                            {formLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <Check size={18} />}
-                            CẬP NHẬT
-                        </button>
+                    <div className="flex items-center justify-between w-full px-2">
+                        {selectedStudent?.userId && (
+                            <div className="flex items-center gap-4 bg-slate-50 px-5 py-2.5 rounded-2xl border border-slate-100 shadow-sm">
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] font-black text-slate-950 uppercase tracking-widest">Trạng thái tài khoản</span>
+                                    <span className={`text-[11px] font-bold ${formData.isActive ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                        {formData.isActive ? 'ĐANG KÍCH HOẠT' : 'ĐANG KHÓA'}
+                                    </span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setFormData({ ...formData, isActive: !formData.isActive })}
+                                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none ${formData.isActive ? 'bg-emerald-500' : 'bg-slate-300'
+                                        }`}
+                                >
+                                    <span
+                                        className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${formData.isActive ? 'translate-x-6' : 'translate-x-1'
+                                            }`}
+                                    />
+                                </button>
+                            </div>
+                        )}
+                        <div className="flex items-center gap-4 ml-auto">
+                            <button onClick={() => setIsEditModalOpen(false)} className="px-6 py-2.5 text-[12px] font-black text-slate-600 uppercase tracking-wider hover:text-slate-900 transition-colors">Hủy</button>
+                            <button
+                                onClick={handleEditStudent}
+                                disabled={formLoading}
+                                className="px-8 py-2.5 bg-slate-900 text-white rounded-2xl text-[12px] font-black hover:bg-slate-800 transition-all shadow-lg shadow-slate-900/10 disabled:opacity-50 uppercase tracking-widest"
+                            >
+                                {formLoading ? "Đang lưu..." : "CẬP NHẬT"}
+                            </button>
+                        </div>
                     </div>
                 }
             >
@@ -949,7 +956,7 @@ export default function AdminStudentsPage() {
                 title="Xác nhận xóa"
                 footer={
                     <div className="flex items-center justify-end gap-4 w-full">
-                        <button onClick={() => setIsDeleteModalOpen(false)} className="px-6 py-2.5 text-[12px] font-black text-slate-400">Hủy</button>
+                        <button onClick={() => setIsDeleteModalOpen(false)} className="px-6 py-2.5 text-[12px] font-black text-slate-600">Hủy</button>
                         <button onClick={confirmDelete} className="px-8 py-2.5 bg-rose-600 text-white rounded-2xl text-[12px] font-black hover:bg-rose-700 transition-all uppercase">Xóa vĩnh viễn</button>
                     </div>
                 }

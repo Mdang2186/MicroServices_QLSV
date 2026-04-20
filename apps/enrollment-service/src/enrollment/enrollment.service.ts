@@ -110,6 +110,117 @@ export class EnrollmentService {
         return `TUITION_${normalizedStudent}_${normalizedSemester}`.slice(0, 50);
     }
 
+    private ensureSemesterRegistrationOpen(semester: any) {
+        if (!semester) {
+            throw new BadRequestException('Học kỳ đăng ký không hợp lệ');
+        }
+
+        const now = new Date();
+        const hasExplicitWindow = semester.registerStartDate || semester.registerEndDate;
+        const startDate = semester.registerStartDate ? new Date(semester.registerStartDate) : null;
+        const endDate = semester.registerEndDate ? new Date(semester.registerEndDate) : null;
+        const withinWindow =
+            (!startDate || now >= startDate) &&
+            (!endDate || now <= endDate);
+
+        if (semester.isRegistering || (hasExplicitWindow && withinWindow)) {
+            return;
+        }
+
+        throw new BadRequestException('Học kỳ hiện không mở cổng đăng ký / đổi lớp.');
+    }
+
+    private parseLegacyAdminClass(
+        adminClassCode?: string | null,
+        cohortCode?: string | null,
+    ) {
+        const code = `${adminClassCode || ''}`.trim().toUpperCase();
+        const cohort = `${cohortCode || ''}`.trim().toUpperCase();
+        if (!code || code.startsWith('K')) return null;
+
+        const match = code.match(/^(\d{2})A([12])-([A-Z0-9]+)$/);
+        if (!match) return null;
+
+        return {
+            cohort: cohort || `K${match[1]}`,
+            section: match[2].padStart(2, '0'),
+            majorCode: match[3],
+        };
+    }
+
+    private resolveStudentCohortCode(student: any) {
+        const directCohort = `${student?.intake || student?.adminClass?.cohort || ''}`.trim().toUpperCase();
+        if (directCohort) {
+            return directCohort;
+        }
+
+        const legacyMeta = this.parseLegacyAdminClass(student?.adminClass?.code);
+        return legacyMeta?.cohort || null;
+    }
+
+    private async getStudentSemestersFromPlan(student: any) {
+        const cohortCode = this.resolveStudentCohortCode(student);
+        if (!student?.majorId || !cohortCode) {
+            return [];
+        }
+
+        const plans = await this.prisma.semesterPlan.findMany({
+            where: {
+                majorId: student.majorId,
+                cohort: cohortCode,
+            },
+            include: {
+                semester: true,
+            },
+        });
+
+        const semesterMap = new Map<string, any>();
+        for (const plan of plans) {
+            if (plan.semester?.id) {
+                semesterMap.set(plan.semester.id, plan.semester);
+            }
+        }
+
+        return [...semesterMap.values()].sort(
+            (left, right) =>
+                new Date(right.startDate).getTime() - new Date(left.startDate).getTime(),
+        );
+    }
+
+    private async calculateEnrollmentFee(
+        tx: any,
+        student: any,
+        courseClass: any,
+        isRetake: boolean
+    ) {
+        // 1. Resolve Multiplier
+        // Priority: Retake (1.5) > Class Multiplier (Default 1.0)
+        const multiplier = isRetake ? 1.5 : (courseClass.tuitionMultiplier || 1.0);
+
+        // 2. Lookup Tuition Config
+        // Strategy: Match Major + Year + Cohort + Type -> Fallback to Major + Year
+        const config = await tx.tuitionConfig.findFirst({
+            where: {
+                majorId: student.majorId,
+                academicYear: courseClass.semester.year,
+                cohort: student.intake || undefined,
+                educationType: student.educationType || undefined,
+                isActive: true
+            }
+        }) || await tx.tuitionConfig.findFirst({
+            where: {
+                majorId: student.majorId,
+                academicYear: courseClass.semester.year,
+                isActive: true
+            }
+        });
+
+        const pricePerCredit = config ? Number(config.pricePerCredit) : 500000;
+        const credits = Number(courseClass.subject.credits || 0);
+
+        return Math.round(credits * pricePerCredit * multiplier);
+    }
+
     async registerCourse(studentIdOrUserId: string, classId: string) {
         // --- HYBRID LOCKING ---
         // 1. Try Redis Lock (Fast distributed lock)
@@ -144,6 +255,7 @@ export class EnrollmentService {
                 });
 
                 if (!courseClass) throw new NotFoundException('Lớp học phần không tồn tại');
+                this.ensureSemesterRegistrationOpen(courseClass.semester);
 
                 // 2. Check Slot and Status (Initial check)
                 if (courseClass.status !== 'OPEN') {
@@ -225,7 +337,7 @@ export class EnrollmentService {
                     throw new BadRequestException('Lớp vừa hết chỗ, vui lòng tải lại trang và chọn lớp khác.');
                 }
 
-                // 7. Retake Logic
+                // 7. Calculate Tuition Fee
                 const previouslyTaken = await tx.enrollment.findFirst({
                     where: {
                         studentId,
@@ -233,11 +345,7 @@ export class EnrollmentService {
                     }
                 });
                 const isRetake = !!previouslyTaken;
-                const multiplier = isRetake ? 1.5 : (courseClass.tuitionMultiplier || 1.0);
-
-                // Get Price per credit (Sample constant, could be from TuitionConfig)
-                const pricePerCredit = 500000;
-                const tuitionFee = (courseClass.subject.credits || 0) * pricePerCredit * multiplier;
+                const tuitionFee = await this.calculateEnrollmentFee(tx, student, courseClass, isRetake);
 
                 // 8. Create Enrollment
                 const enrollment = await tx.enrollment.create({
@@ -422,6 +530,9 @@ export class EnrollmentService {
             throw new BadRequestException('Bạn đang ở trong lớp này rồi');
         }
 
+        const lock = await this.acquireLock(newClassId);
+
+        try {
         return await this.prisma.$transaction(async (tx) => {
             // Resolve Student
             let student = await tx.student.findUnique({ where: { id: studentIdOrUserId } });
@@ -450,6 +561,7 @@ export class EnrollmentService {
             });
 
             if (!newClass) throw new NotFoundException('Lớp học phần mới không tồn tại');
+            this.ensureSemesterRegistrationOpen(newClass.semester);
             if (newClass.status !== 'OPEN') {
                 const statusLabel = newClass.status === 'LOCKED' ? 'Bị khóa' : newClass.status;
                 throw new BadRequestException(`Lớp mới đang ở trạng thái '${statusLabel}', không thể đăng ký chuyển lớp.`);
@@ -457,14 +569,27 @@ export class EnrollmentService {
             if (newClass.currentSlots >= newClass.maxSlots) {
                 throw new BadRequestException('Lớp mới đã đầy');
             }
+            if (oldEnrollment.courseClassId === newClassId) {
+                throw new BadRequestException('Bạn đang ở trong lớp học phần này');
+            }
 
             // 3. Verify it's the same subject (optional but recommended)
             const oldClass = await tx.courseClass.findUnique({
                 where: { id: oldClassId },
-                select: { subjectId: true }
+                select: { subjectId: true, semesterId: true }
             });
             if (oldClass?.subjectId !== newClass.subjectId) {
                throw new BadRequestException('Lớp mới không cùng môn học với lớp cũ');
+            }
+            if (oldClass?.semesterId !== newClass.semesterId) {
+               throw new BadRequestException('Chỉ được đổi sang lớp khác trong cùng học kỳ đăng ký');
+            }
+
+            const existingNewEnrollment = await tx.enrollment.findUnique({
+                where: { studentId_courseClassId: { studentId, courseClassId: newClassId } }
+            });
+            if (existingNewEnrollment) {
+                throw new BadRequestException('Bạn đã đăng ký lớp học phần đích này rồi');
             }
 
             // 4. Schedule Conflict Check
@@ -491,12 +616,30 @@ export class EnrollmentService {
                 dayOfWeek: this.toPortalDayOfWeek(s.date)
             }));
 
-            const isConflicted = this.checkConflict(newSchedules, existingSchedules);
-            if (isConflicted) {
-                throw new BadRequestException('Lịch học lớp mới bị trùng với các môn khác bạn đã đăng ký');
+            const conflict = this.checkConflictDetailed(newSchedules, existingSchedules);
+            if (conflict.isConflicted) {
+                throw new BadRequestException(conflict.message || 'Lịch học lớp mới bị trùng với các môn khác bạn đã đăng ký');
             }
 
             // 5. Atomic Swap
+            // Calculate new fee (mandatory as multipliers or configs might differ across classes)
+            const isRetake = oldEnrollment.isRetake;
+            const tuitionFee = await this.calculateEnrollmentFee(tx, student, newClass, isRetake);
+
+            const updated = await tx.courseClass.updateMany({
+                where: {
+                    id: newClassId,
+                    currentSlots: { lt: newClass.maxSlots }
+                },
+                data: {
+                    currentSlots: { increment: 1 }
+                }
+            });
+
+            if (updated.count === 0) {
+                throw new BadRequestException('Lớp mới vừa hết chỗ, vui lòng chọn lớp khác.');
+            }
+
             // Delete old enrollment
             await tx.enrollment.delete({
                 where: { id: oldEnrollment.id }
@@ -508,7 +651,8 @@ export class EnrollmentService {
                     studentId,
                     courseClassId: newClassId,
                     status: 'REGISTERED',
-                    tuitionFee: oldEnrollment.tuitionFee // Preserve tuition fee
+                    isRetake,
+                    tuitionFee
                 }
             });
 
@@ -516,10 +660,6 @@ export class EnrollmentService {
             await tx.courseClass.update({
                 where: { id: oldClassId },
                 data: { currentSlots: { decrement: 1 } }
-            });
-            await tx.courseClass.update({
-                where: { id: newClassId },
-                data: { currentSlots: { increment: 1 } }
             });
 
             // 7. Sync Tuition
@@ -530,18 +670,21 @@ export class EnrollmentService {
                 enrollment: newEnrollment
             };
         });
+        } finally {
+            if (lock) await lock.release();
+        }
     }
 
     async getRegistrationStatus(studentIdOrUserId: string, semesterId?: string) {
         let student = await this.prisma.student.findUnique({
             where: { id: studentIdOrUserId },
-            include: { major: true }
+            include: { major: true, adminClass: true }
         });
 
         if (!student) {
             student = await this.prisma.student.findUnique({
                 where: { userId: studentIdOrUserId },
-                include: { major: true }
+                include: { major: true, adminClass: true }
             });
         }
 
@@ -569,23 +712,76 @@ export class EnrollmentService {
             targetSemesterId = current?.id;
         }
 
-        // 1. Get Curriculum for Student's Major and Cohort (Intake)
-        const curriculum = await this.prisma.curriculum.findMany({
-            where: {
-                majorId: student.majorId,
-                cohort: student.intake || 'K16' // Fallback to K16 if not set
-            },
-            orderBy: {
-                suggestedSemester: 'asc'
-            },
-            include: {
-                subject: {
-                    include: {
-                        prerequisites: true
+        const cohortCode = this.resolveStudentCohortCode(student);
+        const semesterPlan = cohortCode && targetSemesterId
+            ? await this.prisma.semesterPlan.findFirst({
+                where: {
+                    majorId: student.majorId,
+                    cohort: cohortCode,
+                    semesterId: targetSemesterId,
+                },
+                select: {
+                    conceptualSemester: true,
+                },
+            })
+            : null;
+
+        const trainingTemplate = cohortCode
+            ? await this.prisma.trainingPlanTemplate.findFirst({
+                where: {
+                    majorId: student.majorId,
+                    cohort: cohortCode,
+                    status: { in: ['PUBLISHED', 'ACTIVE'] },
+                },
+                orderBy: [
+                    { publishedAt: 'desc' },
+                    { version: 'desc' },
+                ],
+                include: {
+                    items: {
+                        include: {
+                            subject: {
+                                include: {
+                                    prerequisites: true,
+                                },
+                            },
+                        },
+                    },
+                },
+            })
+            : null;
+
+        const templateItems = trainingTemplate?.items?.length
+            ? trainingTemplate.items.map((item) => ({
+                subjectId: item.subjectId,
+                suggestedSemester: item.conceptualSemester,
+                isRequired: item.isRequired,
+                subject: item.subject,
+            }))
+            : [];
+
+        const curriculum = templateItems.length > 0
+            ? templateItems.filter((item) =>
+                semesterPlan?.conceptualSemester
+                    ? Number(item.suggestedSemester || 0) === semesterPlan.conceptualSemester
+                    : true,
+            )
+            : await this.prisma.curriculum.findMany({
+                where: {
+                    majorId: student.majorId,
+                    ...(cohortCode ? { cohort: cohortCode } : {}),
+                },
+                orderBy: {
+                    suggestedSemester: 'asc'
+                },
+                include: {
+                    subject: {
+                        include: {
+                            prerequisites: true
+                        }
                     }
                 }
-            }
-        });
+            });
 
         // 1.5 Find subjects that have OPEN classes in the target semester
         // Include subjects from student's major OR general education (KCB)
@@ -659,7 +855,6 @@ export class EnrollmentService {
     }
 
     async getSemestersByStudent(studentIdOrUserId: string) {
-        // 1. Resolve student
         let student = await this.prisma.student.findUnique({
             where: { id: studentIdOrUserId },
             include: { adminClass: true }
@@ -674,85 +869,49 @@ export class EnrollmentService {
             return this.prisma.semester.findMany({ orderBy: { startDate: 'desc' } });
         }
 
-        // 2. Resolve cohort code (e.g. K22)
-        const cohortCode = student.intake || (student.adminClass as any)?.cohort || null;
-        if (!cohortCode) {
-            return this.prisma.semester.findMany({ orderBy: { startDate: 'desc' } });
-        }
+        const [plannedSemesters, enrollments, trainingScores, studentFees] = await Promise.all([
+            this.getStudentSemestersFromPlan(student),
+            this.prisma.enrollment.findMany({
+                where: { studentId: student.id },
+                select: {
+                    courseClass: {
+                        select: { semester: true },
+                    },
+                },
+            }),
+            this.prisma.trainingScore.findMany({
+                where: { studentId: student.id },
+                select: { semester: true },
+            }),
+            this.prisma.studentFee.findMany({
+                where: { studentId: student.id },
+                select: { semester: true },
+            }),
+        ]);
 
-        // 3. Get cohort start year (K22 -> 2028, K18 -> 2024, etc.)
-        const cohortMatch = cohortCode.match(/K(\d{2,})/i);
-        if (!cohortMatch) {
-            return this.prisma.semester.findMany({ orderBy: { startDate: 'desc' } });
-        }
-        const cohortNumber = Number(cohortMatch[1]);
-        const cohortStartYear = 2006 + cohortNumber; // K18 -> 2024, K22 -> 2028
-
-        // 4. Get all semesters
-        const allSemesters = await this.prisma.semester.findMany({
-            orderBy: [{ year: 'asc' }, { startDate: 'asc' }]
-        });
-
-        // 5. Match 8 semesters to this cohort
-        // HK1 -> first half of year cohortStartYear (Sep-Jan)
-        // HK2 -> second half of year cohortStartYear+1 (Feb-Jun)
-        // Pattern: HK(2n-1) starts ~Sep of (startYear + n-1), HK(2n) starts ~Feb of (startYear + n)
-        const matched: typeof allSemesters = [];
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        for (let hk = 1; hk <= 8; hk++) {
-            const expectedYear = cohortStartYear + Math.floor((hk - 1) / 2);
-            const isOddSemester = hk % 2 === 1; // HK1,3,5,7 start in ~Sep
-
-            // Find the best matching semester
-            const candidates = allSemesters.filter(sem => {
-                const semCode = `${sem.code || ''} ${sem.name || ''}`;
-                const semHkMatch = semCode.match(/HK\s*(\d)/i) || semCode.match(/H[OỌ]C\s*K[YỲ]\s*(\d)/i);
-                if (!semHkMatch) return false;
-                const semHk = Number(semHkMatch[1]);
-
-                // Check if 1-based semester number matches odd/even pattern
-                const semIsOdd = semHk % 2 === 1;
-                if (isOddSemester !== semIsOdd) return false;
-
-                // Check year match
-                const semYear = sem.year || (sem.startDate ? new Date(sem.startDate).getFullYear() : 0);
-                return Math.abs(semYear - expectedYear) <= 1;
-            });
-
-            // Pick the closest by year
-            const best = candidates.sort((a, b) => {
-                const aYear = a.year || (a.startDate ? new Date(a.startDate).getFullYear() : 0);
-                const bYear = b.year || (b.startDate ? new Date(b.startDate).getFullYear() : 0);
-                return Math.abs(aYear - expectedYear) - Math.abs(bYear - expectedYear);
-            })[0];
-
-            if (best) {
-                matched.push(best);
+        const semesterMap = new Map<string, any>();
+        const pushSemester = (semester: any) => {
+            if (semester?.id) {
+                semesterMap.set(semester.id, semester);
             }
+        };
+
+        plannedSemesters.forEach(pushSemester);
+        enrollments.forEach((item) => pushSemester(item.courseClass?.semester));
+        trainingScores.forEach((item) => pushSemester(item.semester));
+        studentFees.forEach((item) => pushSemester(item.semester));
+
+        const semesters = [...semesterMap.values()].sort((left, right) => {
+            const leftTime = left?.startDate ? new Date(left.startDate).getTime() : 0;
+            const rightTime = right?.startDate ? new Date(right.startDate).getTime() : 0;
+            return rightTime - leftTime;
+        });
+
+        if (semesters.length > 0) {
+            return semesters;
         }
 
-        // 6. Remove duplicates and filter to only past/current semesters
-        const uniqueIds = new Set<string>();
-        const result = matched.filter(sem => {
-            if (uniqueIds.has(sem.id)) return false;
-            uniqueIds.add(sem.id);
-            // Only show semesters that have started or are current
-            if (sem.startDate) {
-                const start = new Date(sem.startDate);
-                start.setHours(0, 0, 0, 0);
-                return start <= today;
-            }
-            return true;
-        });
-
-        // Sort newest first for dropdown
-        return result.sort((a, b) => {
-            const aStart = a.startDate ? new Date(a.startDate).getTime() : 0;
-            const bStart = b.startDate ? new Date(b.startDate).getTime() : 0;
-            return bStart - aStart;
-        });
+        return this.prisma.semester.findMany({ orderBy: { startDate: 'desc' } });
     }
 
     async getClassesBySubject(subjectId: string, semesterId?: string) {

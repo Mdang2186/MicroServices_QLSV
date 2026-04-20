@@ -6,6 +6,7 @@ export interface SchedulePattern {
   endShift: number;
   roomId: string | null;
   type: string;
+  note?: string | null;
 }
 
 export class SessionGenerator {
@@ -62,7 +63,7 @@ export class SessionGenerator {
           startShift: schedule.startShift,
           endShift: schedule.endShift,
           type: schedule.type,
-          note: `Lịch định kỳ: ${schedule.type}`,
+          note: schedule.note || `Lịch định kỳ: ${schedule.type}`,
         });
       }
     }

@@ -1,36 +1,33 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
-  X,
-  ShieldCheck,
-  Calendar,
-  Users,
-  MapPin,
-  Clock,
-  Zap,
-  Trash2,
-  RefreshCw,
-  AlertTriangle,
-  CheckCircle2,
-  UserCheck,
-  Loader2,
-  ChevronRight,
-  ArrowRightLeft,
-  Settings,
   Activity,
-  Plus,
-  ArrowUpRight,
-  ClipboardCheck,
-  GraduationCap
+  AlertTriangle,
+  ArrowRightLeft,
+  Calendar,
+  CalendarPlus,
+  CheckCircle2,
+  Clock,
+  GraduationCap,
+  Loader2,
+  MapPin,
+  ShieldCheck,
+  Trash2,
+  UserCheck,
+  Users,
+  X,
 } from "lucide-react";
-import { format, startOfWeek, addDays, isSameDay } from "date-fns";
+import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import Link from "next/link";
+import CourseSchedulePlannerModal from "./CourseSchedulePlannerModal";
 
-function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
 
 interface DetailDrawerProps {
   courseClass: any;
@@ -41,8 +38,34 @@ interface DetailDrawerProps {
   lecturers: any[];
 }
 
-type TabType = "config" | "schedule" | "students" | "conflicts";
-type ScheduleMode = "list" | "calendar";
+type TabType = "schedule" | "config" | "students" | "conflicts";
+
+const SHIFT_OPTIONS = [
+  { value: 1, label: "Ca 1 (Tiết 1-3)" },
+  { value: 4, label: "Ca 2 (Tiết 4-6)" },
+  { value: 7, label: "Ca 3 (Tiết 7-9)" },
+  { value: 10, label: "Ca 4 (Tiết 10-12)" },
+];
+
+function getStatusBadge(status: string) {
+  if (status === "PAID" || status === "ENROLLED") {
+    return "bg-emerald-50 text-emerald-600 border-emerald-100";
+  }
+  if (status === "CANCELLED") {
+    return "bg-rose-50 text-rose-600 border-rose-100";
+  }
+  return "bg-slate-50 text-slate-500 border-slate-100";
+}
+
+function extractErrorMessage(payload: any, fallback: string) {
+  if (Array.isArray(payload?.message)) {
+    return payload.message.join(", ");
+  }
+  if (typeof payload?.message === "string") {
+    return payload.message;
+  }
+  return fallback;
+}
 
 export default function CourseClassDetailDrawer({
   courseClass,
@@ -50,57 +73,134 @@ export default function CourseClassDetailDrawer({
   onRefresh,
   headers,
   rooms,
-  lecturers
+  lecturers,
 }: DetailDrawerProps) {
   const [activeTab, setActiveTab] = useState<TabType>("schedule");
-  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("list");
-  const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [sessionLoading, setSessionLoading] = useState(false);
-  const [movingSession, setMovingSession] = useState<any | null>(null);
-  const [showAddSession, setShowAddSession] = useState(false);
-  
-  const [newSessionForm, setNewSessionForm] = useState({
-      date: format(new Date(), "yyyy-MM-dd"),
-      startShift: 1,
-      endShift: 3,
-      roomId: "none"
-  });
+  const [studentsLoading, setStudentsLoading] = useState(false);
+  const [conflictsLoading, setConflictsLoading] = useState(false);
+  const [cleanupLoading, setCleanupLoading] = useState(false);
 
-  // --- Form State ---
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [enrollments, setEnrollments] = useState<any[]>([]);
+  const [conflicts, setConflicts] = useState<any | null>(null);
+
+  const [movingSession, setMovingSession] = useState<any | null>(null);
+  const [addingSession, setAddingSession] = useState<any | null>(null);
+  const [plannerOpen, setPlannerOpen] = useState(false);
+
   const [form, setForm] = useState({
     name: courseClass?.name || "",
     lecturerId: courseClass?.lecturerId || "none",
     status: courseClass?.status || "OPEN",
-    maxSlots: courseClass?.maxSlots || 60
+    maxSlots: courseClass?.maxSlots || 60,
   });
 
   useEffect(() => {
-    if (courseClass) {
-      setForm({
-        name: courseClass.name || "",
-        lecturerId: courseClass.lecturerId || "none",
-        status: courseClass.status || "OPEN",
-        maxSlots: courseClass.maxSlots || 60
-      });
-      fetchSessions();
-    }
+    if (!courseClass) return;
+    setSessions([]);
+    setEnrollments([]);
+    setConflicts(null);
+    setMovingSession(null);
+    setAddingSession(null);
+    setPlannerOpen(false);
+    setForm({
+      name: courseClass.name || "",
+      lecturerId: courseClass.lecturerId || "none",
+      status: courseClass.status || "OPEN",
+      maxSlots: courseClass.maxSlots || 60,
+    });
+    setActiveTab("schedule");
+    void fetchSessions();
   }, [courseClass]);
 
-  const fetchSessions = async () => {
+  useEffect(() => {
+    if (!courseClass || activeTab !== "students" || enrollments.length > 0) return;
+    void fetchEnrollments();
+  }, [activeTab, courseClass]);
+
+  useEffect(() => {
+    if (!courseClass || activeTab !== "conflicts") return;
+    void fetchConflicts();
+  }, [activeTab, courseClass]);
+
+  const sortedSessions = useMemo(
+    () =>
+      [...sessions].sort((left, right) => {
+        const leftDate = new Date(left.date).getTime();
+        const rightDate = new Date(right.date).getTime();
+        if (leftDate !== rightDate) return leftDate - rightDate;
+        return Number(left.startShift || 0) - Number(right.startShift || 0);
+      }),
+    [sessions],
+  );
+
+  const sessionStats = useMemo(() => {
+    const now = new Date().getTime();
+    const nextSession = sortedSessions.find(
+      (session) => new Date(session.date).getTime() >= now,
+    );
+    const uniqueRooms = new Set(
+      sortedSessions.map((session) => session.room?.name || session.roomId).filter(Boolean),
+    );
+    return {
+      total: sortedSessions.length,
+      nextSession,
+      roomCount: uniqueRooms.size,
+    };
+  }, [sortedSessions]);
+
+  async function fetchSessions() {
     if (!courseClass) return;
     setSessionLoading(true);
     try {
       const res = await fetch(`/api/courses/${courseClass.id}/sessions`, { headers });
-      if (res.ok) setSessions(await res.json());
-    } catch (err) {
-      console.error(err);
+      if (!res.ok) throw new Error("Không thể tải lịch lớp học phần.");
+      setSessions(await res.json());
+    } catch (error) {
+      console.error(error);
+      setSessions([]);
     } finally {
       setSessionLoading(false);
     }
-  };
+  }
 
-  const handleUpdateConfig = async () => {
+  async function fetchEnrollments() {
+    if (!courseClass) return;
+    setStudentsLoading(true);
+    try {
+      const res = await fetch(
+        `/api/enrollments/admin/classes/${courseClass.id}/enrollments`,
+        { headers },
+      );
+      if (!res.ok) throw new Error("Không thể tải danh sách sinh viên.");
+      setEnrollments(await res.json());
+    } catch (error) {
+      console.error(error);
+      setEnrollments([]);
+    } finally {
+      setStudentsLoading(false);
+    }
+  }
+
+  async function fetchConflicts() {
+    if (!courseClass) return;
+    setConflictsLoading(true);
+    try {
+      const res = await fetch(`/api/courses/${courseClass.id}/conflicts`, { headers });
+      if (!res.ok) throw new Error("Không thể kiểm tra xung đột.");
+      setConflicts(await res.json());
+    } catch (error) {
+      console.error(error);
+      setConflicts({ issues: [], summary: { room: 0, lecturer: 0, adminClass: 0 } });
+    } finally {
+      setConflictsLoading(false);
+    }
+  }
+
+  async function handleUpdateConfig() {
+    if (!courseClass) return;
     setLoading(true);
     try {
       const res = await fetch(`/api/courses/${courseClass.id}`, {
@@ -108,124 +208,258 @@ export default function CourseClassDetailDrawer({
         headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({
           ...form,
-          lecturerId: form.lecturerId === "none" ? null : form.lecturerId
-        })
+          lecturerId: form.lecturerId === "none" ? null : form.lecturerId,
+        }),
       });
-      if (res.ok) onRefresh();
-    } catch (err) {
-      console.error(err);
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(extractErrorMessage(payload, "Không thể cập nhật học phần."));
+      }
+      onRefresh();
+    } catch (error: any) {
+      console.error(error);
+      alert(error?.message || "Không thể cập nhật học phần.");
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const handleMoveSession = async (sessionId: string, newDate: string, newShift: number) => {
+  async function handleMoveSession() {
+    if (!movingSession) return;
     setSessionLoading(true);
     try {
-      const res = await fetch(`/api/courses/sessions/${sessionId}`, {
+      const res = await fetch(`/api/courses/sessions/${movingSession.id}/reschedule`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify({ date: newDate, startShift: newShift, endShift: newShift + 2 })
+        body: JSON.stringify({
+          date: movingSession.nextDate || format(new Date(movingSession.date), "yyyy-MM-dd"),
+          startShift: Number(movingSession.nextShift || movingSession.startShift),
+          endShift: Number(movingSession.nextShift || movingSession.startShift) + 2,
+          roomId:
+            movingSession.nextRoomId === "keep"
+              ? movingSession.roomId || null
+              : movingSession.nextRoomId || movingSession.roomId || null,
+        }),
       });
-      if (res.ok) {
-        fetchSessions();
-        setMovingSession(null);
-      } else {
-        const err = await res.json();
-        alert(err.message || "Không thể dời lịch do có xung đột.");
+
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(
+          extractErrorMessage(payload, "Không thể đổi lịch buổi học."),
+        );
       }
-    } catch (err) {
-      console.error(err);
+
+      await fetchSessions();
+      if (activeTab === "conflicts") await fetchConflicts();
+      setMovingSession(null);
+    } catch (error: any) {
+      console.error(error);
+      alert(error?.message || "Không thể đổi lịch buổi học.");
     } finally {
       setSessionLoading(false);
     }
-  };
+  }
 
-  const handleAddSession = async () => {
-      setSessionLoading(true);
-      try {
-          const res = await fetch(`/api/courses/${courseClass.id}/sessions`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", ...headers },
-              body: JSON.stringify({
-                  ...newSessionForm,
-                  roomId: newSessionForm.roomId === "none" ? null : newSessionForm.roomId
-              })
-          });
-          if (res.ok) {
-              fetchSessions();
-              setShowAddSession(false);
-          } else {
-              const err = await res.json();
-              alert(err.message || "Không thể thêm lịch do có xung đột.");
-          }
-      } catch (err) { console.error(err); } finally { setSessionLoading(false); }
-  };
+  async function handleAddSession() {
+    if (!addingSession) return;
+    if (!addingSession.date) {
+      alert("Vui lòng chọn ngày học.");
+      return;
+    }
 
-  const handleDeleteSession = async (id: string) => {
-      if (!confirm("Xác nhận xóa buổi học này?")) return;
-      setSessionLoading(true);
-      try {
-          const res = await fetch(`/api/courses/sessions/${id}`, { method: "DELETE", headers });
-          if (res.ok) fetchSessions();
-      } catch (err) { console.error(err); } finally { setSessionLoading(false); }
-  };
+    setSessionLoading(true);
+    try {
+      const res = await fetch(`/api/courses/${courseClass.id}/manual-session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({
+          date: addingSession.date,
+          startShift: Number(addingSession.startShift || 1),
+          endShift: Number(addingSession.startShift || 1) + 2,
+          roomId:
+            addingSession.roomId && addingSession.roomId !== "none"
+              ? addingSession.roomId
+              : null,
+          type: addingSession.type || "EXTRA",
+          note: addingSession.note || "Học bù",
+        }),
+      });
 
-  // --- Calendar Logic ---
-  const currentWeekStart = useMemo(() => startOfWeek(new Date(), { weekStartsOn: 1 }), []);
-  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i)), [currentWeekStart]);
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(extractErrorMessage(payload, "Không thể thêm buổi học."));
+      }
+
+      await fetchSessions();
+      if (activeTab === "conflicts") await fetchConflicts();
+      setAddingSession(null);
+    } catch (error: any) {
+      console.error(error);
+      alert(error?.message || "Không thể thêm buổi học.");
+    } finally {
+      setSessionLoading(false);
+    }
+  }
+
+  async function handleDeleteSession(sessionId: string) {
+    if (!confirm("Xóa buổi học này khỏi lớp học phần?")) return;
+    setSessionLoading(true);
+    try {
+      const res = await fetch(`/api/courses/sessions/${sessionId}`, {
+        method: "DELETE",
+        headers,
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(extractErrorMessage(payload, "Không thể xóa buổi học."));
+      }
+      await fetchSessions();
+      if (activeTab === "conflicts") await fetchConflicts();
+    } catch (error: any) {
+      console.error(error);
+      alert(error?.message || "Không thể xóa buổi học.");
+    } finally {
+      setSessionLoading(false);
+    }
+  }
+
+  async function handleCleanupConflicts() {
+    if (!courseClass) return;
+    if (
+      !confirm(
+        "Hệ thống sẽ xóa các buổi học bị trùng của chính học phần này. Bạn có muốn tiếp tục không?",
+      )
+    ) {
+      return;
+    }
+
+    setCleanupLoading(true);
+    try {
+      const res = await fetch(`/api/courses/${courseClass.id}/cleanup-conflicts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+      });
+
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(
+          extractErrorMessage(payload, "Không thể dọn các ca học bị trùng."),
+        );
+      }
+
+      await fetchSessions();
+      await fetchConflicts();
+
+      if ((payload?.deletedCount || 0) > 0) {
+        alert(`Đã xóa ${payload.deletedCount} buổi học bị trùng.`);
+      } else {
+        alert("Không phát hiện ca học trùng để xóa.");
+      }
+    } catch (error: any) {
+      console.error(error);
+      alert(error?.message || "Không thể dọn các ca học bị trùng.");
+    } finally {
+      setCleanupLoading(false);
+    }
+  }
 
   if (!courseClass) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end text-slate-800">
-      {/* OVERLAY */}
-      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity animate-in fade-in" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div
+        className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
 
-      {/* DRAWER CONTENT */}
-      <div className="relative w-[700px] bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-500">
-        {/* HEADER */}
-        <header className="px-8 py-6 border-b border-slate-100 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-4">
-            <button onClick={onClose} className="w-10 h-10 flex items-center justify-center bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-500 rounded-2xl transition-all">
-              <X size={20} />
-            </button>
-            <div>
-              <h2 className="text-[15px] font-black text-slate-900 tracking-tight leading-none uppercase">{courseClass.name}</h2>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1.5">{courseClass.code} · {courseClass.semester?.name}</p>
+      <div className="relative flex h-full w-[720px] flex-col bg-white shadow-2xl">
+        <header className="border-b border-slate-100 px-8 py-6">
+          <div className="flex items-start justify-between gap-6">
+            <div className="flex items-start gap-4">
+              <button
+                onClick={onClose}
+                className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-50 text-slate-400 transition-all hover:bg-rose-50 hover:text-rose-500"
+              >
+                <X size={18} />
+              </button>
+
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-uneti-blue">
+                  Quản lý học phần
+                </p>
+                <h2 className="mt-2 text-[17px] font-black uppercase tracking-tight text-slate-900">
+                  {courseClass.subject?.name || courseClass.name}
+                </h2>
+                <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  {courseClass.code} • {courseClass.semester?.name}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Link
+                href={`/staff/courses/${courseClass.id}`}
+                onClick={onClose}
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-600 transition-all hover:bg-slate-900 hover:text-white"
+              >
+                Chi tiết học phần
+              </Link>
+              <Link
+                href={`/staff/attendance/${courseClass.id}`}
+                onClick={onClose}
+                className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-emerald-600 transition-all hover:bg-emerald-600 hover:text-white"
+              >
+                Điểm danh
+              </Link>
+              <Link
+                href={`/staff/grades/${courseClass.id}`}
+                onClick={onClose}
+                className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-amber-600 transition-all hover:bg-amber-600 hover:text-white"
+              >
+                Quản lý điểm
+              </Link>
             </div>
           </div>
-          
-          <div className="flex items-center gap-4">
-              <Link href={`/staff/attendance?classId=${courseClass.id}`} className="flex items-center gap-2 group">
-                  <div className="w-9 h-9 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-xl group-hover:bg-emerald-600 group-hover:text-white transition-all shadow-sm">
-                      <ClipboardCheck size={16} />
-                  </div>
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest group-hover:text-emerald-600 transition-all">Điểm danh</span>
-              </Link>
-              <Link href={`/staff/grades?classId=${courseClass.id}`} className="flex items-center gap-2 group">
-                  <div className="w-9 h-9 flex items-center justify-center bg-amber-50 text-amber-600 rounded-xl group-hover:bg-amber-600 group-hover:text-white transition-all shadow-sm">
-                      <GraduationCap size={16} />
-                  </div>
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest group-hover:text-amber-600 transition-all">Quản lý điểm</span>
-              </Link>
+
+          <div className="mt-6 grid grid-cols-3 gap-4">
+            <div className="rounded-[28px] border border-slate-100 bg-slate-50/80 p-5">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+                Tổng buổi học
+              </p>
+              <p className="mt-2 text-2xl font-black text-slate-900">{sessionStats.total}</p>
+            </div>
+            <div className="rounded-[28px] border border-slate-100 bg-slate-50/80 p-5">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+                Phòng sử dụng
+              </p>
+              <p className="mt-2 text-2xl font-black text-slate-900">{sessionStats.roomCount}</p>
+            </div>
+            <div className="rounded-[28px] border border-slate-100 bg-slate-50/80 p-5">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+                Sĩ số hiện tại
+              </p>
+              <p className="mt-2 text-2xl font-black text-slate-900">
+                {courseClass._count?.enrollments || 0}/{courseClass.maxSlots}
+              </p>
+            </div>
           </div>
         </header>
 
-        {/* TABS */}
-        <nav className="flex px-8 border-b border-slate-100 bg-slate-50/40 shrink-0">
+        <nav className="flex border-b border-slate-100 bg-slate-50/60 px-8">
           {[
-            { id: "schedule", label: "Lịch Vận Hành", icon: Calendar },
-            { id: "config", label: "Thông tin chi tiết", icon: Settings },
-            { id: "students", label: "Danh sách SV", icon: Users },
-            { id: "conflicts", label: "Kiểm tra trùng", icon: Activity }
-          ].map(tab => (
+            { id: "schedule", label: "Lịch vận hành", icon: Calendar },
+            { id: "config", label: "Cấu hình", icon: ShieldCheck },
+            { id: "students", label: "Sinh viên", icon: Users },
+            { id: "conflicts", label: "Kiểm tra trùng", icon: Activity },
+          ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as TabType)}
               className={cn(
-                "flex items-center gap-2 px-6 py-4 text-[10px] font-black uppercase tracking-widest transition-all relative border-b-2",
-                activeTab === tab.id ? "border-uneti-blue text-uneti-blue bg-white" : "border-transparent text-slate-400 hover:text-slate-600"
+                "relative flex items-center gap-2 border-b-2 px-5 py-4 text-[10px] font-black uppercase tracking-widest transition-all",
+                activeTab === tab.id
+                  ? "border-uneti-blue bg-white text-uneti-blue"
+                  : "border-transparent text-slate-400 hover:text-slate-700",
               )}
             >
               <tab.icon size={13} strokeWidth={2.5} />
@@ -234,352 +468,711 @@ export default function CourseClassDetailDrawer({
           ))}
         </nav>
 
-        {/* BODY */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-8">
-          {/* --- SCHEDULE TAB --- */}
+        <div className="custom-scrollbar flex-1 overflow-y-auto p-8">
           {activeTab === "schedule" && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between bg-slate-900 px-6 py-4 rounded-[32px] text-white">
-                  <div className="flex items-center gap-4">
-                      <div className="flex bg-slate-800 p-1 rounded-xl">
-                          <button onClick={() => setScheduleMode("list")} className={cn("px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all", scheduleMode === 'list' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-white")}>Danh sách</button>
-                          <button onClick={() => setScheduleMode("calendar")} className={cn("px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all", scheduleMode === 'calendar' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-white")}>Thời khóa biểu</button>
-                      </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                      <button onClick={() => setShowAddSession(true)} className="flex items-center gap-2 bg-uneti-blue text-white px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-white hover:text-slate-900 transition-all">
-                        <Plus size={14} /> Thêm ca học
-                      </button>
-                      <button className="flex items-center gap-2 text-[10px] font-black text-slate-400 hover:text-white px-4 py-2 transition-all uppercase tracking-widest">
-                        <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Xếp lại
-                      </button>
-                  </div>
+              <div className="flex items-center justify-between rounded-[32px] bg-slate-900 px-6 py-4 text-white">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.22em] text-slate-400">
+                    Lịch đầy đủ của lớp
+                  </p>
+                  <p className="mt-1 text-[11px] font-bold uppercase tracking-widest text-slate-200">
+                    {sessionStats.nextSession
+                      ? `Buổi gần nhất: ${format(
+                          new Date(sessionStats.nextSession.date),
+                          "dd/MM/yyyy",
+                        )}`
+                      : "Chưa có buổi học"}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap justify-end gap-3">
+                  <button
+                    onClick={() => setPlannerOpen(true)}
+                    className="rounded-2xl bg-white/10 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:bg-white hover:text-slate-900"
+                  >
+                    Xếp lại lịch
+                  </button>
+                  <button
+                    onClick={() =>
+                      setAddingSession({
+                        date: format(new Date(), "yyyy-MM-dd"),
+                        startShift: 1,
+                        roomId: "none",
+                        type: "EXTRA",
+                        note: "Học bù",
+                      })
+                    }
+                    className="rounded-2xl bg-uneti-blue px-5 py-3 text-[10px] font-black uppercase tracking-widest transition-all hover:bg-white hover:text-slate-900"
+                  >
+                    <span className="flex items-center gap-2">
+                      <CalendarPlus size={14} />
+                      Thêm buổi học
+                    </span>
+                  </button>
+                </div>
               </div>
 
               {sessionLoading ? (
-                 <div className="py-20 flex flex-col items-center opacity-30">
-                    <Loader2 className="animate-spin text-uneti-blue mb-4" size={32} />
-                    <p className="text-[10px] font-black uppercase tracking-widest">Đang tải lịch trình...</p>
-                 </div>
-              ) : scheduleMode === "list" ? (
+                <div className="flex flex-col items-center py-20 text-center opacity-40">
+                  <Loader2 className="mb-4 animate-spin text-uneti-blue" size={32} />
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em]">
+                    Đang tải lịch lớp
+                  </p>
+                </div>
+              ) : sortedSessions.length === 0 ? (
+                <div className="rounded-[32px] border-2 border-dashed border-slate-100 py-24 text-center opacity-40">
+                  <Calendar className="mx-auto mb-4 text-slate-200" size={44} />
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em]">
+                    Lớp chưa có lịch vận hành
+                  </p>
+                </div>
+              ) : (
                 <div className="space-y-3">
-                  {sessions.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map((s, idx) => (
-                    <div key={s.id} className="p-6 bg-white border border-slate-100 rounded-[24px] flex items-center justify-between group hover:border-uneti-blue/30 transition-all hover:bg-slate-50/30">
+                  {sortedSessions.map((session) => (
+                    <div
+                      key={session.id}
+                      className="flex items-center justify-between rounded-[28px] border border-slate-100 bg-white p-6 transition-all hover:border-uneti-blue/30 hover:shadow-lg hover:shadow-slate-100"
+                    >
                       <div className="flex items-center gap-5">
-                         <div className="w-14 h-14 bg-slate-900 rounded-2xl flex flex-col items-center justify-center text-white shadow-lg">
-                            <span className="text-lg font-black leading-none">{format(new Date(s.date), "dd")}</span>
-                            <span className="text-[8px] font-black uppercase opacity-60">{format(new Date(s.date), "MMM", { locale: vi })}</span>
-                         </div>
-                         <div className="h-10 w-px bg-slate-100" />
-                         <div>
-                            <div className="flex items-center gap-2 mb-1">
-                               <MapPin size={12} className="text-slate-300" />
-                               <span className="text-[11px] font-black text-slate-800 uppercase tracking-tight">{s.room?.name || "CHƯA XẾP PHÒNG"}</span>
-                            </div>
-                            <div className="flex items-center gap-3">
-                               <div className="flex items-center gap-1.5 px-2 py-0.5 bg-blue-50 text-uneti-blue rounded-md text-[9px] font-bold">
-                                  <Clock size={10} /> Tiết {s.startShift}-{s.endShift}
-                               </div>
-                               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{format(new Date(s.date), "EEEE", { locale: vi })}</span>
-                            </div>
-                         </div>
+                        <div className="flex h-14 w-14 flex-col items-center justify-center rounded-2xl bg-slate-900 text-white shadow-lg">
+                          <span className="text-lg font-black leading-none">
+                            {format(new Date(session.date), "dd")}
+                          </span>
+                          <span className="text-[8px] font-black uppercase opacity-60">
+                            {format(new Date(session.date), "MMM", { locale: vi })}
+                          </span>
+                        </div>
+
+                        <div>
+                          <div className="mb-2 flex items-center gap-2">
+                            <MapPin size={12} className="text-slate-300" />
+                            <span className="text-[11px] font-black uppercase tracking-tight text-slate-800">
+                              {session.room?.name || "Chưa xếp phòng"}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3">
+                            <span className="rounded-lg bg-blue-50 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-uneti-blue">
+                              Tiết {session.startShift}-{session.endShift}
+                            </span>
+                            <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                              {format(new Date(session.date), "EEEE", { locale: vi })}
+                            </span>
+                            <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                              {session.type || "LECTURE"}
+                            </span>
+                          </div>
+                          {session.note ? (
+                            <p className="mt-2 text-[10px] font-medium italic text-slate-500">
+                              {session.note}
+                            </p>
+                          ) : null}
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => setMovingSession(s)}
-                          className="w-10 h-10 flex items-center justify-center bg-transparent group-hover:bg-uneti-blue group-hover:text-white rounded-2xl transition-all text-slate-300 hover:text-uneti-blue"
-                          title="Dời ngày học / Đổi ca"
+                          onClick={() =>
+                            setMovingSession({
+                              ...session,
+                              nextDate: format(new Date(session.date), "yyyy-MM-dd"),
+                              nextShift: session.startShift,
+                              nextRoomId: session.roomId || "keep",
+                            })
+                          }
+                          className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-50 text-slate-400 transition-all hover:bg-uneti-blue hover:text-white"
+                          title="Đổi ngày, ca hoặc phòng"
                         >
                           <ArrowRightLeft size={16} />
                         </button>
-                        <button onClick={() => handleDeleteSession(s.id)} className="w-10 h-10 flex items-center justify-center bg-transparent group-hover:bg-rose-50 group-hover:text-rose-500 rounded-2xl transition-all text-slate-300 hover:text-rose-500" title="Hủy buổi này">
+                        <button
+                          onClick={() => void handleDeleteSession(session.id)}
+                          className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-50 text-slate-400 transition-all hover:bg-rose-50 hover:text-rose-500"
+                          title="Xóa buổi học"
+                        >
                           <Trash2 size={16} />
                         </button>
                       </div>
                     </div>
                   ))}
                 </div>
-              ) : (
-                <div className="bg-white border border-slate-100 rounded-[32px] p-6 shadow-sm overflow-hidden">
-                    <div className="grid grid-cols-7 gap-2 mb-4">
-                        {weekDays.map(d => (
-                            <div key={d.toString()} className="text-center">
-                                <p className="text-[8px] font-black text-slate-400 uppercase mb-1">{format(d, "EEE", { locale: vi })}</p>
-                                <p className={cn("text-[10px] font-black w-7 h-7 flex items-center justify-center mx-auto rounded-full", isSameDay(d, new Date()) ? "bg-uneti-blue text-white" : "text-slate-600")}>{format(d, "d")}</p>
-                            </div>
-                        ))}
-                    </div>
-                    {/* Simplified Weekly Grid */}
-                    <div className="space-y-2">
-                        {[1, 2, 3, 4].map(shift => (
-                            <div key={shift} className="grid grid-cols-7 gap-2 h-16">
-                                {weekDays.map(day => {
-                                    const sess = sessions.find(s => isSameDay(new Date(s.date), day) && s.startShift === (shift * 3 - 2));
-                                    return (
-                                        <div key={day.toString()} className={cn("rounded-xl border transition-all flex flex-col items-center justify-center p-1", sess ? "bg-blue-50 border-blue-100 shadow-sm" : "bg-slate-50 border-transparent opacity-20")}>
-                                            {sess && (
-                                                <>
-                                                    <span className="text-[8px] font-black text-uneti-blue leading-none">{sess.room?.name || "NA"}</span>
-                                                    <span className="text-[6px] font-bold text-slate-400 uppercase mt-1">C{shift}</span>
-                                                </>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        ))}
-                    </div>
-                    <div className="mt-6 pt-6 border-t border-slate-50 flex items-center justify-center gap-6">
-                        <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-uneti-blue" /><span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Ca học hiện tại</span></div>
-                        <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-slate-100" /><span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Ca trống</span></div>
-                    </div>
-                </div>
-              )}
-
-              {sessions.length === 0 && !sessionLoading && (
-                 <div className="py-24 text-center border-2 border-dashed border-slate-100 rounded-[32px] opacity-30">
-                    <Calendar size={48} className="text-slate-200 mx-auto mb-4" strokeWidth={1} />
-                    <p className="text-[10px] font-black uppercase tracking-[0.3em]">Lớp chưa có lịch vận hành</p>
-                 </div>
               )}
             </div>
           )}
 
-          {/* --- CONFIG TAB --- */}
           {activeTab === "config" && (
-            <div className="space-y-8 animate-in fade-in duration-500">
-               <div className="p-8 bg-slate-900 rounded-[32px] text-white shadow-2xl shadow-slate-200">
-                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] opacity-40 mb-1">Trạng thái vận hành</h4>
-                  <div className="flex items-center justify-between">
-                     <p className="text-lg font-black tracking-tight uppercase">Đang đồng bộ hóa</p>
-                     <button onClick={handleUpdateConfig} disabled={loading} className="px-6 py-2.5 bg-uneti-blue text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-white hover:text-slate-900 transition-all disabled:opacity-50">
-                        {loading ? <Loader2 size={14} className="animate-spin" /> : "Ghi nhận thay đổi"}
-                     </button>
+            <div className="space-y-8">
+              <div className="rounded-[32px] bg-slate-900 p-8 text-white shadow-2xl shadow-slate-200">
+                <div className="flex items-center justify-between gap-6">
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-[0.22em] text-slate-400">
+                      Đồng bộ thông tin vận hành
+                    </p>
+                    <p className="mt-2 text-lg font-black uppercase tracking-tight">
+                      Chỉnh cấu hình lớp học phần
+                    </p>
                   </div>
-               </div>
+                  <button
+                    onClick={() => void handleUpdateConfig()}
+                    disabled={loading}
+                    className="rounded-2xl bg-uneti-blue px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-all hover:bg-white hover:text-slate-900 disabled:opacity-60"
+                  >
+                    {loading ? <Loader2 size={14} className="animate-spin" /> : "Lưu thay đổi"}
+                  </button>
+                </div>
+              </div>
 
-               <div className="grid grid-cols-2 gap-6 pb-20">
-                  <div className="space-y-4">
-                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block pl-2">Tên hiển thị lớp</label>
-                     <input
-                        className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 text-[11px] font-black outline-none focus:ring-4 focus:ring-uneti-blue/5 transition-all text-slate-800"
-                        value={form.name}
-                        onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-                     />
-                  </div>
-                  <div className="space-y-4">
-                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block pl-2">Sĩ số tối đa</label>
-                     <input
-                        type="number"
-                        className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 text-[11px] font-black outline-none focus:ring-4 focus:ring-uneti-blue/5 transition-all text-slate-800"
-                        value={form.maxSlots}
-                        onChange={e => setForm(p => ({ ...p, maxSlots: parseInt(e.target.value) }))}
-                     />
-                  </div>
-                  <div className="space-y-4">
-                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block pl-2">Trạng thái lớp</label>
-                     <select
-                        className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 text-[11px] font-black outline-none focus:ring-4 focus:ring-uneti-blue/5 transition-all appearance-none text-slate-800"
-                        value={form.status}
-                        onChange={e => setForm(p => ({ ...p, status: e.target.value }))}
-                     >
-                        <option value="OPEN">Mở (Hoạt động)</option>
-                        <option value="CLOSED">Đóng (Kết thúc)</option>
-                        <option value="CANCELLED">Hủy lớp</option>
-                     </select>
-                  </div>
-                  <div className="space-y-4">
-                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block pl-2">Giảng viên phụ trách</label>
-                     <select
-                        className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 text-[11px] font-black outline-none focus:ring-4 focus:ring-uneti-blue/5 transition-all appearance-none text-slate-800"
-                        value={form.lecturerId}
-                        onChange={e => setForm(p => ({ ...p, lecturerId: e.target.value }))}
-                     >
-                        <option value="none">-- Chưa gán giảng viên --</option>
-                        {lecturers.map(l => <option key={l.id} value={l.id}>{l.fullName}</option>)}
-                     </select>
-                  </div>
-               </div>
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <label className="block pl-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Tên hiển thị lớp
+                  </label>
+                  <input
+                    value={form.name}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, name: event.target.value }))
+                    }
+                    className="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-[11px] font-black text-slate-800 outline-none transition-all focus:ring-4 focus:ring-uneti-blue/5"
+                  />
+                </div>
+
+                <div className="space-y-4">
+                  <label className="block pl-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Sĩ số tối đa
+                  </label>
+                  <input
+                    type="number"
+                    value={form.maxSlots}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        maxSlots: Number(event.target.value || 0),
+                      }))
+                    }
+                    className="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-[11px] font-black text-slate-800 outline-none transition-all focus:ring-4 focus:ring-uneti-blue/5"
+                  />
+                </div>
+
+                <div className="space-y-4">
+                  <label className="block pl-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Giảng viên phụ trách
+                  </label>
+                  <select
+                    value={form.lecturerId}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, lecturerId: event.target.value }))
+                    }
+                    className="w-full appearance-none rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-[11px] font-black text-slate-800 outline-none transition-all focus:ring-4 focus:ring-uneti-blue/5"
+                  >
+                    <option value="none">-- Chưa phân công --</option>
+                    {lecturers.map((lecturer) => (
+                      <option key={lecturer.id} value={lecturer.id}>
+                        {lecturer.fullName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-4">
+                  <label className="block pl-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Trạng thái lớp
+                  </label>
+                  <select
+                    value={form.status}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, status: event.target.value }))
+                    }
+                    className="w-full appearance-none rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-[11px] font-black text-slate-800 outline-none transition-all focus:ring-4 focus:ring-uneti-blue/5"
+                  >
+                    <option value="OPEN">OPEN</option>
+                    <option value="CLOSED">CLOSED</option>
+                    <option value="CANCELLED">CANCELLED</option>
+                  </select>
+                </div>
+              </div>
             </div>
           )}
 
-          {/* --- STUDENTS TAB --- */}
           {activeTab === "students" && (
             <div className="space-y-6">
-                <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Sinh viên ghi danh ({courseClass._count?.enrollments || 0})</h3>
-                    <button className="text-[10px] font-black text-uneti-blue flex items-center gap-2 uppercase tracking-widest underline decoration-blue-100">Xuất danh sách</button>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
+                    Danh sách sinh viên ghi danh
+                  </p>
+                  <p className="mt-1 text-[11px] font-bold uppercase tracking-widest text-slate-500">
+                    {enrollments.length} sinh viên trong lớp học phần
+                  </p>
                 </div>
-                {/* Mock student row */}
-                <div className="py-20 flex flex-col items-center opacity-30 text-center bg-slate-50 rounded-[32px] border border-dashed border-slate-200">
-                    <Users size={40} className="text-slate-300 mb-4" strokeWidth={1} />
-                    <p className="text-[9px] font-black uppercase tracking-[0.3em]">Đang đồng bộ danh sách sinh viên...</p>
+              </div>
+
+              {studentsLoading ? (
+                <div className="flex flex-col items-center py-20 text-center opacity-40">
+                  <Loader2 className="mb-4 animate-spin text-uneti-blue" size={32} />
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em]">
+                    Đang tải danh sách sinh viên
+                  </p>
                 </div>
+              ) : enrollments.length === 0 ? (
+                <div className="rounded-[32px] border-2 border-dashed border-slate-100 py-24 text-center opacity-40">
+                  <Users className="mx-auto mb-4 text-slate-200" size={44} />
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em]">
+                    Chưa có sinh viên ghi danh
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {enrollments.map((enrollment: any, index) => (
+                    <div
+                      key={enrollment.id}
+                      className="flex items-center justify-between rounded-[24px] border border-slate-100 bg-white p-5 transition-all hover:border-uneti-blue/30"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-50 text-[10px] font-black text-slate-400">
+                          {String(index + 1).padStart(2, "0")}
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-black uppercase tracking-tight text-slate-900">
+                            {enrollment.student?.user?.fullName ||
+                              enrollment.student?.fullName ||
+                              "Sinh viên"}
+                          </p>
+                          <p className="mt-1 text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                            {enrollment.student?.studentCode} •{" "}
+                            {enrollment.student?.adminClass?.code || "Chưa xếp lớp"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <span
+                        className={cn(
+                          "rounded-xl border px-3 py-1.5 text-[9px] font-black uppercase tracking-widest",
+                          getStatusBadge(enrollment.status),
+                        )}
+                      >
+                        {enrollment.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
-          {/* --- CONFLICTS TAB --- */}
           {activeTab === "conflicts" && (
             <div className="space-y-6">
-               <div className="p-6 bg-emerald-50 border border-emerald-100 rounded-[32px] flex items-center gap-5">
-                  <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-emerald-600 shadow-sm border border-emerald-100">
-                     <CheckCircle2 size={24} />
-                  </div>
+              <div className="rounded-[32px] border border-slate-100 bg-slate-50/60 p-6">
+                <div className="flex items-center justify-between gap-4">
                   <div>
-                     <p className="text-[11px] font-black text-emerald-600 uppercase tracking-widest">Không phát hiện trùng lặp</p>
-                     <p className="text-[9px] font-bold text-slate-500 mt-0.5 uppercase tracking-widest leading-none">Cơ sở dữ liệu lịch biểu đồng nhất</p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
+                      Kiểm tra trùng lịch từ CSDL
+                    </p>
+                    <p className="mt-1 text-[11px] font-bold uppercase tracking-widest text-slate-500">
+                      Đối chiếu theo từng buổi học thực tế của lớp
+                    </p>
                   </div>
-               </div>
-               
-               <div className="grid grid-cols-1 gap-4">
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      onClick={() => setPlannerOpen(true)}
+                      className="rounded-2xl bg-white px-5 py-3 text-[10px] font-black uppercase tracking-widest text-slate-600 transition-all hover:bg-slate-900 hover:text-white"
+                    >
+                      Xếp lại lịch
+                    </button>
+                    <button
+                      onClick={() => void handleCleanupConflicts()}
+                      disabled={cleanupLoading}
+                      className="rounded-2xl bg-rose-50 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-rose-600 transition-all hover:bg-rose-600 hover:text-white disabled:opacity-60"
+                    >
+                      {cleanupLoading ? "Đang dọn..." : "Dọn ca trùng"}
+                    </button>
+                    <button
+                      onClick={() => void fetchConflicts()}
+                      className="rounded-2xl bg-slate-900 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:bg-uneti-blue"
+                    >
+                      Quét lại
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {conflictsLoading ? (
+                <div className="flex flex-col items-center py-20 text-center opacity-40">
+                  <Loader2 className="mb-4 animate-spin text-uneti-blue" size={32} />
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em]">
+                    Đang đối chiếu xung đột
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
                     {[
-                        { label: "Trùng phòng học", status: "CLEAN" },
-                        { label: "Trùng giảng viên", status: "CLEAN" },
-                        { label: "Trùng lớp hành chính", status: "CLEAN" }
-                    ].map(c => (
-                        <div key={c.label} className="p-5 bg-white border border-slate-100 rounded-2xl flex items-center justify-between">
-                            <span className="text-[10px] font-black text-slate-700 uppercase">{c.label}</span>
-                            <div className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                                <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest">An toàn</span>
-                            </div>
+                      {
+                        label: "Tự trùng ca",
+                        value: conflicts?.summary?.self || 0,
+                        color: "text-violet-600",
+                        bg: "bg-violet-50",
+                      },
+                      {
+                        label: "Trùng phòng",
+                        value: conflicts?.summary?.room || 0,
+                        color: "text-rose-600",
+                        bg: "bg-rose-50",
+                      },
+                      {
+                        label: "Trùng giảng viên",
+                        value: conflicts?.summary?.lecturer || 0,
+                        color: "text-amber-600",
+                        bg: "bg-amber-50",
+                      },
+                      {
+                        label: "Trùng lớp hành chính",
+                        value: conflicts?.summary?.adminClass || 0,
+                        color: "text-uneti-blue",
+                        bg: "bg-blue-50",
+                      },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        className="rounded-[28px] border border-slate-100 bg-white p-5"
+                      >
+                        <div
+                          className={cn(
+                            "mb-4 flex h-10 w-10 items-center justify-center rounded-2xl",
+                            item.bg,
+                            item.color,
+                          )}
+                        >
+                          <AlertTriangle size={18} />
                         </div>
+                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+                          {item.label}
+                        </p>
+                        <p className={cn("mt-2 text-2xl font-black", item.color)}>{item.value}</p>
+                      </div>
                     ))}
-               </div>
+                  </div>
+
+                  {!conflicts?.issues?.length ? (
+                    <div className="flex items-center gap-4 rounded-[32px] border border-emerald-100 bg-emerald-50 p-6">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-emerald-600 shadow-sm">
+                        <CheckCircle2 size={24} />
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-black uppercase tracking-widest text-emerald-600">
+                          Không phát hiện xung đột
+                        </p>
+                        <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                          Lịch lớp đang khớp với phòng, giảng viên và lớp hành chính
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {conflicts.issues.map((issue: any) => (
+                        <div
+                          key={`${issue.type}-${issue.sessionId}-${issue.conflictSessionId}`}
+                          className="rounded-[24px] border border-rose-100 bg-white p-5"
+                        >
+                          <div className="flex items-start justify-between gap-6">
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-rose-600">
+                                {issue.type === "ROOM"
+                                  ? "Tự trùng ca"
+                                  : issue.type === "ROOM"
+                                    ? "Trùng phòng"
+                                    : issue.type === "LECTURER"
+                                      ? "Trùng giảng viên"
+                                      : "Trùng lớp hành chính"}
+                              </p>
+                              <p className="mt-2 text-[11px] font-bold leading-relaxed text-slate-700">
+                                {issue.message}
+                              </p>
+                              <p className="mt-3 text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                                {format(new Date(issue.date), "dd/MM/yyyy")} • Tiết{" "}
+                                {issue.startShift}-{issue.endShift} •{" "}
+                                {issue.type === "SELF"
+                                  ? courseClass.code
+                                  : issue.counterpartClassCode}
+                              </p>
+                            </div>
+
+                            <span
+                              className={cn(
+                                "rounded-xl px-3 py-1.5 text-[9px] font-black uppercase tracking-widest",
+                                issue.type === "SELF"
+                                  ? "bg-violet-50 text-violet-600"
+                                  : "bg-rose-50 text-rose-600",
+                              )}
+                            >
+                              {issue.type === "SELF"
+                                ? "Nội bộ học phần"
+                                : issue.roomName || "CSDL"}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>
 
-        {/* FOOTER */}
-        <footer className="px-8 py-5 border-t border-slate-100 bg-slate-50/20 flex items-center justify-between shrink-0">
-           <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <UserCheck size={14} className="text-emerald-500" />
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest italic underline decoration-slate-200">System Sync</span>
-              </div>
-              <div className="h-4 w-px bg-slate-200" />
-              <p className="text-[9px] font-black text-slate-500 uppercase flex items-center gap-2">
-                  <Activity size={12} className="text-uneti-blue" /> Lớp đang hoạt động
-              </p>
-           </div>
-           <p className="text-[10px] font-black text-uneti-blue">
-              SĨ SỐ: {courseClass._count?.enrollments || 0} / {courseClass.maxSlots} SV
-           </p>
+        <footer className="flex items-center justify-between border-t border-slate-100 bg-slate-50/30 px-8 py-5">
+          <div className="flex items-center gap-2">
+            <UserCheck size={14} className="text-emerald-500" />
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+              Đồng bộ theo dữ liệu thật
+            </span>
+          </div>
+          <p className="text-[10px] font-black uppercase tracking-widest text-uneti-blue">
+            {courseClass.lecturer?.fullName || "Chưa phân công giảng viên"}
+          </p>
         </footer>
 
-        {/* --- MOVING SESSION DIALOG --- */}
-        {movingSession && (
+        <CourseSchedulePlannerModal
+          open={plannerOpen}
+          courseClass={courseClass}
+          sessions={sortedSessions}
+          rooms={rooms}
+          headers={headers}
+          onClose={() => setPlannerOpen(false)}
+          onSuccess={async () => {
+            await fetchSessions();
+            await fetchConflicts();
+          }}
+        />
+
+        {movingSession ? (
           <div className="absolute inset-0 z-50 flex items-center justify-center p-8">
-            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setMovingSession(null)} />
-            <div className="relative w-full max-w-sm bg-white rounded-[40px] shadow-2xl p-10 animate-in zoom-in-95 duration-300">
-               <div className="flex flex-col items-center text-center gap-4 mb-8">
-                  <div className="w-16 h-16 bg-uneti-blue/10 text-uneti-blue rounded-[24px] flex items-center justify-center">
-                    <ArrowRightLeft size={32} />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-black tracking-tight text-slate-900">Dời lịch học</h3>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Buổi ngày {format(new Date(movingSession.date), "dd/MM/yyyy")}</p>
-                  </div>
-               </div>
+            <div
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-md"
+              onClick={() => setMovingSession(null)}
+            />
+            <div className="relative w-full max-w-md rounded-[40px] bg-white p-10 shadow-2xl">
+              <div className="mb-8 flex flex-col items-center text-center">
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-[24px] bg-uneti-blue/10 text-uneti-blue">
+                  <ArrowRightLeft size={30} />
+                </div>
+                <h3 className="text-lg font-black tracking-tight text-slate-900">
+                  Đổi lịch buổi học
+                </h3>
+                <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  Chuyển ngày, ca và phòng học
+                </p>
+              </div>
 
-               <div className="space-y-6">
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block pl-2">Chọn ngày mới</label>
-                    <input
-                      type="date"
-                      className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 text-[11px] font-black outline-none focus:ring-4 focus:ring-uneti-blue/5 transition-all text-slate-800"
-                      defaultValue={format(new Date(movingSession.date), "yyyy-MM-dd")}
-                      onChange={e => setMovingSession({ ...movingSession, nextDate: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block pl-2">Chọn ca mới</label>
-                    <select
-                      className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 text-[11px] font-black outline-none focus:ring-4 focus:ring-uneti-blue/5 transition-all appearance-none text-slate-800"
-                      defaultValue={movingSession.startShift}
-                      onChange={e => setMovingSession({ ...movingSession, nextShift: parseInt(e.target.value) })}
-                    >
-                      <option value={1}>Ca 1 (Tiết 1-3)</option>
-                      <option value={4}>Ca 2 (Tiết 4-6)</option>
-                      <option value={7}>Ca 3 (Tiết 7-9)</option>
-                      <option value={10}>Ca 4 (Tiết 10-12)</option>
-                    </select>
-                  </div>
-               </div>
+              <div className="space-y-5">
+                <div>
+                  <label className="mb-2 block pl-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Ngày học mới
+                  </label>
+                  <input
+                    type="date"
+                    value={movingSession.nextDate}
+                    onChange={(event) =>
+                      setMovingSession((current: any) => ({
+                        ...current,
+                        nextDate: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-[11px] font-black text-slate-800 outline-none transition-all focus:ring-4 focus:ring-uneti-blue/5"
+                  />
+                </div>
 
-               <div className="flex gap-3 mt-10">
-                  <button
-                    onClick={() => handleMoveSession(movingSession.id, movingSession.nextDate || format(new Date(movingSession.date), "yyyy-MM-dd"), movingSession.nextShift || movingSession.startShift)}
-                    className="flex-1 py-4 bg-uneti-blue text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-uneti-blue/20 hover:bg-slate-900 transition-all font-montserrat"
+                <div>
+                  <label className="mb-2 block pl-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Ca học mới
+                  </label>
+                  <select
+                    value={movingSession.nextShift}
+                    onChange={(event) =>
+                      setMovingSession((current: any) => ({
+                        ...current,
+                        nextShift: Number(event.target.value),
+                      }))
+                    }
+                    className="w-full appearance-none rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-[11px] font-black text-slate-800 outline-none transition-all focus:ring-4 focus:ring-uneti-blue/5"
                   >
-                    Xác nhận
-                  </button>
-                  <button
-                    onClick={() => setMovingSession(null)}
-                    className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all font-montserrat"
+                    {SHIFT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block pl-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Phòng học
+                  </label>
+                  <select
+                    value={movingSession.nextRoomId || "keep"}
+                    onChange={(event) =>
+                      setMovingSession((current: any) => ({
+                        ...current,
+                        nextRoomId: event.target.value,
+                      }))
+                    }
+                    className="w-full appearance-none rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-[11px] font-black text-slate-800 outline-none transition-all focus:ring-4 focus:ring-uneti-blue/5"
                   >
-                    Hủy
-                  </button>
-               </div>
+                    <option value="keep">Giữ nguyên phòng hiện tại</option>
+                    <option value="">Bỏ gán phòng</option>
+                    {rooms.map((room) => (
+                      <option key={room.id} value={room.id}>
+                        {room.name} {room.building ? `- ${room.building}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="mt-10 flex gap-3">
+                <button
+                  onClick={() => void handleMoveSession()}
+                  className="flex-1 rounded-2xl bg-uneti-blue py-4 text-[11px] font-black uppercase tracking-widest text-white transition-all hover:bg-slate-900"
+                >
+                  Xác nhận
+                </button>
+                <button
+                  onClick={() => setMovingSession(null)}
+                  className="flex-1 rounded-2xl bg-slate-100 py-4 text-[11px] font-black uppercase tracking-widest text-slate-500 transition-all hover:bg-slate-200"
+                >
+                  Hủy
+                </button>
+              </div>
             </div>
           </div>
-        )}
+        ) : null}
 
-        {/* --- ADD SESSION DIALOG --- */}
-        {showAddSession && (
-             <div className="absolute inset-0 z-50 flex items-center justify-center p-8">
-                <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setShowAddSession(null)} />
-                <div className="relative w-full max-w-sm bg-white rounded-[40px] shadow-2xl p-10 animate-in zoom-in-95 duration-300">
-                    <div className="flex flex-col items-center text-center gap-4 mb-8">
-                        <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-[24px] flex items-center justify-center">
-                            <Plus size={32} />
-                        </div>
-                        <div>
-                            <h3 className="text-lg font-black tracking-tight text-slate-900">Thêm buổi học mới</h3>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Bổ sung vào lịch trình vận hành</p>
-                        </div>
-                    </div>
-                    <div className="space-y-5">
-                        <div className="space-y-2">
-                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2">Ngày học</label>
-                             <input type="date" className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 text-[11px] font-black outline-none focus:ring-4 focus:ring-uneti-blue/5 text-slate-800" value={newSessionForm.date} onChange={e => setNewSessionForm(p => ({ ...p, date: e.target.value }))} />
-                        </div>
-                        <div className="space-y-2">
-                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2">Ca học</label>
-                             <select className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 text-[11px] font-black outline-none focus:ring-4 focus:ring-uneti-blue/5 text-slate-800" value={newSessionForm.startShift} onChange={e => setNewSessionForm(p => ({ ...p, startShift: parseInt(e.target.value), endShift: parseInt(e.target.value) + 2 }))}>
-                                <option value={1}>Ca 1 (Tiết 1-3)</option>
-                                <option value={4}>Ca 2 (Tiết 4-6)</option>
-                                <option value={7}>Ca 3 (Tiết 7-9)</option>
-                                <option value={10}>Ca 4 (Tiết 10-12)</option>
-                             </select>
-                        </div>
-                        <div className="space-y-2">
-                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2">Phòng học</label>
-                             <select className="w-full bg-slate-50 border-none rounded-2xl px-5 py-4 text-[11px] font-black outline-none focus:ring-4 focus:ring-uneti-blue/5 text-slate-800" value={newSessionForm.roomId} onChange={e => setNewSessionForm(p => ({ ...p, roomId: e.target.value }))}>
-                                <option value="none">-- Tự động xếp phòng --</option>
-                                {rooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                             </select>
-                        </div>
-                    </div>
-                    <div className="flex gap-3 mt-10">
-                        <button onClick={handleAddSession} className="flex-1 py-4 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-uneti-blue transition-all font-montserrat shadow-xl">Thêm ngay</button>
-                        <button onClick={() => setShowAddSession(null)} className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all font-montserrat">Hủy bỏ</button>
-                    </div>
+        {addingSession ? (
+          <div className="absolute inset-0 z-50 flex items-center justify-center p-8">
+            <div
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-md"
+              onClick={() => setAddingSession(null)}
+            />
+            <div className="relative w-full max-w-md rounded-[40px] bg-white p-10 shadow-2xl">
+              <div className="mb-8 flex flex-col items-center text-center">
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-[24px] bg-emerald-50 text-emerald-600">
+                  <CalendarPlus size={30} />
                 </div>
-             </div>
-        )}
+                <h3 className="text-lg font-black tracking-tight text-slate-900">
+                  Thêm buổi học mới
+                </h3>
+                <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  Học bù, phụ đạo hoặc điều phối bổ sung
+                </p>
+              </div>
+
+              <div className="space-y-5">
+                <div>
+                  <label className="mb-2 block pl-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Ngày học
+                  </label>
+                  <input
+                    type="date"
+                    value={addingSession.date}
+                    onChange={(event) =>
+                      setAddingSession((current: any) => ({
+                        ...current,
+                        date: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-[11px] font-black text-slate-800 outline-none transition-all focus:ring-4 focus:ring-uneti-blue/5"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block pl-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Ca học
+                  </label>
+                  <select
+                    value={addingSession.startShift}
+                    onChange={(event) =>
+                      setAddingSession((current: any) => ({
+                        ...current,
+                        startShift: Number(event.target.value),
+                      }))
+                    }
+                    className="w-full appearance-none rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-[11px] font-black text-slate-800 outline-none transition-all focus:ring-4 focus:ring-uneti-blue/5"
+                  >
+                    {SHIFT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block pl-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Phòng học
+                  </label>
+                  <select
+                    value={addingSession.roomId}
+                    onChange={(event) =>
+                      setAddingSession((current: any) => ({
+                        ...current,
+                        roomId: event.target.value,
+                      }))
+                    }
+                    className="w-full appearance-none rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-[11px] font-black text-slate-800 outline-none transition-all focus:ring-4 focus:ring-uneti-blue/5"
+                  >
+                    <option value="none">Chưa gán phòng</option>
+                    {rooms.map((room) => (
+                      <option key={room.id} value={room.id}>
+                        {room.name} {room.building ? `- ${room.building}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block pl-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Ghi chú
+                  </label>
+                  <input
+                    value={addingSession.note}
+                    onChange={(event) =>
+                      setAddingSession((current: any) => ({
+                        ...current,
+                        note: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-[11px] font-black text-slate-800 outline-none transition-all focus:ring-4 focus:ring-uneti-blue/5"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-10 flex gap-3">
+                <button
+                  onClick={() => void handleAddSession()}
+                  className="flex-1 rounded-2xl bg-emerald-600 py-4 text-[11px] font-black uppercase tracking-widest text-white transition-all hover:bg-slate-900"
+                >
+                  Tạo buổi học
+                </button>
+                <button
+                  onClick={() => setAddingSession(null)}
+                  className="flex-1 rounded-2xl bg-slate-100 py-4 text-[11px] font-black uppercase tracking-widest text-slate-500 transition-all hover:bg-slate-200"
+                >
+                  Hủy
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <style jsx>{`
         .custom-scrollbar::-webkit-scrollbar {
-          width: 4px;
+          width: 5px;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
           background: transparent;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #f1f5f9;
+          background: #e2e8f0;
           border-radius: 10px;
         }
       `}</style>

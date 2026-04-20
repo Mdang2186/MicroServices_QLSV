@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { 
+import {
     Phone, Mail, CreditCard, 
     Calendar, Shield, Globe, MapPinned, 
     Loader2, Save, Fingerprint, Landmark,
@@ -9,7 +9,8 @@ import {
 } from "lucide-react";
 import { StudentService } from "@/services/student.service";
 import api from "@/lib/api";
-import { getStudentUserId, readStudentSessionUser } from "@/lib/student-session";
+import { readStudentSessionUser } from "@/lib/student-session";
+import { resolveCurrentStudentContext } from "@/lib/current-student";
 import { cn } from "@/lib/utils";
 
 // --- Components ---
@@ -92,14 +93,12 @@ export default function StudentProfilePage() {
     const fetchProfile = async () => {
         setLoading(true);
         try {
-            const user = readStudentSessionUser();
-            const userId = getStudentUserId(user);
-            if (!userId) {
-                setLoading(false);
-                return;
-            }
+            const context = await resolveCurrentStudentContext();
+            if (!context.studentId) return;
 
-            const data = await StudentService.getProfile(userId);
+            const data =
+                context.profile ||
+                (await StudentService.getProfileByStudentId(context.studentId).catch(() => null));
             if (data && data.id) {
                 setStudent(data);
                 setFormData({

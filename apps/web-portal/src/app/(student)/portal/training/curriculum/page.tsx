@@ -1,96 +1,210 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { StudentService } from "@/services/student.service";
-import { getStudentProfileId, getStudentUserId, readStudentSessionUser } from "@/lib/student-session";
-import { Printer, Download, CheckCircle2, Circle, Layout } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronDown,
+  Search,
+  BookOpen,
+  Info,
+} from "lucide-react";
+import { resolveCurrentStudentContext } from "@/lib/current-student";
 
-export default function CurriculumPage() {
-    const [data, setData] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
+const buildExpandedState = (payload: any) => {
+  const highestPassedSemester =
+    payload?.semesters?.reduce((max: number, semester: any) => {
+      const hasPassed = (semester?.items || []).some((item: any) => item.isPassed);
+      return hasPassed ? Math.max(max, Number(semester.semester || 0)) : max;
+    }, 0) || 0;
 
-    useEffect(() => {
-        (async () => {
-            const user = readStudentSessionUser();
-            const sid = getStudentProfileId(user) || (await StudentService.getProfile(getStudentUserId(user)))?.id;
-            if (sid) setData(await StudentService.getCurriculumProgress(sid));
-            setLoading(false);
-        })();
-    }, []);
+  const boundary =
+    Number(payload?.currentConceptualSemester || 0) ||
+    (highestPassedSemester > 0 ? highestPassedSemester + 1 : 2);
 
-    if (loading) return <div className="p-20 text-center animate-pulse">Đang tải dữ liệu...</div>;
-    if (!data) return <div className="p-20 text-center">Không tìm thấy dữ liệu.</div>;
+  return Object.fromEntries(
+    (payload?.semesters || []).map((semester: any) => [
+      semester.semester,
+      Number(semester.semester || 0) <= boundary,
+    ]),
+  );
+};
 
-    return (
-        <div className="p-6 max-w-7xl mx-auto space-y-6 text-slate-700 font-sans leading-relaxed">
-            {/* Header: Clean & Simple */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-xl border shadow-sm gap-4">
-                <div className="flex items-center gap-4">
-                    <div className="p-3 bg-blue-50 text-blue-600 rounded-lg"><Layout size={32} /></div>
-                    <div>
-                        <h1 className="text-xl font-bold uppercase tracking-tight">Chương trình khung</h1>
-                        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{data.majorName} • KHÓA {data.cohort}</p>
-                    </div>
-                </div>
-                <div className="flex gap-2">
-                    <button className="flex items-center gap-2 px-4 py-2 text-xs font-bold border rounded-lg hover:bg-slate-50 transition-colors"><Printer size={16}/> In</button>
-                    <button className="flex items-center gap-2 px-4 py-2 text-xs font-bold bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-md shadow-blue-100 transition-all"><Download size={16}/> Tải xuống</button>
-                </div>
-            </div>
+const sumPassedCredits = (items: any[] = []) =>
+  items
+    .filter((item) => item.isPassed)
+    .reduce((total, item) => total + Number(item.credits || 0), 0);
 
-            {/* Stats Row */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatBox label="Tổng TC" value={data.stats.totalCredits} />
-                <StatBox label="Bắt buộc" value={data.stats.mandatory} />
-                <StatBox label="Tự chọn" value={data.stats.totalCredits - data.stats.mandatory} />
-                <StatBox label="Đã đạt" value={data.stats.passed} isBlue />
-            </div>
-
-            {/* Simple Table structure */}
-            <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
-                <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                        <tr className="bg-slate-50 border-b font-bold text-slate-500 uppercase">
-                            <th className="px-4 py-3 text-center w-12">STT</th>
-                            <th className="px-4 py-3">Tên môn học/Học phần</th>
-                            <th className="px-4 py-3 w-32">Mã HP</th>
-                            <th className="px-4 py-3 text-center w-16">TC</th>
-                            <th className="px-4 py-3 text-center w-12">LT</th>
-                            <th className="px-4 py-3 text-center w-12">TH</th>
-                            <th className="px-4 py-3 text-center w-24">Bắt buộc</th>
-                            <th className="px-4 py-3 text-center w-16">Đạt</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y italic">
-                        {data.semesters.map((sem: any) => (
-                            <React.Fragment key={sem.semester}>
-                                <tr className="bg-slate-50/50"><td colSpan={8} className="px-4 py-2 font-bold text-blue-700 text-sm">Học kỳ {sem.semester} ({sem.totalCredits} TC)</td></tr>
-                                {sem.items.map((item: any, i: number) => (
-                                    <tr key={i} className={`hover:bg-slate-200/5 transition-colors ${item.isPassed ? 'bg-emerald-50/20' : ''}`}>
-                                        <td className="px-4 py-3 text-center text-slate-300">{i + 1}</td>
-                                        <td className="px-4 py-3 font-bold text-slate-800">{item.name || item.subjectName}</td>
-                                        <td className="px-4 py-3 text-slate-400 font-mono tracking-tighter">{item.code || item.subjectCode}</td>
-                                        <td className="px-4 py-3 text-center font-bold">{item.credits}</td>
-                                        <td className="px-4 py-3 text-center text-slate-400">{item.theoryPeriods}</td>
-                                        <td className="px-4 py-3 text-center text-slate-400">{item.practicePeriods}</td>
-                                        <td className="px-4 py-3 text-center text-[10px] uppercase font-bold tracking-tighter">{item.isRequired ? 'Bắt buộc' : <span className="text-slate-300">Tự chọn</span>}</td>
-                                        <td className="px-4 py-3">{item.isPassed ? <CheckCircle2 className="mx-auto text-emerald-500" size={18}/> : <Circle className="mx-auto text-slate-100" size={18}/>}</td>
-                                    </tr>
-                                ))}
-                            </React.Fragment>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-}
-
-const StatBox = ({ label, value, isBlue }: any) => (
-    <div className={`p-4 border rounded-xl ${isBlue ? 'bg-blue-50 border-blue-100' : 'bg-white'}`}>
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{label}</p>
-        <p className={`text-xl font-bold ${isBlue ? 'text-blue-600' : 'text-slate-800'}`}>{value}</p>
-    </div>
+const PeriodChip = ({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "theory" | "practice";
+}) => (
+  <span
+    className={`inline-flex min-w-[72px] items-center justify-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${tone === "theory"
+      ? "border-blue-100 bg-blue-50 text-blue-700"
+      : "border-indigo-100 bg-indigo-50 text-indigo-700"
+      }`}
+  >
+    {label}: {value}
+  </span>
 );
 
-import React from "react";
+
+
+export default function CurriculumPage() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [expandedSemesters, setExpandedSemesters] = useState<Record<number, boolean>>({});
+  const [searchTerm, setSearchTerm] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const context = await resolveCurrentStudentContext();
+        if (context.studentId) {
+          const payload = await StudentService.getCurriculumProgress(context.studentId);
+          setData(payload);
+          setExpandedSemesters(buildExpandedState(payload));
+        }
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+
+
+
+
+  const toggleSemester = (semesterNumber: number) => {
+    setExpandedSemesters((current) => ({
+      ...current,
+      [semesterNumber]: !current[semesterNumber],
+    }));
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-[60vh] flex-col items-center justify-center gap-4">
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600"></div>
+        <p className="text-sm font-black uppercase tracking-widest text-slate-400">Đang đồng bộ chương trình khung...</p>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="mx-auto max-w-lg p-20 text-center">
+        <Info className="mx-auto h-16 w-16 text-slate-200" />
+        <h2 className="mt-4 text-xl font-black text-slate-700">Chưa có dữ liệu chương trình</h2>
+        <p className="mt-2 text-slate-500 font-medium">Bạn chưa được gán vào một khung chương trình đào tạo chuẩn. Vui lòng liên hệ phòng đào tạo.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-7xl animate-in fade-in duration-700 space-y-6 p-6 text-slate-700">
+      {/* Search Bar */}
+      <div className="relative">
+        <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <input
+          type="text"
+          placeholder="Tìm mã môn hoặc tên học phần..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+        />
+      </div>
+
+      {/* Curriculum Content */}
+      <div className="space-y-4">
+        {(data?.semesters || []).map((semester: any) => {
+          const isExpanded = expandedSemesters[semester.semester] !== false;
+
+          const filteredItems = (semester.items || []).filter((item: any) => {
+            const search = searchTerm.toLowerCase();
+            return (
+              (item.name || item.subjectName || "").toLowerCase().includes(search) ||
+              (item.code || item.subjectCode || "").toLowerCase().includes(search)
+            );
+          });
+
+          if (searchTerm && filteredItems.length === 0) return null;
+
+          return (
+            <div key={semester.semester} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <button
+                onClick={() => toggleSemester(semester.semester)}
+                className="flex w-full items-center justify-between px-6 py-4 text-left transition-colors hover:bg-slate-50"
+              >
+                <h3 className="text-base font-bold text-slate-900 uppercase tracking-tight">
+                  Học kỳ {semester.semester}
+                </h3>
+                <div className={`transition-transform duration-300 ${isExpanded ? "rotate-180" : ""}`}>
+                  <ChevronDown className="h-5 w-5 text-slate-400" />
+                </div>
+              </button>
+
+              {isExpanded && (
+                <div className="border-t border-slate-100 overflow-x-auto">
+                  <table className="w-full min-w-[800px] border-collapse text-sm">
+                    <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      <tr>
+                        <th className="w-16 px-6 py-3 text-center">STT</th>
+                        <th className="px-6 py-3 text-left">Mã học phần</th>
+                        <th className="px-6 py-3 text-left">Tên học phần</th>
+                        <th className="w-24 px-6 py-3 text-center">Tín chỉ</th>
+                        <th className="w-32 px-6 py-3 text-center">Trạng thái</th>
+                        <th className="w-24 px-6 py-3 text-center">Kết quả</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredItems.map((item: any, index: number) => (
+                        <tr
+                          key={`${semester.semester}-${item.subjectId || item.id || index}`}
+                          className="hover:bg-slate-50/50 transition-colors"
+                        >
+                          <td className="px-6 py-4 text-center text-slate-400">
+                            {index + 1}
+                          </td>
+                          <td className="px-6 py-4 font-mono text-xs font-bold text-slate-600">
+                            {item.code || item.subjectCode}
+                          </td>
+                          <td className="px-6 py-4 font-medium text-slate-800">
+                            {item.name || item.subjectName}
+                          </td>
+                          <td className="px-6 py-4 text-center text-slate-600">
+                            {item.credits}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            {item.isRequired ? (
+                              <span className="text-[10px] font-bold uppercase text-slate-400">Bắt buộc</span>
+                            ) : (
+                              <span className="text-[10px] font-bold uppercase text-amber-500">Tự chọn</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            {item.isPassed ? (
+                              <span className="text-xs font-bold text-slate-900">Đạt</span>
+                            ) : (
+                              <span className="text-xs font-medium text-slate-400">Chưa</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

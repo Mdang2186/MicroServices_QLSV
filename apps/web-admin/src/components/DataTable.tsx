@@ -80,7 +80,7 @@ export default function DataTable<T extends { id: string | number }>({
                         <input
                             type="text"
                             placeholder={searchPlaceholder}
-                            className="w-full pl-9 pr-3 py-2 bg-slate-50 border-transparent rounded-xl text-[12px] font-bold focus:ring-1 focus:ring-uneti-blue/20 focus:bg-white transition-all outline-none text-slate-700"
+                            className="w-full pl-9 pr-3 py-2 bg-slate-50 border-transparent rounded-xl text-[12px] font-bold focus:ring-1 focus:ring-uneti-blue/20 focus:bg-white transition-all outline-none text-slate-950"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
@@ -89,7 +89,7 @@ export default function DataTable<T extends { id: string | number }>({
                         <button
                             id="column-toggle-button"
                             onClick={() => setIsColumnPanelOpen(!isColumnPanelOpen)}
-                            className="flex items-center gap-2 px-3 py-2 bg-slate-50 text-slate-600 rounded-lg hover:bg-slate-100 transition-all text-[10px] font-black uppercase tracking-widest border border-slate-200 shadow-sm"
+                            className="flex items-center gap-2 px-3 py-2 bg-slate-50 text-slate-900 rounded-lg hover:bg-slate-100 transition-all text-[10px] font-black uppercase tracking-widest border border-slate-200 shadow-sm"
                         >
                             <Settings2 size={14} />
                             Cột
@@ -107,7 +107,7 @@ export default function DataTable<T extends { id: string | number }>({
                                         }}
                                     >
                                         <div className="flex items-center justify-between mb-4 px-1">
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Hiển thị cột</p>
+                                            <p className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em]">Hiển thị cột</p>
                                             <button 
                                                 onClick={() => setVisibleColumns(columns.map(c => c.accessorKey as string))}
                                                 className="text-[9px] font-black text-uneti-blue uppercase tracking-wider hover:underline"
@@ -120,7 +120,7 @@ export default function DataTable<T extends { id: string | number }>({
                                                 <button
                                                     key={col.accessorKey as string}
                                                     onClick={() => toggleColumn(col.accessorKey as string)}
-                                                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[12px] font-bold transition-all ${visibleColumns.includes(col.accessorKey as string) ? 'bg-uneti-blue/5 text-uneti-blue' : 'text-slate-600 hover:bg-slate-50'}`}
+                                                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[12px] font-bold transition-all ${visibleColumns.includes(col.accessorKey as string) ? 'bg-uneti-blue/5 text-uneti-blue' : 'text-slate-900 hover:bg-slate-50'}`}
                                                 >
                                                     {col.header}
                                                     {visibleColumns.includes(col.accessorKey as string) && (
@@ -142,7 +142,7 @@ export default function DataTable<T extends { id: string | number }>({
                 <div className="flex items-center gap-3">
                     {toolbar}
                     <div className="h-6 w-px bg-slate-100 mx-1 hidden sm:block"></div>
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
+                    <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest whitespace-nowrap">
                         {filteredData.length} Bản ghi
                     </span>
                 </div>
@@ -154,12 +154,12 @@ export default function DataTable<T extends { id: string | number }>({
                     <thead className="sticky top-0 z-20 bg-white shadow-sm ring-1 ring-slate-100">
                         <tr>
                             {columns.filter(c => visibleColumns.includes(c.accessorKey as string)).map((col) => (
-                                <th key={col.accessorKey as string} className="py-2.5 px-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
+                                <th key={col.accessorKey as string} className="py-2.5 px-4 text-left text-[9px] font-black text-slate-900 uppercase tracking-widest whitespace-nowrap">
                                     {col.header}
                                 </th>
                             ))}
                             {actions && (
-                                <th className="py-2.5 px-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">
+                                <th className="py-2.5 px-4 text-right text-[9px] font-black text-slate-950 uppercase tracking-widest whitespace-nowrap">
                                     Thao tác
                                 </th>
                             )}
@@ -182,7 +182,7 @@ export default function DataTable<T extends { id: string | number }>({
                                 className={`hover:bg-slate-50/50 transition-colors group ${onRowClick ? 'cursor-pointer' : ''}`}
                             >
                                 {columns.filter(c => visibleColumns.includes(c.accessorKey as string)).map((col) => (
-                                    <td key={col.accessorKey as string} className="py-2 px-4 text-[12px] font-bold text-slate-600 whitespace-nowrap border-b border-transparent">
+                                    <td key={col.accessorKey as string} className="py-2 px-4 text-[12px] font-bold text-slate-950 whitespace-nowrap border-b border-transparent">
                                         {col.cell ? col.cell(item) : (item as any)[col.accessorKey]}
                                     </td>
                                 ))}
@@ -199,7 +199,7 @@ export default function DataTable<T extends { id: string | number }>({
                                         <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center">
                                             <Search size={24} />
                                         </div>
-                                        <p className="text-[12px] font-bold text-slate-400 tracking-tight">Không có dữ liệu</p>
+                                        <p className="text-[12px] font-bold text-slate-900 tracking-tight">Không có dữ liệu</p>
                                     </div>
                                 </td>
                             </tr>
@@ -211,7 +211,7 @@ export default function DataTable<T extends { id: string | number }>({
             {/* Optimized Arrow Pagination */}
             {totalPages > 1 && (
                 <div className="px-4 py-3 border-t border-slate-50 flex items-center justify-between bg-white/80 backdrop-blur-sm">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    <div className="text-[10px] font-black text-slate-900 uppercase tracking-widest">
                         Trang <span className="text-uneti-blue font-black">{currentPage}</span> / {totalPages}
                     </div>
                     
@@ -228,7 +228,7 @@ export default function DataTable<T extends { id: string | number }>({
                         <button
                             disabled={currentPage === 1}
                             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-lg text-[10px] font-black uppercase tracking-widest disabled:opacity-30 transition-all border border-slate-100"
+                            className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-900 rounded-lg text-[10px] font-black uppercase tracking-widest disabled:opacity-30 transition-all border border-slate-100"
                         >
                             Trước
                         </button>
@@ -238,7 +238,7 @@ export default function DataTable<T extends { id: string | number }>({
                         <button
                             disabled={currentPage === totalPages}
                             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-lg text-[10px] font-black uppercase tracking-widest disabled:opacity-30 transition-all border border-slate-100"
+                            className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-900 rounded-lg text-[10px] font-black uppercase tracking-widest disabled:opacity-30 transition-all border border-slate-100"
                         >
                             Sau
                         </button>

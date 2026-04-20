@@ -169,14 +169,14 @@ export default function AdminUsersPage() {
             {/* Header & Breadcrumbs */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                 <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                    <div className="flex items-center gap-2 text-[10px] font-black text-slate-900 uppercase tracking-[0.2em]">
                         <UsersIcon size={14} className="text-uneti-blue" />
                         <span>Hệ thống</span>
                         <ChevronRight size={10} />
                         <span className="text-uneti-blue">Tài khoản</span>
                     </div>
                     <h1 className="text-3xl font-black text-slate-900 tracking-tight">Tra cứu tài khoản</h1>
-                    <p className="text-[13px] font-medium text-slate-500">Quản lý và kiểm soát toàn bộ người dùng trong hệ thống</p>
+                    <p className="text-[13px] font-medium text-slate-950 font-bold">Quản lý và kiểm soát toàn bộ người dùng trong hệ thống</p>
                 </div>
             </div>
 
@@ -194,10 +194,10 @@ export default function AdminUsersPage() {
                             <div className={`w-10 h-10 rounded-xl ${s.color === 'uneti' || s.color === 'blue' ? 'bg-uneti-blue-light text-uneti-blue' : `bg-${s.color}-50 text-${s.color}-600`} flex items-center justify-center mb-3`}>
                                 <s.icon size={20} />
                             </div>
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{s.label}</p>
+                            <p className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-1">{s.label}</p>
                             <div className="flex items-baseline gap-2">
                                 <p className="text-2xl font-black text-slate-900">{s.value}</p>
-                                <span className="text-[9px] font-bold text-slate-400">{s.trend}</span>
+                                <span className="text-[9px] font-bold text-slate-600 font-extrabold">{s.trend}</span>
                             </div>
                         </div>
                     </div>
@@ -247,10 +247,10 @@ export default function AdminUsersPage() {
                     <table className="w-full border-collapse">
                         <thead>
                             <tr className="bg-slate-50/50">
-                                <th className="py-4 px-8 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Username</th>
-                                <th className="py-4 px-8 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Email hệ thống</th>
-                                <th className="py-4 px-8 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Vai trò</th>
-                                <th className="py-4 px-8 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Trạng thái</th>
+                                <th className="py-4 px-8 text-left text-[10px] font-black text-slate-950 uppercase tracking-widest border-b border-slate-100">Username</th>
+                                <th className="py-4 px-8 text-left text-[10px] font-black text-slate-950 uppercase tracking-widest border-b border-slate-100">Email hệ thống</th>
+                                <th className="py-4 px-8 text-left text-[10px] font-black text-slate-950 uppercase tracking-widest border-b border-slate-100">Vai trò</th>
+                                <th className="py-4 px-8 text-left text-[10px] font-black text-slate-950 uppercase tracking-widest border-b border-slate-100">Trạng thái</th>
                                 <th className="py-4 px-8 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Thao tác</th>
                             </tr>
                         </thead>
@@ -262,13 +262,13 @@ export default function AdminUsersPage() {
                                             <div className="w-9 h-9 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-uneti-blue-light group-hover:text-uneti-blue transition-all shadow-inner">
                                                 <UserCircle size={20} />
                                             </div>
-                                            <span className="text-[13px] font-black text-slate-800">{u.username}</span>
+                                            <span className="text-[13px] font-black text-slate-950">{u.username}</span>
                                         </div>
                                     </td>
                                     <td className="py-5 px-8">
                                         <div className="flex items-center gap-2">
                                             <Mail size={14} className="text-slate-300" />
-                                            <span className="text-[13px] font-bold text-slate-500 lowercase">{u.email}</span>
+                                            <span className="text-[13px] font-bold text-slate-900 lowercase">{u.email}</span>
                                         </div>
                                     </td>
                                     <td className="py-5 px-8">
@@ -360,7 +360,7 @@ export default function AdminUsersPage() {
             >
                 <form className="space-y-6 py-4">
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Username</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Username</label>
                         <input
                             type="text"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 transition-all outline-none"
@@ -369,7 +369,7 @@ export default function AdminUsersPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Email</label>
                         <input
                             type="email"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 transition-all outline-none"
@@ -378,7 +378,7 @@ export default function AdminUsersPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Vai trò hệ thống</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Vai trò hệ thống</label>
                         <div className="relative">
                             <select
                                 className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 transition-all outline-none appearance-none cursor-pointer"
@@ -429,7 +429,7 @@ export default function AdminUsersPage() {
                         <p className="text-xl font-black text-slate-900 tracking-tight leading-snug">
                             Đặt lại mật khẩu cho <br /><span className="text-uneti-blue">{selectedUser?.username}</span>?
                         </p>
-                        <p className="text-[13px] font-bold text-slate-500 max-w-[320px] leading-relaxed">
+                        <p className="text-[13px] font-bold text-slate-900 font-extrabold max-w-[320px] leading-relaxed">
                             Hệ thống sẽ gửi mã xác thực khôi phục mật khẩu mới tới email của người dùng.
                         </p>
                     </div>
@@ -466,7 +466,7 @@ export default function AdminUsersPage() {
                     </div>
                     <div className="space-y-2">
                         <p className="text-xl font-black text-slate-900 tracking-tight uppercase tracking-widest">Cảnh báo hệ thống</p>
-                        <p className="text-[13px] font-bold text-slate-500 max-w-[320px] leading-relaxed">
+                        <p className="text-[13px] font-bold text-slate-900 font-extrabold max-w-[320px] leading-relaxed">
                             Tài khoản <span className="text-slate-900 font-black">{selectedUser?.username}</span> sẽ bị gỡ vĩnh viễn.
                             Hành động này <span className="text-rose-600 font-extrabold underline underline-offset-4 decoration-2">không thể hoàn tác</span>.
                         </p>

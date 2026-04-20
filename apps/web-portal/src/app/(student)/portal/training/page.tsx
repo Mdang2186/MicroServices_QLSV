@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { getStudentProfileId, getStudentUserId, readStudentSessionUser } from "@/lib/student-session";
+import { resolveCurrentStudentContext } from "@/lib/current-student";
 
 import {
     Table,
@@ -32,26 +32,11 @@ export default function TrainingResultsPage() {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const user = readStudentSessionUser();
-                const userId = getStudentUserId(user);
-                if (!userId) return;
+                const context = await resolveCurrentStudentContext();
+                if (!context.studentId) return;
 
-                const studentId =
-                    getStudentProfileId(user) ||
-                    (await StudentService.getProfile(userId))?.id;
-
-                if (!studentId) return;
-
-                const data = await StudentService.getTrainingResults(studentId);
-                if (data && data.length > 0) {
-                    setTrainingData(data);
-                } else {
-                    // Fallback mock data if API returns empty
-                    setTrainingData([
-                        { semester: "Học kỳ 1 - 2023-2024", score: 85, rating: "Tốt" },
-                        { semester: "Học kỳ 2 - 2023-2024", score: 92, rating: "Xuất sắc" }
-                    ]);
-                }
+                const data = await StudentService.getTrainingResults(context.studentId);
+                setTrainingData(Array.isArray(data) ? data : []);
             } catch (error) {
                 console.error("Failed to fetch training results:", error);
                 setTrainingData([]);

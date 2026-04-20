@@ -62,26 +62,28 @@ export default function RedesignedStaffCoursesPage() {
   const [totalItems, setTotalItems] = useState(0);
 
   // --- Filtering & UI State ---
-  const [selectedYear, setSelectedYear] = useState<string>("");
-  const [selectedFacultyId, setSelectedFacultyId] = useState<string>("all");
-  const [selectedMajorId, setSelectedMajorId] = useState<string>("all");
   const [selectedCohort, setSelectedCohort] = useState<string>("all");
   const [selectedSemesterId, setSelectedSemesterId] = useState<string>("all");
+  const [selectedFacultyId, setSelectedFacultyId] = useState<string>("all");
+  const [selectedMajorId, setSelectedMajorId] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCourseClassId, setSelectedCourseClassId] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(false);
 
-  // --- Computed ---
-  const academicYears = useMemo(() => {
-    const years = Array.from(new Set(semesters.map(s => getAcademicYear(s.name))));
-    return years.sort((a, b) => b.localeCompare(a));
-  }, [semesters]);
+  const cohortSemesters = useMemo(() => {
+     if (selectedCohort === "all" || !selectedCohort) return semesters;
+     const targetCohort = cohorts.find(c => c.code === selectedCohort);
+     if (!targetCohort) return semesters;
 
-  const yearSemesters = useMemo(() => {
-     if (selectedYear === "all" || !selectedYear) return semesters;
-     return semesters.filter(s => getAcademicYear(s.name) === selectedYear)
-                     .sort((a,b) => new Date(a.startDate).getTime() - new Date(a.startDate).getTime());
-  }, [semesters, selectedYear]);
+     // Sort semesters descending immediately
+     const sortedSemesters = [...semesters].sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+     
+     // Filter those where start year falls in the cohort learning duration
+     return sortedSemesters.filter(s => {
+       const startYr = new Date(s.startDate).getFullYear();
+       return startYr >= targetCohort.startYear && startYr <= (targetCohort.endYear || targetCohort.startYear + 4);
+     });
+  }, [semesters, selectedCohort, cohorts]);
 
   const filteredMajors = useMemo(() => {
     if (selectedFacultyId === "all") return majors;
@@ -94,10 +96,13 @@ export default function RedesignedStaffCoursesPage() {
     if (searchTerm) {
       const s = searchTerm.toLowerCase();
       list = list.filter(c =>
-        c.code.toLowerCase().includes(s) ||
-        c.name.toLowerCase().includes(s) ||
+        (c.code && c.code.toLowerCase().includes(s)) ||
+        (c.name && c.name.toLowerCase().includes(s)) ||
         (c.subject?.name && c.subject.name.toLowerCase().includes(s)) ||
-        (c.subject?.code && c.subject.code.toLowerCase().includes(s))
+        (c.subject?.code && c.subject.code.toLowerCase().includes(s)) ||
+        (c.lecturer?.fullName && c.lecturer.fullName.toLowerCase().includes(s)) ||
+        (c.semester?.name && c.semester.name.toLowerCase().includes(s)) ||
+        (c.status && c.status.toLowerCase().includes(s))
       );
     }
     return list;
@@ -128,27 +133,18 @@ export default function RedesignedStaffCoursesPage() {
       if (semRes.ok) {
         const semData = await semRes.json();
         setSemesters(semData);
-        if (!selectedYear) {
-           const now = new Date();
-           let current = semData.find((s: any) => s.isCurrent);
-           if (!current) {
-               current = semData.find((s: any) => {
-                   const start = new Date(s.startDate);
-                   const end = new Date(s.endDate);
-                   return now >= start && now <= end;
-               });
-           }
-           if (!current && semData.length > 0) {
-               current = [...semData].sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())[0];
-           }
+        if (semData.length > 0) {
+           const sorted = [...semData].sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+           const current = sorted.find((s: any) => s.isCurrent) || sorted[0];
 
-           if (current) {
-               setSelectedYear(getAcademicYear(current.name));
+           if (!selectedSemesterId && current) {
                setSelectedSemesterId(current.id);
-           } else if (semData.length > 0) {
-               const first = semData[0];
-               setSelectedYear(getAcademicYear(first?.name || ""));
-               setSelectedSemesterId(first?.id || "all");
+           } else if (
+               selectedSemesterId !== "all" &&
+               selectedSemesterId &&
+               !semData.some((s: any) => s.id === selectedSemesterId)
+           ) {
+               setSelectedSemesterId(current?.id || "all");
            }
         }
       }
@@ -168,7 +164,7 @@ export default function RedesignedStaffCoursesPage() {
     } finally {
       setLoading(false);
     }
-  }, [headers, selectedYear, selectedSemesterId, selectedFacultyId, selectedMajorId, selectedCohort, currentPage]);
+  }, [headers, selectedSemesterId, selectedFacultyId, selectedMajorId, selectedCohort, currentPage]);
 
   useEffect(() => {
     fetchData();
@@ -233,16 +229,17 @@ export default function RedesignedStaffCoursesPage() {
           </div>
         </div>
 
-        {/* ── FILTERING BAR ── */}
+         {/* ── FILTERING BAR ── */}
         <div className="px-10 py-4 border-t border-slate-50 flex items-center flex-wrap gap-4 bg-slate-50/30">
-           <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-100">
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Năm học:</span>
-              <select className="bg-transparent border-none text-[10px] font-black text-slate-700 focus:ring-0 outline-none cursor-pointer" value={selectedYear} onChange={e => {
-                  setSelectedYear(e.target.value);
+           <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-100 shadow-sm shadow-slate-100/50">
+              <span className="text-[9px] font-black text-uneti-blue uppercase tracking-widest">Khóa SV:</span>
+              <select className="bg-transparent border-none text-[10px] font-black text-slate-700 focus:ring-0 outline-none cursor-pointer" value={selectedCohort} onChange={e => {
+                  setSelectedCohort(e.target.value);
                   setSelectedSemesterId("all");
                   setCurrentPage(1);
               }}>
-                 {academicYears.map(y => <option key={y} value={y}>{y}</option>)}
+                 <option value="all">TẤT CẢ KHÓA</option>
+                 {cohorts.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
               </select>
            </div>
 
@@ -253,7 +250,7 @@ export default function RedesignedStaffCoursesPage() {
                   setCurrentPage(1);
               }}>
                  <option value="all">TẤT CẢ KỲ HỌC</option>
-                 {yearSemesters.map(s => <option key={s.id} value={s.id}>{s.name.toUpperCase()}</option>)}
+                 {cohortSemesters.map(s => <option key={s.id} value={s.id}>{s.name.toUpperCase()}</option>)}
               </select>
            </div>
 
@@ -280,16 +277,6 @@ export default function RedesignedStaffCoursesPage() {
               </select>
            </div>
 
-           <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-100">
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Khóa:</span>
-              <select className="bg-transparent border-none text-[10px] font-black text-slate-700 focus:ring-0 outline-none cursor-pointer" value={selectedCohort} onChange={e => {
-                  setSelectedCohort(e.target.value);
-                  setCurrentPage(1);
-              }}>
-                 <option value="all">TẤT CẢ KHÓA</option>
-                 {cohorts.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
-              </select>
-           </div>
 
            <div className="flex-1 min-w-[200px] relative group">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-uneti-blue transition-colors" size={14} />

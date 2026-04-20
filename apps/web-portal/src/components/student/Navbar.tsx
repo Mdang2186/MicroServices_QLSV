@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import { clearStudentSession, getStudentDisplayCode, getStudentDisplayName, readStudentSessionUser } from "@/lib/student-session";
+import { resolveCurrentStudentContext } from "@/lib/current-student";
 
 const navItems = [
     { label: "Trang chủ", href: "/portal/dashboard", icon: Home },
@@ -38,14 +39,25 @@ export default function StudentNavbar() {
     const [studentProfile, setStudentProfile] = useState<any>(null);
 
     useEffect(() => {
-        const user = readStudentSessionUser();
-        if (user) {
+        let mounted = true;
+
+        const loadStudentProfile = async () => {
+            const context = await resolveCurrentStudentContext().catch(() => null);
+            const sessionUser = context?.sessionUser || readStudentSessionUser();
+            if (!mounted || !sessionUser) return;
+
             setStudentProfile({
-                ...user,
-                fullName: getStudentDisplayName(user),
-                studentCode: getStudentDisplayCode(user),
+                ...sessionUser,
+                ...context?.profile,
+                fullName: context?.profile?.fullName || getStudentDisplayName(sessionUser),
+                studentCode: context?.profile?.studentCode || getStudentDisplayCode(sessionUser),
             });
-        }
+        };
+
+        loadStudentProfile();
+        return () => {
+            mounted = false;
+        };
     }, []);
 
     const handleLogout = () => {

@@ -32,7 +32,7 @@ export default function AdminDashboard() {
     const [user, setUser] = useState<any>(null);
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [selectedSemesterId, setSelectedSemesterId] = useState<string>("");
+    const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
     const [selectedFacultyId, setSelectedFacultyId] = useState<string>("all");
     const [activeTab, setActiveTab] = useState<string>("overview");
 
@@ -44,7 +44,7 @@ export default function AdminDashboard() {
     useEffect(() => {
         setLoading(true);
         const params = new URLSearchParams();
-        if (selectedSemesterId) params.append("semesterId", selectedSemesterId);
+        if (selectedDate) params.append("date", selectedDate);
         if (selectedFacultyId && selectedFacultyId !== "all") params.append("facultyId", selectedFacultyId);
 
         fetch(`/api/students/dashboard/stats?${params.toString()}`)
@@ -52,7 +52,7 @@ export default function AdminDashboard() {
             .then(setStats)
             .catch(console.error)
             .finally(() => setLoading(false));
-    }, [selectedSemesterId, selectedFacultyId]);
+    }, [selectedDate, selectedFacultyId]);
 
     const adminStats = [
         { 
@@ -93,7 +93,7 @@ export default function AdminDashboard() {
                 roleName="Quản trị Hệ thống" 
                 userName={`Quản trị viên ${user?.username || "Cấp cao"}`} 
                 userId="Super Admin Context"
-                onSemesterChange={setSelectedSemesterId}
+                onDateChange={setSelectedDate}
                 onFacultyChange={setSelectedFacultyId}
             />
 
@@ -107,8 +107,8 @@ export default function AdminDashboard() {
                         <div className="absolute inset-0 w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping opacity-75"></div>
                     </div>
                     <div className="flex flex-col">
-                        <span className="text-[10px] font-black text-slate-800 uppercase tracking-widest leading-none">System Operational</span>
-                        <span className="text-[8px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">Latency: 24ms</span>
+                        <span className="text-[10px] font-black text-slate-950 uppercase tracking-widest leading-none">System Operational</span>
+                        <span className="text-[8px] font-bold text-slate-900 font-black mt-1 uppercase tracking-tighter">Latency: 24ms</span>
                     </div>
                 </div>
             </div>
@@ -129,7 +129,7 @@ export default function AdminDashboard() {
                                         <TrendingUp size={16} className="text-uneti-blue" />
                                         Phân phối Học thuật Tổng thể
                                     </h3>
-                                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-tight italic">Dữ liệu hợp nhất toàn hệ thống</p>
+                                    <p className="text-[11px] font-bold text-slate-900 font-black uppercase tracking-tight italic">Dữ liệu hợp nhất toàn hệ thống</p>
                                 </div>
                                 <div className="flex gap-2">
                                     <button className="p-2 rounded-xl bg-slate-50 text-slate-400 hover:text-uneti-blue transition-all"><Filter size={16} /></button>
@@ -141,7 +141,7 @@ export default function AdminDashboard() {
                                     {/* GPA Pie Chart */}
                                     <div className="space-y-6">
                                         <div className="flex items-center justify-between px-2">
-                                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Biểu đồ GPA</h4>
+                                            <h4 className="text-[10px] font-black text-slate-900 font-extrabold uppercase tracking-widest">Biểu đồ GPA</h4>
                                             <span className="text-[9px] font-bold text-uneti-blue bg-uneti-blue-light px-2 py-0.5 rounded-lg">Scale 4.0</span>
                                         </div>
                                         <div className="min-h-[220px] flex items-center justify-center p-6 bg-slate-50/30 rounded-[32px] border border-slate-50 shadow-inner">
@@ -151,7 +151,7 @@ export default function AdminDashboard() {
 
                                     {/* Enrollment Trend Chart */}
                                     <div className="space-y-6">
-                                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Xu hướng Ghi danh</h4>
+                                        <h4 className="text-[10px] font-black text-slate-900 font-extrabold uppercase tracking-widest px-2">Xu hướng Ghi danh</h4>
                                         <div className="h-[220px] w-full bg-slate-50/20 rounded-[32px] p-6 border border-slate-50">
                                             <EnrollmentChart trends={stats?.enrollmentTrends} />
                                         </div>
@@ -203,9 +203,9 @@ export default function AdminDashboard() {
                                                         <div className="flex flex-col">
                                                             <span className="font-black text-slate-800 tracking-tight">{item.name}</span>
                                                             <div className="flex items-center gap-2 mt-0.5">
-                                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Student</span>
-                                                                <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                                                                <span className="text-[9px] font-bold text-slate-400 italic">{item.time}</span>
+                                                                <span className="text-[9px] font-black text-slate-900 uppercase tracking-widest">Student</span>
+                                                                <span className="w-1 h-1 bg-slate-100 rounded-full"></span>
+                                                                <span className="text-[9px] font-bold text-slate-900 italic">{item.time}</span>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -251,7 +251,7 @@ export default function AdminDashboard() {
                                         <div key={idx} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 hover:bg-white border border-transparent hover:border-slate-100 transition-all">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: d.color }}></div>
-                                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-tight">{d.name}</span>
+                                                <span className="text-[10px] font-black text-slate-900 font-extrabold uppercase tracking-tight">{d.name}</span>
                                             </div>
                                             <span className="text-sm font-black text-slate-800">{d.value}</span>
                                         </div>
@@ -280,7 +280,7 @@ export default function AdminDashboard() {
                             <table className="w-full border-collapse">
                                 <thead>
                                     <tr className="bg-slate-50/50">
-                                        <th className="py-5 px-10 text-left text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Cơ cấu Khoa</th>
+                                        <th className="py-5 px-10 text-left text-[10px] font-black text-slate-950 uppercase tracking-[0.2em]">Cơ cấu Khoa</th>
                                         <th className="py-5 px-10 text-center text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Số lượng SV</th>
                                         <th className="py-5 px-10 text-center text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">GPA Trung bình</th>
                                         <th className="py-5 px-10 text-right text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Tiến độ</th>
@@ -332,8 +332,8 @@ export default function AdminDashboard() {
                                 <div key={i} className="space-y-5 p-6 rounded-[32px] bg-slate-50/50 border border-slate-50 group/bar hover:bg-white hover:shadow-lg transition-all">
                                     <div className="flex justify-between items-end">
                                         <div className="space-y-1">
-                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{bar.label}</span>
-                                            <p className="text-[9px] font-bold text-slate-400 italic">{bar.desc}</p>
+                                            <span className="text-[10px] font-black text-slate-950 uppercase tracking-widest">{bar.label}</span>
+                                            <p className="text-[9px] font-bold text-slate-900 font-black italic">{bar.desc}</p>
                                         </div>
                                         <span className="text-2xl font-black text-slate-900 leading-none">{bar.value}%</span>
                                     </div>
@@ -365,15 +365,15 @@ export default function AdminDashboard() {
                                 </div>
                                 <div className="space-y-6 w-full md:w-[280px]">
                                     <div className="p-6 rounded-3xl bg-white border border-slate-100 shadow-sm transition-all hover:shadow-md">
-                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Đã quyết toán</p>
-                                        <p className="text-xl font-black text-slate-800">{stats?.operationalStats?.settlementPercentage || 0}%</p>
+                                        <p className="text-[9px] font-black text-slate-900 uppercase tracking-widest mb-1">Đã quyết toán</p>
+                                        <p className="text-xl font-black text-slate-950">{stats?.operationalStats?.settlementPercentage || 0}%</p>
                                         <div className="mt-3 h-1.5 w-full bg-slate-50 rounded-full overflow-hidden">
                                             <div className="h-full bg-emerald-500" style={{ width: `${stats?.operationalStats?.settlementPercentage || 0}%` }}></div>
                                         </div>
                                     </div>
                                     <div className="p-6 rounded-3xl bg-white border border-slate-100 shadow-sm transition-all hover:shadow-md">
-                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Chưa thu hồi</p>
-                                        <p className="text-xl font-black text-slate-800">{stats?.operationalStats?.uncollectedPercentage || 0}%</p>
+                                        <p className="text-[9px] font-black text-slate-900 uppercase tracking-widest mb-1">Chưa thu hồi</p>
+                                        <p className="text-xl font-black text-slate-950">{stats?.operationalStats?.uncollectedPercentage || 0}%</p>
                                         <div className="mt-3 h-1.5 w-full bg-slate-50 rounded-full overflow-hidden">
                                             <div className="h-full bg-orange-400" style={{ width: `${stats?.operationalStats?.uncollectedPercentage || 0}%` }}></div>
                                         </div>
@@ -385,8 +385,8 @@ export default function AdminDashboard() {
                             <div className="w-20 h-20 rounded-[2.5rem] bg-uneti-blue text-white flex items-center justify-center shadow-2xl shadow-uneti-blue/30 mb-8 group-hover:rotate-12 transition-transform duration-500">
                                 <ShieldCheck size={40} />
                             </div>
-                            <h4 className="text-base font-black text-slate-900 uppercase tracking-widest mb-2">Báo cáo Quyết toán</h4>
-                            <p className="text-[11px] font-bold text-slate-400 px-6 leading-relaxed mb-8 uppercase tracking-tighter">Hệ thống đã tự động đối soát toàn bộ 14,283 giao dịch ghi danh trong học kỳ hiện tại.</p>
+                             <h4 className="text-base font-black text-slate-950 uppercase tracking-widest mb-2">Báo cáo Quyết toán</h4>
+                             <p className="text-[11px] font-bold text-slate-900 px-6 leading-relaxed mb-8 uppercase tracking-tighter">Hệ thống đã tự động đối soát toàn bộ 14,283 giao dịch ghi danh trong học kỳ hiện tại.</p>
                             <button className="w-full py-4 rounded-2xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest hover:bg-uneti-blue transition-all shadow-xl shadow-slate-900/10">Tải báo cáo PDF</button>
                         </div>
                     </div>

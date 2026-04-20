@@ -64,7 +64,7 @@ export function StaffSidebar() {
         { href: "/staff/lecturers", icon: Users, label: "Hồ sơ Giảng viên" },
         { href: "/staff/tuition", icon: Calculator, label: "Quản lý Học phí" },
         { href: "/staff/grades", icon: FileSpreadsheet, label: "Quản lý Điểm" },
-        { href: "/staff/exams", icon: ClipboardList, label: "Tổ Chức Thi" },
+        { href: "/staff/exams", icon: ClipboardList, label: "Quản lý Lịch thi" },
     ];
 
     return (

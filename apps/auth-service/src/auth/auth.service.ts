@@ -19,6 +19,36 @@ import {
   ForgotPasswordDto,
 } from "@repo/shared-dto";
 
+const DEFAULT_SUPER_ADMIN_USERNAME = "admin";
+const DEFAULT_SUPER_ADMIN_EMAIL = "admin@uneti.edu.vn";
+
+function normalizeRole(role?: string | null): string {
+  switch (role?.trim().toUpperCase()) {
+    case "ADMIN":
+    case "SUPER_ADMIN":
+      return "SUPER_ADMIN";
+    case "ADMIN_STAFF":
+    case "ACADEMIC_STAFF":
+      return "ACADEMIC_STAFF";
+    case "LECTURER":
+      return "LECTURER";
+    case "STUDENT":
+      return "STUDENT";
+    default:
+      return role?.trim() || Role.STUDENT;
+  }
+}
+
+function isDefaultSuperAdminAccount(user: {
+  username?: string | null;
+  email?: string | null;
+}) {
+  return (
+    user.username?.trim().toLowerCase() === DEFAULT_SUPER_ADMIN_USERNAME ||
+    user.email?.trim().toLowerCase() === DEFAULT_SUPER_ADMIN_EMAIL
+  );
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -29,6 +59,26 @@ export class AuthService {
     console.log(
       `[AuthService] Database URL: ${process.env.DATABASE_URL?.replace(/:([^:@]+)@/, ":****@")}`,
     );
+  }
+
+  private async reconcileUserRole<
+    T extends { id: string; username?: string; email?: string; role?: string },
+  >(user: T): Promise<T & { role: string }> {
+    const normalizedRole = normalizeRole(user.role);
+    const expectedRole = isDefaultSuperAdminAccount(user)
+      ? "SUPER_ADMIN"
+      : normalizedRole;
+
+    if (expectedRole === user.role) {
+      return user as T & { role: string };
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { role: expectedRole },
+    });
+
+    return { ...user, role: expectedRole };
   }
 
   async validateUser(email: string, pass: string): Promise<any> {
@@ -69,7 +119,11 @@ export class AuthService {
   async login(loginDto: LoginDto): Promise<UserResponse> {
     try {
       console.log(`[AuthService] Login attempt: ${loginDto.email}`);
-      const user = await this.validateUser(loginDto.email, loginDto.password);
+      const validatedUser = await this.validateUser(
+        loginDto.email,
+        loginDto.password,
+      );
+      const user = await this.reconcileUserRole(validatedUser);
 
       let profileId = undefined;
       let fullName = user.username; // Default to username
@@ -167,13 +221,17 @@ export class AuthService {
 
   async register(registerDto: RegisterDto): Promise<UserResponse> {
     const hashedPassword = await bcrypt.hash(registerDto.password, 10);
+    const normalizedRole = isDefaultSuperAdminAccount(registerDto)
+      ? "SUPER_ADMIN"
+      : normalizeRole(registerDto.role || Role.STUDENT);
+
     try {
       const user = await this.prisma.user.create({
         data: {
           username: registerDto.username,
           email: registerDto.email,
           passwordHash: hashedPassword,
-          role: registerDto.role || Role.STUDENT,
+          role: normalizedRole,
         },
       });
       const { passwordHash: _passwordHash, ...result } = user;
@@ -271,7 +329,7 @@ export class AuthService {
   // --- Admin User Management ---
 
   async getAllUsers() {
-    return this.prisma.user.findMany({
+    const users = await this.prisma.user.findMany({
       select: {
         id: true,
         username: true,
@@ -281,15 +339,40 @@ export class AuthService {
       },
       orderBy: { createdAt: "desc" },
     });
+
+    return users.map((user) => ({
+      ...user,
+      role: isDefaultSuperAdminAccount(user)
+        ? "SUPER_ADMIN"
+        : normalizeRole(user.role),
+    }));
   }
 
   async updateUser(id: string, data: any) {
+    const currentUser = await this.prisma.user.findUnique({
+      where: { id },
+      select: { username: true, email: true, role: true },
+    });
+
+    if (!currentUser) {
+      throw new NotFoundException("User not found");
+    }
+
+    const nextIdentity = {
+      username: data.username ?? currentUser.username,
+      email: data.email ?? currentUser.email,
+    };
+    const nextRole = isDefaultSuperAdminAccount(nextIdentity)
+      ? "SUPER_ADMIN"
+      : normalizeRole(data.role ?? currentUser.role);
+
     return this.prisma.user.update({
       where: { id },
       data: {
         email: data.email,
         username: data.username,
-        role: data.role,
+        role: nextRole,
+        isActive: data.isActive !== undefined ? data.isActive : undefined,
       },
     });
   }

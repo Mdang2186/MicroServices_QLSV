@@ -65,6 +65,12 @@ export class CourseClassController {
     };
   }
 
+  @Get('my-exam-schedule')
+  async getMyExamSchedule(@Headers('x-user-id') studentId: string) {
+    if (!studentId) return [];
+    return this.courseClassService.getMyExamSchedule(studentId);
+  }
+
   @Get('my-classes')
   async findMyClasses(
     @Headers('x-user-id') lecturerId: string,
@@ -239,6 +245,73 @@ export class CourseClassController {
     });
   }
 
+  @Get('exam-planning/groups')
+  async getExamPlanningGroups(
+    @Query('semesterId') semesterId: string,
+    @Query('search') search?: string,
+    @Query('facultyId') facultyId?: string,
+    @Query('cohort') cohort?: string,
+    @Query('subjectId') subjectId?: string,
+  ) {
+    return this.courseClassService.getExamPlanningGroups({
+      semesterId,
+      search,
+      facultyId,
+      cohort,
+      subjectId,
+    });
+  }
+
+  @Get('exam-planning/detail')
+  async getExamPlanningDetail(
+    @Query('semesterId') semesterId: string,
+    @Query('subjectId') subjectId: string,
+    @Query('cohort') cohort: string,
+  ) {
+    return this.courseClassService.getExamPlanningDetail(
+      semesterId,
+      subjectId,
+      cohort,
+    );
+  }
+
+  @Get('exam-planning/plans')
+  async getScheduledExamPlans(@Query('semesterId') semesterId?: string) {
+    return this.courseClassService.getScheduledExamPlans(semesterId);
+  }
+
+  @Get('exam-planning/availability')
+  async getExamPlanningAvailability(
+    @Query('semesterId') semesterId: string,
+    @Query('subjectId') subjectId: string,
+    @Query('cohort') cohort: string,
+    @Query('dateFrom') dateFrom: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('studentsPerRoom') studentsPerRoom?: string,
+    @Query('limit') limit?: string,
+    @Query('selectedDate') selectedDate?: string,
+    @Query('selectedStartShift') selectedStartShift?: string,
+  ) {
+    return this.courseClassService.getExamPlanningAvailability({
+      semesterId,
+      subjectId,
+      cohort,
+      dateFrom,
+      dateTo,
+      studentsPerRoom: studentsPerRoom ? Number(studentsPerRoom) : undefined,
+      limit: limit ? Number(limit) : undefined,
+      selectedDate,
+      selectedStartShift: selectedStartShift
+        ? Number(selectedStartShift)
+        : undefined,
+    } as any);
+  }
+
+  @Post('exam-planning/schedule')
+  async scheduleExamPlan(@Body() body: any) {
+    return this.courseClassService.scheduleExamPlan(body);
+  }
+
   @Post()
   async create(@Body() body: any) {
     return this.courseClassService.create(body);
@@ -279,6 +352,24 @@ export class CourseClassController {
     };
   }
 
+  @Patch('sessions/:sessionId/reschedule')
+  async rescheduleSession(
+    @Param('sessionId') sessionId: string,
+    @Body() body: any,
+  ) {
+    return this.courseClassService.rescheduleSession(sessionId, body);
+  }
+
+  @Post(':id/sessions')
+  async createSession(@Param('id') id: string, @Body() body: any) {
+    return this.courseClassService.addManualSession(id, body);
+  }
+
+  @Delete('sessions/:sessionId')
+  async deleteSession(@Param('sessionId') sessionId: string) {
+    return this.courseClassService.deleteSession(sessionId);
+  }
+
   @Put(':id')
   async update(@Param('id') id: string, @Body() body: any) {
     return this.courseClassService.update(id, body);
@@ -299,31 +390,48 @@ export class CourseClassController {
     return this.courseClassService.pushStudentsFromAdminClasses(id);
   }
 
-  @Get(':id/sessions')
-  async getSessions(@Param('id') id: string) {
-    return this.courseClassService.getSessions(id);
-  }
-
-  @Patch('sessions/:sessionId/reschedule')
-  async rescheduleSession(
-    @Param('sessionId') sessionId: string,
-    @Body() body: any,
-  ) {
-    return this.courseClassService.rescheduleSession(sessionId, body);
-  }
-
   @Post(':id/manual-session')
   async addManualSession(@Param('id') id: string, @Body() body: any) {
     return this.courseClassService.addManualSession(id, body);
   }
 
-  @Delete('sessions/:sessionId')
-  async deleteSession(@Param('sessionId') sessionId: string) {
-    return this.courseClassService.deleteSession(sessionId);
+  @Get(':id/conflicts')
+  async getConflictReport(@Param('id') id: string) {
+    return this.courseClassService.getConflictReport(id);
+  }
+
+  @Post(':id/cleanup-conflicts')
+  async cleanupConflicts(@Param('id') id: string) {
+    return this.courseClassService.cleanupConflictingSessions(id);
+  }
+
+  @Get(':id/sessions')
+  async getSessions(@Param('id') id: string) {
+    return this.courseClassService.getSessions(id);
   }
 
   @Post(':id/generate-sessions')
   async generateSessions(@Param('id') id: string, @Body() body: any) {
     return this.courseClassService.generateSessionsInRange(id, body);
+  }
+
+  @Post(':id/replan-schedule')
+  async replanSchedule(@Param('id') id: string, @Body() body: any) {
+    return this.courseClassService.replanSchedule(id, body);
+  }
+
+  @Get(':id/eligible-students')
+  async getEligibleStudents(@Param('id') id: string) {
+    return this.courseClassService.getEligibleStudents(id);
+  }
+
+  @Post(':id/schedule-exam')
+  async scheduleExam(@Param('id') id: string, @Body() body: any) {
+    return this.courseClassService.scheduleExam(id, body);
+  }
+
+  @Get(':id/exam-schedule')
+  async getExamSchedule(@Param('id') id: string) {
+    return this.courseClassService.getExamSchedule(id);
   }
 }

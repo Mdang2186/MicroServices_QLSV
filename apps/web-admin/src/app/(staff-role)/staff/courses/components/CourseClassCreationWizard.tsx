@@ -124,8 +124,11 @@ export default function CourseClassCreationWizard({
         onSuccess();
         onClose();
       } else {
-        const err = await classRes.json();
-        alert(err.message || "Lỗi khi tạo lớp học phần.");
+        const err = await classRes.json().catch(() => null);
+        const message = Array.isArray(err?.message)
+          ? err.message.join(", ")
+          : err?.message || "Lỗi khi tạo lớp học phần.";
+        alert(message);
       }
     } catch (err: any) {
       alert(err.message);
@@ -145,6 +148,9 @@ export default function CourseClassCreationWizard({
   const updateSchedule = (index: number, field: string, value: any) => {
     const newSchedules = [...schedules];
     newSchedules[index][field] = value;
+    if (field === "startShift") {
+      newSchedules[index].endShift = Number(value) + 2;
+    }
     setSchedules(newSchedules);
   };
 
@@ -337,16 +343,16 @@ export default function CourseClassCreationWizard({
                        <div>
                           <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3 block">Thứ trong tuần</label>
                           <select className="w-full bg-white border border-slate-100 rounded-xl px-4 py-3 text-[11px] font-black outline-none focus:ring-2 focus:ring-uneti-blue/10 appearance-none text-slate-800" value={s.dayOfWeek} onChange={e => updateSchedule(idx, 'dayOfWeek', parseInt(e.target.value))}>
-                             {[2,3,4,5,6,7,8].map(day => <option key={day} value={day}>{day === 8 ? 'Chủ Nhật' : `Thứ ${day}`}</option>)}
+                             {[2,3,4,5,6,7].map(day => <option key={day} value={day}>{`Thứ ${day}`}</option>)}
                           </select>
                        </div>
                        <div>
                           <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3 block">Bắt đầu Ca (Shift)</label>
                           <select className="w-full bg-white border border-slate-100 rounded-xl px-4 py-3 text-[11px] font-black outline-none focus:ring-2 focus:ring-uneti-blue/10 appearance-none text-slate-800" value={s.startShift} onChange={e => updateSchedule(idx, 'startShift', parseInt(e.target.value))}>
-                             <option value={1}>Ca 1 (7:10)</option>
-                             <option value={2}>Ca 2 (9:45)</option>
-                             <option value={3}>Ca 3 (13:10)</option>
-                             <option value={4}>Ca 4 (15:45)</option>
+                             <option value={1}>Ca 1 (Tiết 1-3)</option>
+                             <option value={4}>Ca 2 (Tiết 4-6)</option>
+                             <option value={7}>Ca 3 (Tiết 7-9)</option>
+                             <option value={10}>Ca 4 (Tiết 10-12)</option>
                           </select>
                        </div>
                        <div className="col-span-2">
@@ -363,7 +369,7 @@ export default function CourseClassCreationWizard({
                <div className="p-6 bg-blue-50/50 border border-blue-100 rounded-[32px] flex items-center gap-4">
                   <Clock size={20} className="text-uneti-blue" />
                   <p className="text-[10px] font-bold text-slate-500 leading-tight italic">
-                    Dựa trên ngày bắt đầu/kết thúc của học kỳ đã chọn, hệ thống sẽ tự động sinh mã định danh và tất cả các buổi học tương ứng với các thứ trong tuần đã khai báo.
+                    Dựa trên ngày bắt đầu/kết thúc của học kỳ đã chọn, hệ thống sẽ tự động sinh các buổi học và chặn ngay nếu pattern bị trùng phòng, trùng giảng viên, trùng lớp hành chính hoặc tự đè cùng một ca.
                   </p>
                </div>
             </div>

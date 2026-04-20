@@ -41,8 +41,9 @@ function parseConceptualSemester(semester: any) {
   const match =
     source.match(/HK\s*([1-8])/i) ||
     source.match(/H[OỌ]C\s*K[YỲ]\s*([1-8])/i) ||
+    source.match(/KH([1-8])/i) ||
     source.match(/SEMESTER\s*([1-8])/i);
-  return match ? Number(match[1]) : 1;
+  return match ? Number(match[1]) : null;
 }
 
 function templateToMatrix(template: any) {
@@ -67,10 +68,106 @@ function flattenTemplate(matrix: Record<number, any[]>) {
 }
 
 function getDefaultPracticeSessionsPerWeek(subject: any) {
-  const theoryPeriods = Number(subject?.theoryPeriods || subject?.theoryHours || 0);
-  const practicePeriods = Number(subject?.practicePeriods || subject?.practiceHours || 0);
-  if (practicePeriods <= 0) return 0;
-  return theoryPeriods > 0 ? 0 : Number(subject?.practiceSessionsPerWeek || 1);
+  return getRecommendedSubjectSchedule(subject).practiceSessionsPerWeek;
+}
+
+const DEFAULT_PERIODS_PER_SESSION = 3;
+const DEFAULT_TEACHING_WEEKS = 15;
+
+function normalizeComparable(value?: string | null) {
+  return `${value || ""}`
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+function getSemesterWeekCount(semester?: any) {
+  if (!semester?.startDate || !semester?.endDate) return DEFAULT_TEACHING_WEEKS;
+  const start = new Date(semester.startDate);
+  const end = new Date(semester.endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+    return DEFAULT_TEACHING_WEEKS;
+  }
+
+  const diffDays = Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+  return Math.max(1, Math.ceil(diffDays / 7));
+}
+
+function isPracticeSubject(subject: any, rawTheoryPeriods: number, rawPracticePeriods: number) {
+  const examType = normalizeComparable(subject?.examType);
+  const examForm = normalizeComparable(subject?.examForm);
+  return (
+    rawPracticePeriods > rawTheoryPeriods ||
+    (rawPracticePeriods > 0 && rawTheoryPeriods <= 0) ||
+    examType.includes("THUCHANH") ||
+    examForm.includes("THUCHANH") ||
+    examForm.includes("MAYTINH")
+  );
+}
+
+function getRecommendedSubjectSchedule(subject: any, availableWeeks = DEFAULT_TEACHING_WEEKS) {
+  const credits = Number(subject?.credits || 0);
+  const rawTheoryPeriods = Number(subject?.theoryPeriods ?? subject?.theoryHours ?? 0);
+  const rawPracticePeriods = Number(subject?.practicePeriods ?? subject?.practiceHours ?? 0);
+  const rawTotalPeriods = rawTheoryPeriods + rawPracticePeriods;
+  const targetTotalPeriods = credits > 0 ? credits * 15 : Math.max(rawTotalPeriods, 15);
+  let periodsPerSession = Math.max(
+    1,
+    Number(subject?.periodsPerSession || DEFAULT_PERIODS_PER_SESSION),
+  );
+
+  let theoryPeriods = 0;
+  let practicePeriods = 0;
+
+  if (rawTheoryPeriods > 0 && rawPracticePeriods > 0) {
+    const theoryRatio = rawTheoryPeriods / rawTotalPeriods;
+    theoryPeriods = Math.round(targetTotalPeriods * theoryRatio);
+    practicePeriods = Math.max(targetTotalPeriods - theoryPeriods, 0);
+  } else if (isPracticeSubject(subject, rawTheoryPeriods, rawPracticePeriods)) {
+    practicePeriods = targetTotalPeriods;
+  } else {
+    theoryPeriods = targetTotalPeriods;
+  }
+
+  const theorySessionsPerWeek =
+    theoryPeriods > 0 ? Math.max(Number(subject?.theorySessionsPerWeek || 0) || 1, 1) : 0;
+  const practiceSessionsPerWeek =
+    practicePeriods > 0
+      ? Math.max(Number(subject?.practiceSessionsPerWeek || 0) || 1, 1)
+      : 0;
+
+  // FIX: When calculating periods per session, avoid inflating based on long semester duration
+  // If semester is 22 weeks, we still usually want 3 periods/session over fewer weeks, 
+  // not 2 periods/session over 22 weeks. 
+  const effectiveWeeks = Math.min(availableWeeks, DEFAULT_TEACHING_WEEKS); 
+  
+  const derivedPeriodsPerSession = Math.max(
+    theoryPeriods > 0
+      ? Math.ceil(theoryPeriods / Math.max(effectiveWeeks, 1) / Math.max(theorySessionsPerWeek, 1))
+      : 0,
+    practicePeriods > 0
+      ? Math.ceil(
+          practicePeriods /
+            Math.max(effectiveWeeks, 1) /
+            Math.max(practiceSessionsPerWeek, 1),
+        )
+      : 0,
+    1,
+  );
+  periodsPerSession =
+    Number(subject?.periodsPerSession || 0) > 0
+      ? Math.max(Number(subject?.periodsPerSession || 0), derivedPeriodsPerSession)
+      : derivedPeriodsPerSession;
+
+  return {
+    theoryPeriods,
+    practicePeriods,
+    theorySessionsPerWeek,
+    practiceSessionsPerWeek,
+    periodsPerSession,
+    totalPeriods: theoryPeriods + practicePeriods,
+  };
 }
 
 function isWithinSemesterWindow(semester: any) {
@@ -199,25 +296,31 @@ function formatSemesterOptionLabel(semester: any) {
 }
 
 function getSubjectTotalPeriods(subject: any) {
-  const credits = Number(subject?.credits || 0);
-  return credits > 0 ? credits * 15 : 0;
+  return getRecommendedSubjectSchedule(subject).totalPeriods;
 }
 
 function getConfiguredPeriodsForExecutionItem(item: any) {
-  const theorySessionsPerWeek = Number(item?.theorySessionsPerWeek || 0);
-  const practiceSessionsPerWeek = Number(item?.practiceSessionsPerWeek || 0);
-  const periodsPerSession = Number(item?.periodsPerSession || 3);
-  const sessionsPerWeek =
-    theorySessionsPerWeek + practiceSessionsPerWeek > 0
-      ? theorySessionsPerWeek + practiceSessionsPerWeek
-      : 1;
-  return sessionsPerWeek * periodsPerSession * 15;
+  return Number(item?.theoryPeriods || 0) + Number(item?.practicePeriods || 0);
 }
 
-function getExecutionValidation(item: any) {
+function getExecutionValidation(item: any, semester?: any) {
   const expectedPeriods = getSubjectTotalPeriods(item?.subject);
   const configuredPeriods = getConfiguredPeriodsForExecutionItem(item);
-  const matched = expectedPeriods > 0 && expectedPeriods === configuredPeriods;
+  const availableWeeks = getSemesterWeekCount(semester);
+  
+  // Weekly Capacity project should be capped at expected periods for visualization
+  // if Configured Periods matches expected, it's matched regardless of extra weeks.
+  const projectionWeeks = Math.min(availableWeeks, DEFAULT_TEACHING_WEEKS);
+
+  const weeklyCapacity =
+    (Number(item?.theorySessionsPerWeek || 0) + Number(item?.practiceSessionsPerWeek || 0) || 1) *
+    Number(item?.periodsPerSession || DEFAULT_PERIODS_PER_SESSION) *
+    projectionWeeks;
+
+  const matched =
+    expectedPeriods > 0 &&
+    expectedPeriods === configuredPeriods;
+
   const ratio =
     expectedPeriods > 0 ? configuredPeriods / expectedPeriods : 0;
 
@@ -234,6 +337,7 @@ function getExecutionValidation(item: any) {
   return {
     expectedPeriods,
     configuredPeriods,
+    weeklyCapacity,
     matched,
     label,
     tone,
@@ -269,22 +373,52 @@ function expectedYearForSemester(startYear: number, conceptualSemester: number) 
 
 function scoreSemesterForCohort(semester: any, cohort: any, conceptualSemester: number) {
   const parsed = parseConceptualSemester(semester);
-  if (parsed !== conceptualSemester) return -1;
-
+  
   const startDate = semester?.startDate ? new Date(semester.startDate) : null;
   const startMonth = startDate ? startDate.getMonth() + 1 : 0;
   const startYear = startDate ? startDate.getFullYear() : Number(semester?.year || 0);
-  const expectedYear = expectedYearForSemester(cohort.startYear, conceptualSemester);
-  const expectedStudyYear = Math.ceil(conceptualSemester / 2);
-  const code = `${semester?.code || ""}`;
-  const name = `${semester?.name || ""}`;
 
+  // Time-based calculation for K18 (and others)
+  // conceptual 1,2 = year 1, conceptual 3,4 = year 2...
+  const expectedYear = cohort.startYear + Math.floor((conceptualSemester - 1) / 2);
+  const isOddSemester = conceptualSemester % 2 === 1;
+  
   let score = 0;
-  if (startYear === expectedYear || Number(semester?.year) === expectedYear) score += 50;
-  if (conceptualSemester % 2 === 1 ? startMonth >= 7 : startMonth > 0 && startMonth <= 6) score += 30;
+
+  // 1. Name Match (Strongest signal)
+  if (parsed === conceptualSemester) {
+    score += 100;
+  } else if (parsed !== null) {
+      // If it explicitly says another semester number, it's a very poor match
+      return -1;
+  }
+
+  // 2. Year Match
+  if (startYear === expectedYear || Number(semester?.year) === expectedYear) {
+    score += 50;
+  } else if (startYear > 0 && Math.abs(startYear - expectedYear) > 1) {
+      // Too far away in time
+      return -1;
+  }
+
+  // 3. Season Match (Odd = Late year, Even = Early year)
+  if (isOddSemester) {
+    if (startMonth >= 7 && startMonth <= 12) score += 30;
+  } else {
+    if (startMonth >= 1 && startMonth <= 6) score += 30;
+  }
+
+  // 4. Pattern Match (UNETI style)
+  const expectedStudyYear = Math.ceil(conceptualSemester / 2);
+  const name = `${semester?.name || ""}`;
+  const code = `${semester?.code || ""}`;
+
   if (new RegExp(`HK\\s*${conceptualSemester}\\s*-\\s*Năm\\s*${expectedStudyYear}`, "i").test(name)) score += 40;
   if (new RegExp(`^\\d{4}_HK${conceptualSemester}$`, "i").test(code)) score += 30;
+  
+  // 5. Exclude Summer Semesters unless specifically requested
   if (/H[OỌ]C\s*K[YỲ]\s*H[EÈ]|HKH/i.test(name) || /HKH/i.test(code)) score -= 100;
+  
   return score;
 }
 
@@ -313,8 +447,8 @@ function getVisibleSemestersForCohort(semesters: any[], cohort: any) {
   }
 
   return selected.sort((left, right) => {
-    const leftSemester = parseConceptualSemester(left);
-    const rightSemester = parseConceptualSemester(right);
+    const leftSemester = parseConceptualSemester(left) || 1;
+    const rightSemester = parseConceptualSemester(right) || 1;
     if (leftSemester !== rightSemester) return leftSemester - rightSemester;
     return new Date(left.startDate || 0).getTime() - new Date(right.startDate || 0).getTime();
   });
@@ -343,22 +477,29 @@ function createEmptySemesterForm() {
 }
 
 function createEmptySubjectForm(majorId = "", departmentId = "") {
+  const defaults = getRecommendedSubjectSchedule({
+    credits: 3,
+    theoryPeriods: 0,
+    practicePeriods: 0,
+    examType: "TRAC_NGHIEM",
+    examForm: "Tự luận",
+  });
   return {
     code: "",
     name: "",
     majorId,
     departmentId,
     credits: 3,
-    theoryHours: 30,
-    practiceHours: 0,
+    theoryHours: defaults.theoryPeriods,
+    practiceHours: defaults.practicePeriods,
     selfStudyHours: 0,
     examDuration: 90,
     examType: "TRAC_NGHIEM",
     examForm: "Tự luận",
-    theoryPeriods: 30,
-    practicePeriods: 0,
-    theorySessionsPerWeek: 1,
-    practiceSessionsPerWeek: 0,
+    theoryPeriods: defaults.theoryPeriods,
+    practicePeriods: defaults.practicePeriods,
+    theorySessionsPerWeek: defaults.theorySessionsPerWeek,
+    practiceSessionsPerWeek: defaults.practiceSessionsPerWeek,
   };
 }
 
@@ -675,7 +816,7 @@ export default function SemesterPlanWorkspaceList() {
         const semester = semesterList.find(
           (item: any) => item.id === defaultSemester,
         );
-        setActiveConceptualSemester(parseConceptualSemester(semester));
+        setActiveConceptualSemester(parseConceptualSemester(semester) || 1);
       } catch (error: any) {
         toast.error(
           error?.message || "Không thể tải dữ liệu nền cho màn kế hoạch đào tạo.",
@@ -970,7 +1111,7 @@ export default function SemesterPlanWorkspaceList() {
     if (nextSemester.id !== selectedSemesterId) {
       setSelectedSemesterId(nextSemester.id);
     }
-    setActiveConceptualSemester(parseConceptualSemester(nextSemester));
+    setActiveConceptualSemester(parseConceptualSemester(nextSemester) || 1);
   }, [selectedCohortMeta, selectedSemesterId, visibleSemesters]);
 
   useEffect(() => {
@@ -1108,7 +1249,9 @@ export default function SemesterPlanWorkspaceList() {
 
   const coordinationStats = useMemo(() => {
     const items = execution?.items || [];
-    const validations = items.map((item: any) => getExecutionValidation(item));
+    const validations = items.map((item: any) =>
+      getExecutionValidation(item, activeSemester),
+    );
     return {
       total: items.length,
       balanced: validations.filter((item: any) => item.matched).length,
@@ -1119,7 +1262,7 @@ export default function SemesterPlanWorkspaceList() {
         0,
       ),
     };
-  }, [execution]);
+  }, [activeSemester, execution]);
 
   const canZapExecution = useMemo(() => {
     return Boolean(
@@ -1337,6 +1480,44 @@ export default function SemesterPlanWorkspaceList() {
     }
   };
 
+  const deleteExecutionClass = async (itemId: string, classId: string) => {
+    if (
+      !window.confirm(
+        "Bạn có chắc chắn muốn xóa lớp học phần này? Thao tác này sẽ xóa toàn bộ lịch học và điểm danh liên quan. Mục kế hoạch sẽ được trả về trạng thái Nháp.",
+      )
+    )
+      return;
+
+    try {
+      const response = await fetch(API(`/semester-plan/classes/${classId}`), {
+        method: "DELETE",
+        headers: authHeaders,
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok)
+        throw new Error(data?.message || "Xóa lớp học phần thất bại.");
+
+      toast.success("Đã xóa lớp học phần.");
+
+      // Reload execution to get updated statuses and removed class references
+      if (execution?.id) {
+        const reloadResponse = await fetch(
+          API(`/semester-plan/executions/${execution.id}`),
+          {
+            headers: authHeaders,
+          },
+        );
+        if (reloadResponse.ok) {
+          const newData = await reloadResponse.json();
+          setExecution(newData);
+        }
+      }
+    } catch (error: any) {
+      toast.error(error?.message || "Xóa lớp học phần thất bại.");
+    }
+  };
+
   const runExecution = async (path: string, successMessage: string) => {
     if (!execution?.id) return;
     setExecuting(true);
@@ -1347,7 +1528,21 @@ export default function SemesterPlanWorkspaceList() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.message || "Thực thi thất bại.");
-      setExecution(data.execution || null);
+      const params = new URLSearchParams({
+        majorId: selectedMajorId,
+        cohort: selectedCohort,
+        semesterId: selectedSemesterId,
+      });
+      const refreshedResponse = await fetch(
+        API(`/semester-plan/executions/current?${params.toString()}`),
+        { headers: authHeaders },
+      );
+      if (refreshedResponse.ok) {
+        const refreshedExecution = await refreshedResponse.json();
+        setExecution(refreshedExecution || null);
+      } else {
+        setExecution(data.execution || null);
+      }
       setStep("management");
       toast.success(successMessage);
       if (data?.summary?.conflicts?.length) {
@@ -1390,7 +1585,21 @@ export default function SemesterPlanWorkspaceList() {
         throw new Error(data?.message || "ZAP thất bại.");
       }
 
-      setExecution(data.execution || null);
+      const params = new URLSearchParams({
+        majorId: selectedMajorId,
+        cohort: selectedCohort,
+        semesterId: selectedSemesterId,
+      });
+      const refreshedResponse = await fetch(
+        API(`/semester-plan/executions/current?${params.toString()}`),
+        { headers: authHeaders },
+      );
+      if (refreshedResponse.ok) {
+        const refreshedExecution = await refreshedResponse.json();
+        setExecution(refreshedExecution || null);
+      } else {
+        setExecution(data.execution || null);
+      }
       setStep("management");
       toast.success("ZAP thành công. Lớp học phần đã được mở.", {
         id: loadingToast,
@@ -1684,6 +1893,7 @@ export default function SemesterPlanWorkspaceList() {
   };
 
   const openEditSubject = (subject: any) => {
+    const defaults = getRecommendedSubjectSchedule(subject);
     setEditingSubjectId(subject.id);
     setSubjectForm({
       code: subject.code || "",
@@ -1691,16 +1901,16 @@ export default function SemesterPlanWorkspaceList() {
       majorId: subject.majorId || selectedMajorId,
       departmentId: subject.departmentId || "",
       credits: Number(subject.credits || 3),
-      theoryHours: Number(subject.theoryHours || 30),
-      practiceHours: Number(subject.practiceHours || 0),
+      theoryHours: defaults.theoryPeriods,
+      practiceHours: defaults.practicePeriods,
       selfStudyHours: Number(subject.selfStudyHours || 0),
       examDuration: Number(subject.examDuration || 90),
       examType: subject.examType || "TRAC_NGHIEM",
       examForm: subject.examForm || "Tự luận",
-      theoryPeriods: Number(subject.theoryPeriods || 0),
-      practicePeriods: Number(subject.practicePeriods || 0),
-      theorySessionsPerWeek: Number(subject.theorySessionsPerWeek || 1),
-      practiceSessionsPerWeek: getDefaultPracticeSessionsPerWeek(subject),
+      theoryPeriods: defaults.theoryPeriods,
+      practicePeriods: defaults.practicePeriods,
+      theorySessionsPerWeek: defaults.theorySessionsPerWeek,
+      practiceSessionsPerWeek: defaults.practiceSessionsPerWeek,
     });
     setManagerTab("subjects");
     setManagerOpen(true);
@@ -1709,6 +1919,7 @@ export default function SemesterPlanWorkspaceList() {
   const saveSubject = async () => {
     setManagerSaving(true);
     try {
+      const scheduleDefaults = getRecommendedSubjectSchedule(subjectForm);
       const method = editingSubjectId ? "PUT" : "POST";
       const path = editingSubjectId
         ? `/subjects/${editingSubjectId}`
@@ -1722,16 +1933,16 @@ export default function SemesterPlanWorkspaceList() {
           majorId: subjectForm.majorId,
           departmentId: subjectForm.departmentId || null,
           credits: Number(subjectForm.credits),
-          theoryHours: Number(subjectForm.theoryHours),
-          practiceHours: Number(subjectForm.practiceHours),
+          theoryHours: scheduleDefaults.theoryPeriods,
+          practiceHours: scheduleDefaults.practicePeriods,
           selfStudyHours: Number(subjectForm.selfStudyHours),
           examDuration: Number(subjectForm.examDuration),
           examType: subjectForm.examType,
           examForm: subjectForm.examForm,
-          theoryPeriods: Number(subjectForm.theoryPeriods),
-          practicePeriods: Number(subjectForm.practicePeriods),
-          theorySessionsPerWeek: Number(subjectForm.theorySessionsPerWeek),
-          practiceSessionsPerWeek: Number(subjectForm.practiceSessionsPerWeek),
+          theoryPeriods: scheduleDefaults.theoryPeriods,
+          practicePeriods: scheduleDefaults.practicePeriods,
+          theorySessionsPerWeek: scheduleDefaults.theorySessionsPerWeek,
+          practiceSessionsPerWeek: scheduleDefaults.practiceSessionsPerWeek,
         }),
       });
       const data = await response.json();
@@ -2063,7 +2274,7 @@ export default function SemesterPlanWorkspaceList() {
               Trạm điều phối lớp học phần
             </h2>
             <p className="mt-1 text-[13px] font-medium text-slate-500">
-              Mỗi dòng là một lớp học phần dự kiến mở cho đúng một lớp danh nghĩa trong {activeSemester?.name || "học kỳ đã chọn"}. Tổng số tiết tự tính theo công thức tín chỉ × 15, mặc định 1 buổi/tuần nếu chưa cấu hình riêng.
+              Mỗi dòng là một lớp học phần dự kiến mở cho đúng một lớp danh nghĩa trong {activeSemester?.name || "học kỳ đã chọn"}. Hệ thống tự chuẩn hóa tổng tiết theo công thức tín chỉ × 15, tách LT/TH theo loại môn, mặc định 1 buổi/tuần và tự suy ra số tiết/buổi phù hợp trong cửa sổ học kỳ.
             </p>
           </div>
 
@@ -2178,6 +2389,7 @@ export default function SemesterPlanWorkspaceList() {
                 <th className="px-4 py-3">Tiết/buổi</th>
                 <th className="px-4 py-3">Khớp khung</th>
                 <th className="px-4 py-3">Trạng thái</th>
+                <th className="px-4 py-3">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -2290,7 +2502,10 @@ export default function SemesterPlanWorkspaceList() {
                     </td>
                     <td className="px-4 py-3">
                       {(() => {
-                        const validation = getExecutionValidation(item);
+                        const validation = getExecutionValidation(
+                          item,
+                          activeSemester,
+                        );
                         return (
                           <div className="min-w-[180px] space-y-2">
                             <div className="flex items-center justify-between gap-3 text-[11px] font-black">
@@ -2319,7 +2534,7 @@ export default function SemesterPlanWorkspaceList() {
                               />
                             </div>
                             <div className="text-[11px] font-bold text-slate-500">
-                              Mặc định hệ thống dùng 1 buổi/tuần nếu chưa cấu hình.
+                              Tải theo kỳ: {validation.weeklyCapacity} tiết trong cửa sổ học kỳ.
                             </div>
                           </div>
                         );
@@ -2331,6 +2546,22 @@ export default function SemesterPlanWorkspaceList() {
                       >
                         {statusLabel(item.status)}
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {item.generatedCourseClassId && (
+                        <button
+                          onClick={() =>
+                            deleteExecutionClass(
+                              item.id,
+                              item.generatedCourseClassId,
+                            )
+                          }
+                          className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-50 text-rose-600 transition-colors hover:bg-rose-100"
+                          title="Xóa lớp học phần này"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -2821,10 +3052,22 @@ export default function SemesterPlanWorkspaceList() {
                 type="number"
                 value={subjectForm.credits}
                 onChange={(event) =>
-                  setSubjectForm((current) => ({
-                    ...current,
-                    credits: Number(event.target.value),
-                  }))
+                  setSubjectForm((current) => {
+                    const next = {
+                      ...current,
+                      credits: Number(event.target.value),
+                    };
+                    const defaults = getRecommendedSubjectSchedule(next);
+                    return {
+                      ...next,
+                      theoryHours: defaults.theoryPeriods,
+                      practiceHours: defaults.practicePeriods,
+                      theoryPeriods: defaults.theoryPeriods,
+                      practicePeriods: defaults.practicePeriods,
+                      theorySessionsPerWeek: defaults.theorySessionsPerWeek,
+                      practiceSessionsPerWeek: defaults.practiceSessionsPerWeek,
+                    };
+                  })
                 }
                 className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none"
               />
@@ -2838,11 +3081,23 @@ export default function SemesterPlanWorkspaceList() {
                 type="number"
                 value={subjectForm.theoryPeriods}
                 onChange={(event) =>
-                  setSubjectForm((current) => ({
-                    ...current,
-                    theoryPeriods: Number(event.target.value),
-                    theoryHours: Number(event.target.value),
-                  }))
+                  setSubjectForm((current) => {
+                    const next = {
+                      ...current,
+                      theoryPeriods: Number(event.target.value),
+                      theoryHours: Number(event.target.value),
+                    };
+                    const defaults = getRecommendedSubjectSchedule(next);
+                    return {
+                      ...next,
+                      theoryPeriods: defaults.theoryPeriods,
+                      theoryHours: defaults.theoryPeriods,
+                      practicePeriods: defaults.practicePeriods,
+                      practiceHours: defaults.practicePeriods,
+                      theorySessionsPerWeek: defaults.theorySessionsPerWeek,
+                      practiceSessionsPerWeek: defaults.practiceSessionsPerWeek,
+                    };
+                  })
                 }
                 className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none"
               />
@@ -2856,11 +3111,23 @@ export default function SemesterPlanWorkspaceList() {
                 type="number"
                 value={subjectForm.practicePeriods}
                 onChange={(event) =>
-                  setSubjectForm((current) => ({
-                    ...current,
-                    practicePeriods: Number(event.target.value),
-                    practiceHours: Number(event.target.value),
-                  }))
+                  setSubjectForm((current) => {
+                    const next = {
+                      ...current,
+                      practicePeriods: Number(event.target.value),
+                      practiceHours: Number(event.target.value),
+                    };
+                    const defaults = getRecommendedSubjectSchedule(next);
+                    return {
+                      ...next,
+                      theoryPeriods: defaults.theoryPeriods,
+                      theoryHours: defaults.theoryPeriods,
+                      practicePeriods: defaults.practicePeriods,
+                      practiceHours: defaults.practicePeriods,
+                      theorySessionsPerWeek: defaults.theorySessionsPerWeek,
+                      practiceSessionsPerWeek: defaults.practiceSessionsPerWeek,
+                    };
+                  })
                 }
                 className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none"
               />
@@ -2911,10 +3178,22 @@ export default function SemesterPlanWorkspaceList() {
               <select
                 value={subjectForm.examType}
                 onChange={(event) =>
-                  setSubjectForm((current) => ({
-                    ...current,
-                    examType: event.target.value,
-                  }))
+                  setSubjectForm((current) => {
+                    const next = {
+                      ...current,
+                      examType: event.target.value,
+                    };
+                    const defaults = getRecommendedSubjectSchedule(next);
+                    return {
+                      ...next,
+                      theoryHours: defaults.theoryPeriods,
+                      practiceHours: defaults.practicePeriods,
+                      theoryPeriods: defaults.theoryPeriods,
+                      practicePeriods: defaults.practicePeriods,
+                      theorySessionsPerWeek: defaults.theorySessionsPerWeek,
+                      practiceSessionsPerWeek: defaults.practiceSessionsPerWeek,
+                    };
+                  })
                 }
                 className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none"
               >
@@ -3755,7 +4034,7 @@ export default function SemesterPlanWorkspaceList() {
                             }
                           >
                             <td className="px-4 py-3 font-black text-indigo-700">
-                              HK{parseConceptualSemester(semester)}
+                              HK{parseConceptualSemester(semester) || 1}
                             </td>
                             <td className="px-4 py-3">
                               <div className="font-black text-slate-900">
@@ -3991,7 +4270,7 @@ export default function SemesterPlanWorkspaceList() {
                       (item) => item.id === event.target.value,
                     );
                     setSelectedSemesterId(event.target.value);
-                    setActiveConceptualSemester(parseConceptualSemester(semester));
+                    setActiveConceptualSemester(parseConceptualSemester(semester) || 1);
                   }}
                   className="w-full min-w-[280px] border border-slate-200 bg-slate-50 px-3 py-2.5 text-[13px] font-medium outline-none"
                 >
@@ -4106,7 +4385,7 @@ export default function SemesterPlanWorkspaceList() {
                               type="button"
                               onClick={() => {
                                 setSelectedSemesterId(semester.id);
-                                setActiveConceptualSemester(conceptualSemester);
+                                setActiveConceptualSemester(conceptualSemester || 1);
                                 setSemesterDropdownOpen(false);
                               }}
                               className={`grid w-full gap-2 px-3 py-2.5 text-left md:grid-cols-[58px_minmax(0,1fr)_170px_82px] ${isSelected ? "bg-indigo-50" : "bg-white hover:bg-slate-50"

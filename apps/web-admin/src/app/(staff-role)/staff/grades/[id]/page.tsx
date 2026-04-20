@@ -35,6 +35,7 @@ function score10toLetter(s: number): string {
     if (s >= 5.5) return "C";
     if (s >= 4.8) return "D+";
     if (s >= 4.0) return "D";
+    if (s >= 3.0) return "F+";
     return "F";
 }
 
@@ -51,8 +52,13 @@ function letterToRank(l: string): string {
 
 /** Parse JSON score array safely */
 function parseScores(json: string | null | undefined): (number | null)[] {
-    if (!json) return [];
-    try { return JSON.parse(json); } catch { return []; }
+    if (!json || json === "null") return [];
+    try { 
+        const parsed = JSON.parse(json); 
+        return Array.isArray(parsed) ? parsed : [];
+    } catch { 
+        return []; 
+    }
 }
 
 /** Serialize score array to JSON */
@@ -68,35 +74,35 @@ function avg(arr: (number | null)[]): number {
 }
 
 /**
- * Tính TB Thường Kỳ chuẩn UNETI:
- * Công thức: (CC*1 + avg(coef1)*credits_weight + avg(coef2)*credits_weight + avg(practice)*1) / divisor
- * Đơn giản hóa: TB = (CC + avgCoef1 + avgCoef2 + avgPractice) / nComponents
+ * Tính TB Thường Kỳ chuẩn UNETI
  */
 function calcTbThuongKy(
     cc: number | null,
+    credits: number,
+    regular: (number | null)[],
     coef1: (number | null)[],
     coef2: (number | null)[],
     practice: (number | null)[],
-    hasPractice: boolean
+    isTheory: boolean
 ): number {
-    const components: number[] = [];
-    if (cc !== null) components.push(cc);
-    const a1 = coef1.filter(v => v !== null).length ? avg(coef1) : null;
-    const a2 = coef2.filter(v => v !== null).length ? avg(coef2) : null;
-    if (a1 !== null) components.push(a1);
-    if (a2 !== null) components.push(a2);
-    if (hasPractice) {
-        const ap = practice.filter(v => v !== null).length ? avg(practice) : null;
-        if (ap !== null) components.push(ap);
+    const sumVal = (arr: (number | null)[]) => arr.reduce((a, b) => (a || 0) + (b || 0), 0) as number;
+    let weightTotal = 0;
+
+    if (isTheory) {
+        weightTotal = credits + regular.length + coef1.length + coef2.length * 2;
+        if (weightTotal === 0) return 0;
+        return ((cc || 0) * credits + sumVal(regular) + sumVal(coef1) + sumVal(coef2) * 2) / weightTotal;
+    } else {
+        weightTotal = 1 + practice.length;
+        if (weightTotal === 0) return 0;
+        return ((cc || 0) * 1 + sumVal(practice)) / weightTotal;
     }
-    if (!components.length) return 0;
-    return Math.round((components.reduce((a, b) => a + b, 0) / components.length) * 100) / 100;
 }
 
 /** Tính Điểm Tổng Kết: 40% TB TK + 60% Điểm thi */
 function calcFinalScore(tb: number, exam: number | null): number | null {
     if (exam === null) return null;
-    return Math.round((tb * 0.4 + exam * 0.6) * 100) / 100;
+    return Math.round((tb * 0.4 + exam * 0.6) * 10) / 10;
 }
 
 // ===== TYPES =====
@@ -123,6 +129,7 @@ interface GradeRow {
     isLocked: boolean;
     status: string;
     notes: string | null;
+    subject?: { id: string; name: string; credits: number; code: string } | any;
     // ---- local parsed ----
     _coef1: (number | null)[];
     _coef2: (number | null)[];
@@ -145,7 +152,10 @@ export default function StaffGradesDetailPage() {
 
     // Number of coef columns = credits
     const credits = courseClass?.subject?.credits ?? 3;
-    const hasPractice = (courseClass?.subject?.practiceHours ?? 0) > 0;
+    const theoryHours = courseClass?.subject?.theoryHours ?? 0;
+    const practiceHours = courseClass?.subject?.practiceHours ?? 0;
+    const hasPractice = practiceHours > 0;
+    const isTheory = theoryHours > 0 || hasPractice === false;
 
     // ===== FETCH DATA =====
     useEffect(() => {
@@ -227,15 +237,18 @@ export default function StaffGradesDetailPage() {
             else if (field === "notes") return { ...row, notes: value as any };
 
             // ---- Recalculate ----
-            const tb = calcTbThuongKy(
+            let tb = calcTbThuongKy(
                 updated.attendanceScore,
+                credits,
+                updated._regularScores,
                 updated._coef1,
                 updated._coef2,
                 updated._practice,
-                hasPractice
+                isTheory
             );
+            tb = Math.round(tb * 10) / 10;
             updated.tbThuongKy = tb;
-            updated.isEligibleForExam = tb >= 3.0;
+            updated.isEligibleForExam = updated.attendanceScore !== 0; // Thay vì tb >= 3.0, cấm thi nếu CC = 0
 
             // Absent → exam1 = 0
             const exam1 = updated.isAbsentFromExam ? 0 : updated.examScore1;
@@ -250,7 +263,7 @@ export default function StaffGradesDetailPage() {
             if (total10 !== null) {
                 updated.totalScore4 = score10to4(total10);
                 updated.letterGrade = score10toLetter(total10);
-                updated.isPassed = total10 >= 5.0;
+                updated.isPassed = total10 >= 4.0;
             } else {
                 updated.totalScore4 = null;
                 updated.letterGrade = null;
@@ -258,7 +271,7 @@ export default function StaffGradesDetailPage() {
             }
             return updated;
         }));
-    }, [hasPractice]);
+    }, [credits, isTheory]);
 
     // ===== TOGGLE ABSENT =====
     const toggleAbsent = (rowId: string) => {
@@ -279,7 +292,7 @@ export default function StaffGradesDetailPage() {
             if (total10 !== null) {
                 updated.totalScore4 = score10to4(total10);
                 updated.letterGrade = score10toLetter(total10);
-                updated.isPassed = total10 >= 5.0;
+                updated.isPassed = total10 >= 4.0;
             }
             return updated;
         }));
@@ -331,21 +344,31 @@ export default function StaffGradesDetailPage() {
 
     // ===== LOCK GRADES =====
     const lockAllGrades = async () => {
-        if (!confirm("Khóa bảng điểm? Sau khi khóa giảng viên không thể chỉnh sửa.")) return;
-        const locked = rows.map(r => ({ ...r, isLocked: true, status: "FINAL" }));
-        setRows(locked);
-        await handleSave();
-        if (courseClass?.lecturer?.userId) {
-            await fetch(`/api/auth/notifications`, {
+        if (!confirm("Chốt & Công Bố Điểm? Dữ liệu tính CC, Toán hóa công thức Điểm quá trình, Xét Đạt/Trượt sẽ được cập nhật lại theo quy chế chuẩn và Điểm sẽ chuyển trạng thái Đã Duyệt.")) return;
+        
+        setSaving(true);
+        try {
+            const res = await fetch(`/api/grades/approve/${classId}`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${TOKEN}` },
-                body: JSON.stringify({
-                    userId: courseClass.lecturer.userId,
-                    title: `Bảng điểm đã khóa: ${courseClass.subject?.name}`,
-                    content: `Phòng Đào tạo đã thẩm định và khóa bảng điểm lớp ${courseClass.code}.`,
-                    type: "WARNING"
-                })
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${TOKEN}` }
             });
+
+            if (res.ok) {
+                setMessage({ text: "Đã chốt, phê duyệt & công bố điểm!", type: "success" });
+                const locked = rows.map(r => ({ ...r, isLocked: true, status: "APPROVED" }));
+                setRows(locked);
+                
+                // Reload location to show the auto-updated CC & correct Backend calculation
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                setMessage({ text: "Lỗi chốt điểm từ server", type: "error" });
+            }
+        } catch {
+            setMessage({ text: "Có lỗi xảy ra khi chốt điểm", type: "error" });
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -430,18 +453,18 @@ export default function StaffGradesDetailPage() {
                     </p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                    <Button variant="ghost" onClick={lockAllGrades}
-                        className="h-10 rounded-xl px-4 text-[10px] font-black text-rose-600 hover:bg-rose-50 uppercase tracking-wider">
-                        <Lock className="mr-1.5 h-3.5 w-3.5" /> Khóa điểm
-                    </Button>
                     <Button variant="outline" onClick={sendReminder}
                         className="h-10 rounded-xl px-4 text-[10px] font-black text-amber-600 bg-white border-amber-200 hover:bg-amber-50">
                         <Bell className="mr-1.5 h-3.5 w-3.5" /> Nhắc GV
                     </Button>
+                    <Button variant="ghost" onClick={lockAllGrades}
+                        className="h-10 rounded-xl px-4 text-[10px] font-black text-emerald-600 bg-emerald-50 hover:bg-emerald-100 uppercase tracking-wider shadow-sm">
+                        <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Chốt & Công Bố
+                    </Button>
                     <Button onClick={handleSave} disabled={saving}
                         className="h-10 rounded-xl px-6 text-[10px] font-black text-white bg-uneti-blue hover:bg-uneti-blue/90 shadow-lg tracking-widest uppercase">
                         {saving ? <div className="h-3.5 w-3.5 animate-spin border-2 border-white/20 border-t-white rounded-full mr-1.5" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
-                        Lưu & Cập nhật
+                        Lưu Thay Đổi
                     </Button>
                 </div>
             </div>
@@ -453,7 +476,7 @@ export default function StaffGradesDetailPage() {
                     { label: "Đã nhập điểm thi", value: `${enteredExam1}/${totalStudents}`, color: "text-uneti-blue", bg: "bg-white" },
                     { label: "Đạt", value: passedCount, color: "text-emerald-600", bg: "bg-emerald-50" },
                     { label: "Vắng thi", value: absentCount, color: "text-amber-600", bg: "bg-amber-50" },
-                    { label: "Cấm thi (TB TK < 3)", value: ineligibleCount, color: "text-rose-600", bg: "bg-rose-50" },
+                    { label: "Cấm thi (CC=0)", value: ineligibleCount, color: "text-rose-600", bg: "bg-rose-50" },
                 ].map((s, i) => (
                     <div key={i} className={cn("rounded-2xl px-4 py-3 border border-slate-100 shadow-sm", s.bg)}>
                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{s.label}</p>
@@ -577,7 +600,7 @@ export default function StaffGradesDetailPage() {
                                             <ScoreInput value={row.attendanceScore} onChange={v => updateScore(row.id, "attendanceScore", v)} />
                                         </td>
                                         {/* TX 1-3 */}
-                                        {row._regularScores.map((val, i) => (
+                                        {(row._regularScores || []).map((val, i) => (
                                             <td key={`tx-${i}`} className="py-2.5 px-1 text-center border-r border-slate-50 bg-sky-50/20">
                                                 <ScoreInput value={val} onChange={v => {
                                                     const arr = [...row._regularScores]; arr[i] = v;
@@ -586,19 +609,19 @@ export default function StaffGradesDetailPage() {
                                             </td>
                                         ))}
                                         {/* Coef1 */}
-                                        {row._coef1.map((val, i) => (
+                                        {(row._coef1 || []).map((val, i) => (
                                             <td key={`c1-${i}`} className="py-2.5 px-1 text-center border-r border-slate-50 bg-indigo-50/20">
                                                 <ScoreInput value={val} onChange={v => updateScore(row.id, "coef1", v, i)} highlight="blue" />
                                             </td>
                                         ))}
                                         {/* Coef2 */}
-                                        {row._coef2.map((val, i) => (
+                                        {(row._coef2 || []).map((val, i) => (
                                             <td key={`c2-${i}`} className="py-2.5 px-1 text-center border-r border-slate-50 bg-violet-50/20">
                                                 <ScoreInput value={val} onChange={v => updateScore(row.id, "coef2", v, i)} />
                                             </td>
                                         ))}
                                         {/* Thực hành */}
-                                        {hasPractice && row._practice.map((val, i) => (
+                                        {hasPractice && (row._practice || []).map((val, i) => (
                                             <td key={`th-${i}`} className="py-2.5 px-1 text-center border-r border-slate-50 bg-teal-50/20">
                                                 <ScoreInput value={val} onChange={v => updateScore(row.id, "practice", v, i)} />
                                             </td>

@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import api from "@/lib/api";
 import { clearStudentSession, persistStudentSession } from "@/lib/student-session";
 
@@ -53,29 +54,43 @@ function LoginForm() {
     };
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4">
-            <div className="w-full max-w-md rounded-xl bg-white p-8 shadow-lg">
-                <h2 className="mb-6 text-center text-3xl font-bold text-gray-800">Đăng nhập cổng sinh viên</h2>
-                <p className="mb-8 text-center text-gray-500">Sử dụng mã sinh viên hoặc email để truy cập hệ thống</p>
+        <div className="relative w-full max-w-md">
+            {/* Logo */}
+            <div className="flex flex-col items-center mb-8">
+                <div className="w-[160px] h-[160px] mb-5 flex items-center justify-center">
+                    <img 
+                        src="/uneti-logo.png" 
+                        alt="UNETI Logo" 
+                        className="w-full h-full object-contain"
+                    />
+                </div>
+                <h1 className="text-xl sm:text-2xl font-black text-blue-900 tracking-tight text-center">
+                    CỔNG THÔNG TIN SINH VIÊN
+                </h1>
+                <p className="text-blue-700 font-semibold text-[13px] sm:text-sm mt-1.5 text-center px-4 uppercase tracking-wide">
+                    TRƯỜNG ĐẠI HỌC KINH TẾ - KỸ THUẬT CÔNG NGHIỆP
+                </p>
+            </div>
 
+            <div className="rounded-2xl bg-white border border-slate-200 p-8 shadow-xl shadow-slate-200/50">
                 {successMessage && (
-                    <div className="mb-4 rounded-lg bg-green-100 border border-green-400 p-3 text-sm text-green-700">
-                        {successMessage}
+                    <div className="mb-5 rounded-xl bg-green-50 border border-green-200 p-3 text-sm text-green-600 flex items-center gap-2 font-medium">
+                        <span>✅</span> {successMessage}
                     </div>
                 )}
                 {error && (
-                    <div className="mb-4 rounded-lg bg-red-100 border border-red-400 p-3 text-sm text-red-700">
-                        {error}
+                    <div className="mb-5 rounded-xl bg-red-50 border border-red-200 p-3 text-sm text-red-600 flex items-center gap-2 font-medium">
+                        <span>⚠️</span> {error}
                     </div>
                 )}
 
-                <form onSubmit={handleLogin} className="space-y-6">
+                <form onSubmit={handleLogin} className="space-y-5">
                     <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Mã sinh viên hoặc email</label>
+                        <label className="mb-1.5 block text-sm font-bold text-slate-700">Mã sinh viên hoặc email</label>
                         <input
                             type="text"
                             required
-                            className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/10 transition-all font-medium"
                             placeholder="Mã SV (VD: 22103100001) hoặc email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
@@ -83,17 +98,17 @@ function LoginForm() {
                     </div>
 
                     <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Mật khẩu</label>
+                        <label className="mb-1.5 block text-sm font-bold text-slate-700">Mật khẩu</label>
                         <input
                             type="password"
                             required
-                            className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/10 transition-all font-medium"
                             placeholder="••••••••"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                         />
                         <div className="mt-2 text-right">
-                            <Link href="/forgot-password" title="Quên mật khẩu" className="text-sm font-medium text-blue-600 hover:text-blue-500">
+                            <Link href="/forgot-password" title="Quên mật khẩu" className="text-xs font-bold text-blue-600 hover:text-blue-700 underline decoration-blue-600/30 underline-offset-4">
                                 Quên mật khẩu?
                             </Link>
                         </div>
@@ -102,21 +117,30 @@ function LoginForm() {
                     <button
                         type="submit"
                         disabled={loading}
-                        className={`w-full rounded-lg bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${loading ? "cursor-not-allowed opacity-70" : ""
-                            }`}
+                        className={`w-full rounded-xl bg-blue-600 px-4 py-3 text-white font-bold transition-all hover:bg-blue-700 active:scale-[0.98] focus:outline-none focus:ring-4 focus:ring-blue-500/30 shadow-md shadow-blue-600/20 ${loading ? "cursor-not-allowed opacity-70" : ""}`}
                     >
-                        {loading ? "Đang đăng nhập..." : "Đăng nhập"}
+                        {loading ? (
+                            <span className="flex items-center justify-center gap-2">
+                                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                                Đang xác thực...
+                            </span>
+                        ) : (
+                            "Đăng nhập"
+                        )}
                     </button>
                 </form>
-
             </div>
+            
+            <p className="mt-6 text-center text-xs font-semibold text-slate-500">
+                Sử dụng tài khoản nội bộ UNETI được cấp để đăng nhập vào hệ thống cổng thông tin sinh viên.
+            </p>
         </div>
     );
 }
 
 export default function LoginPage() {
     return (
-        <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4">
+        <div className="flex min-h-screen items-center justify-center bg-white p-4">
             <Suspense fallback={<div className="text-center p-8">Loading...</div>}>
                 <LoginForm />
             </Suspense>

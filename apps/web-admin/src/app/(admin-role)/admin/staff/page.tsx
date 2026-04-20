@@ -175,14 +175,14 @@ export default function AdminStaffPage() {
             {/* Header & Breadcrumbs */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                 <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                    <div className="flex items-center gap-2 text-[10px] font-black text-slate-900 uppercase tracking-[0.2em]">
                         <UserCog size={14} className="text-uneti-blue" />
                         <span>Hệ thống</span>
                         <ChevronRight size={10} />
                         <span className="text-uneti-blue">Nhân sự</span>
                     </div>
                     <h1 className="text-3xl font-black text-slate-900 tracking-tight">Quản lý nhân viên</h1>
-                    <p className="text-[13px] font-medium text-slate-500">Danh sách quản trị viên và nhân viên phòng đào tạo</p>
+                    <p className="text-[13px] font-medium text-slate-950 font-bold">Danh sách quản trị viên và nhân viên phòng đào tạo</p>
                 </div>
                 <div className="flex items-center gap-3">
                     <button
@@ -208,7 +208,7 @@ export default function AdminStaffPage() {
                                 <s.icon size={22} />
                             </div>
                             <div>
-                                <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1">{s.label}</p>
+                                <p className="text-[11px] font-black text-slate-900 uppercase tracking-widest mb-1">{s.label}</p>
                                 <div className="flex items-baseline gap-2">
                                     <p className="text-3xl font-black text-slate-900">{s.value}</p>
                                     <span className={`text-[10px] font-bold text-${s.color === 'blue' ? 'uneti-blue' : s.color + '-500'}`}>{s.trend}</span>
@@ -238,10 +238,10 @@ export default function AdminStaffPage() {
                     <table className="w-full border-collapse">
                         <thead>
                             <tr className="bg-slate-50/50">
-                                <th className="py-4 px-8 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Nhân viên & Tài khoản</th>
-                                <th className="py-4 px-8 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Email hệ thống</th>
-                                <th className="py-4 px-8 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Vai trò / Quyền hạn</th>
-                                <th className="py-4 px-8 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Ngày gia nhập</th>
+                                <th className="py-4 px-8 text-left text-[10px] font-black text-slate-950 uppercase tracking-widest border-b border-slate-100">Nhân viên & Tài khoản</th>
+                                <th className="py-4 px-8 text-left text-[10px] font-black text-slate-950 uppercase tracking-widest border-b border-slate-100">Email hệ thống</th>
+                                <th className="py-4 px-8 text-left text-[10px] font-black text-slate-950 uppercase tracking-widest border-b border-slate-100">Vai trò / Quyền hạn</th>
+                                <th className="py-4 px-8 text-left text-[10px] font-black text-slate-950 uppercase tracking-widest border-b border-slate-100">Ngày gia nhập</th>
                                 <th className="py-4 px-8 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Thao tác</th>
                             </tr>
                         </thead>
@@ -256,15 +256,15 @@ export default function AdminStaffPage() {
                                             </div>
 
                                             <div>
-                                                <p className="text-[14px] font-black text-slate-800 leading-snug">{s.username}</p>
-                                                <p className="text-[11px] font-medium text-slate-400 mt-1">ID: {s.id.slice(0, 8)}...</p>
+                                                <p className="text-[14px] font-black text-slate-950 leading-snug">{s.username}</p>
+                                                <p className="text-[11px] font-medium text-slate-900 mt-1">ID: {s.id.slice(0, 8)}...</p>
                                             </div>
                                         </div>
                                     </td>
                                     <td className="py-5 px-8">
                                         <div className="flex items-center gap-2">
                                             <Mail size={14} className="text-slate-300" />
-                                            <span className="text-[13px] font-bold text-slate-600">{s.email}</span>
+                                            <span className="text-[13px] font-bold text-slate-900">{s.email}</span>
                                         </div>
                                     </td>
                                     <td className="py-5 px-8">
@@ -277,7 +277,7 @@ export default function AdminStaffPage() {
                                     </td>
 
                                     <td className="py-5 px-8">
-                                        <div className="flex items-center gap-2 text-[12px] font-bold text-slate-400">
+                                        <div className="flex items-center gap-2 text-[12px] font-bold text-slate-900">
                                             <Calendar size={14} className="text-slate-200" />
                                             {new Date(s.createdAt).toLocaleDateString('vi-VN')}
                                         </div>
@@ -308,7 +308,7 @@ export default function AdminStaffPage() {
                                             <div className="w-16 h-16 rounded-3xl bg-slate-50 flex items-center justify-center text-slate-300">
                                                 <Search size={32} />
                                             </div>
-                                            <p className="text-[13px] font-bold text-slate-400">Không tìm thấy dữ liệu nhân viên</p>
+                                            <p className="text-[13px] font-bold text-slate-900">Không tìm thấy dữ liệu nhân viên</p>
                                         </div>
                                     </td>
                                 </tr>
@@ -344,7 +344,7 @@ export default function AdminStaffPage() {
             >
                 <form className="space-y-6 py-4">
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tên đăng nhập</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Tên đăng nhập</label>
                         <input
                             type="text"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 transition-all outline-none"
@@ -353,7 +353,7 @@ export default function AdminStaffPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email đào tạo</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Email đào tạo</label>
                         <input
                             type="email"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 transition-all outline-none"
@@ -362,7 +362,7 @@ export default function AdminStaffPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Mật khẩu ban đầu</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Mật khẩu ban đầu</label>
                         <input
                             type="password"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 transition-all outline-none"
@@ -371,7 +371,7 @@ export default function AdminStaffPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Vai trò hệ thống</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Vai trò hệ thống</label>
                         <div className="relative">
                             <select
                                 className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 transition-all outline-none appearance-none cursor-pointer"
@@ -414,7 +414,7 @@ export default function AdminStaffPage() {
             >
                 <form className="space-y-6 py-4">
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tên đăng nhập</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Tên đăng nhập</label>
                         <input
                             type="text"
                             title="Tên đăng nhập"
@@ -424,7 +424,7 @@ export default function AdminStaffPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email đào tạo</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Email đào tạo</label>
                         <input
                             type="email"
                             title="Email"
@@ -434,7 +434,7 @@ export default function AdminStaffPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Vai trò hệ thống</label>
+                        <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Vai trò hệ thống</label>
                         <div className="relative">
                             <select
                                 className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold focus:ring-4 focus:ring-uneti-blue/5 transition-all outline-none appearance-none cursor-pointer"

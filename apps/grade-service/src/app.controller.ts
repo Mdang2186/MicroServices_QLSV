@@ -91,6 +91,11 @@ export class AppController {
     return this.gpaService.calculateSemesterGPA(studentId, semesterId);
   }
 
+  @Get('student/:studentId/cpa')
+  getCPA(@Param('studentId') studentId: string) {
+    return this.gpaService.calculateCPA(studentId);
+  }
+
   @Get('student/:studentId/academic-summary/:semesterId')
   getAcademicSummary(
     @Param('studentId') studentId: string,

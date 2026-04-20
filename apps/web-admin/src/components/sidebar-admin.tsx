@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, BookOpen, Settings, LogOut, GraduationCap, UserCog, ShieldCheck, Menu, X, CreditCard } from "lucide-react";
+import { LayoutDashboard, Users, BookOpen, Settings, LogOut, GraduationCap, UserCog, ShieldCheck, Menu, X, CreditCard, Building2, Calendar } from "lucide-react";
 
 export default function AdminSidebar() {
     const pathname = usePathname();
@@ -15,6 +15,7 @@ export default function AdminSidebar() {
         { href: "/admin/lecturers", icon: BookOpen, label: "Giảng viên" },
         { href: "/admin/staff", icon: UserCog, label: "Nhân viên ĐT" },
         { href: "/admin/users", icon: Users, label: "Tra cứu User" },
+        { href: "/staff/exams", icon: Calendar, label: "Quản lý Lịch thi" },
         { href: "/staff/tuition", icon: CreditCard, label: "Quản lý Học phí" },
     ];
 
@@ -26,7 +27,7 @@ export default function AdminSidebar() {
                     <div className="w-8 h-8 rounded-lg bg-uneti-blue flex items-center justify-center text-white shrink-0">
                         <ShieldCheck size={16} />
                     </div>
-                    <span className="font-bold text-sm text-slate-800 uppercase tracking-tight">UNETI Admin</span>
+                    <span className="font-bold text-sm text-slate-950 uppercase tracking-tight">UNETI Admin</span>
                 </div>
                 <button onClick={() => setIsOpen(true)} className="p-2 text-slate-600 hover:bg-slate-50 rounded-lg">
                     <Menu size={20} />
@@ -52,8 +53,8 @@ export default function AdminSidebar() {
                             <ShieldCheck size={20} />
                         </div>
                         <div>
-                            <h1 className="text-base font-bold text-slate-800 leading-tight uppercase tracking-tight">UNETI Admin</h1>
-                            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Hệ thống quản lý</p>
+                            <h1 className="text-base font-bold text-slate-950 leading-tight uppercase tracking-tight">UNETI Admin</h1>
+                            <p className="text-[10px] font-semibold text-slate-900 font-black uppercase tracking-wider">Hệ thống quản lý</p>
                         </div>
                     </div>
 
@@ -76,10 +77,10 @@ export default function AdminSidebar() {
                                 onClick={() => setIsOpen(false)}
                                 className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all duration-200 group ${isActive
                                     ? "bg-uneti-blue-light text-uneti-blue font-bold shadow-sm"
-                                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-800 font-medium"
+                                    : "text-slate-900 hover:bg-slate-50 hover:text-slate-950 font-black"
                                     }`}
                             >
-                                <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} className={isActive ? "text-uneti-blue" : "text-slate-400 group-hover:text-slate-600"} />
+                                <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} className={isActive ? "text-uneti-blue" : "text-slate-900 opacity-60 group-hover:opacity-100"} />
                                 <span className="text-sm">{item.label}</span>
                             </Link>
                         );
@@ -92,7 +93,7 @@ export default function AdminSidebar() {
                         onClick={() => setIsOpen(false)}
                         className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all duration-200 group ${pathname === "/admin/change-password"
                             ? "bg-uneti-blue-light text-uneti-blue font-bold shadow-sm"
-                            : "text-slate-500 hover:bg-slate-50 hover:text-slate-800 font-medium"
+                            : "text-slate-900 hover:bg-slate-50 hover:text-slate-950 font-black"
                             }`}
                     >
                         <Settings size={18} strokeWidth={2} className={pathname === "/admin/change-password" ? "text-uneti-blue" : "text-slate-400 group-hover:text-slate-600"} />

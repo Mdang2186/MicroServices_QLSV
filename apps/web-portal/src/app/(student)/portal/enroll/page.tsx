@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import api from "@/lib/api";
-import { 
+import {
     BookOpen, 
     AlertCircle, 
     ChevronRight, 
@@ -20,8 +20,8 @@ import {
     Eye
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { getStudentProfileId, getStudentUserId, readStudentSessionUser } from "@/lib/student-session";
 import { Button } from "@/components/ui/button";
+import { resolveCurrentStudentContext } from "@/lib/current-student";
 
 // --- Types ---
 interface CourseClass {
@@ -115,11 +115,10 @@ export default function EnrollPage() {
 
     useEffect(() => {
         const resolve = async () => {
-            const user = readStudentSessionUser();
-            const sid = getStudentProfileId(user) || (await api.get(`/api/students/user/${getStudentUserId(user)}`)).data?.id;
-            if (sid) setStudentId(sid);
+            const context = await resolveCurrentStudentContext();
+            if (context.studentId) setStudentId(context.studentId);
         };
-        resolve();
+        resolve().catch(console.error);
     }, []);
 
     useEffect(() => {
@@ -142,6 +141,22 @@ export default function EnrollPage() {
 
     useEffect(() => { refresh(); }, [studentId, semId]);
 
+    const openClassPicker = async (payload: any) => {
+        setSelSub(payload);
+        setLoadClasses(true);
+        try {
+            const response = await api.get(
+                `/api/enrollments/subject/${payload.subjectId}/classes?semesterId=${semId}`,
+            );
+            setClasses(Array.isArray(response.data) ? response.data : []);
+        } catch {
+            setClasses([]);
+            setMsg({ type: "error", text: "Không tải được danh sách lớp học phần." });
+        } finally {
+            setLoadClasses(false);
+        }
+    };
+
     const handleEnroll = async (cid: string) => {
         setRegId(cid);
         try {
@@ -151,6 +166,24 @@ export default function EnrollPage() {
             refresh();
         } catch (e: any) {
             setMsg({ type: 'error', text: e.response?.data?.message || "Thất bại" });
+        }
+        setRegId("");
+    };
+
+    const handleSwitchClass = async (oldClassId: string, newClassId: string) => {
+        setRegId(newClassId);
+        try {
+            await api.post("/api/enrollments/switch", {
+                studentId,
+                oldClassId,
+                newClassId,
+            });
+            setMsg({ type: "success", text: "Đổi lớp học phần thành công!" });
+            setSelSub(null);
+            setActiveMenu(null);
+            refresh();
+        } catch (e: any) {
+            setMsg({ type: "error", text: e.response?.data?.message || "Không thể đổi lớp" });
         }
         setRegId("");
     };
@@ -233,10 +266,10 @@ export default function EnrollPage() {
                                     <Button 
                                         disabled={!it.isEligible}
                                         onClick={() => { 
-                                            setSelSub(it); 
-                                            setLoadClasses(true); 
-                                            api.get(`/api/enrollments/subject/${it.subjectId}/classes?semesterId=${semId}`)
-                                               .then(r => { setClasses(r.data); setLoadClasses(false); }); 
+                                            openClassPicker({
+                                                ...it,
+                                                mode: "enroll",
+                                            });
                                         }} 
                                         className="h-9 w-9 p-0 rounded-full bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200 ring-2 ring-white active:scale-95 transition-all disabled:opacity-30"
                                     >
@@ -259,11 +292,18 @@ export default function EnrollPage() {
                         <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="bg-white w-full max-w-6xl rounded-[3rem] shadow-3xl relative overflow-hidden flex flex-col max-h-[90vh]">
                             <div className="bg-blue-600 px-10 py-8 flex justify-between items-center text-white">
                                 <div>
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-blue-100 mb-1">Dành cho học phần:</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-blue-100 mb-1">
+                                        {selSub.mode === "switch" ? "Đổi sang lớp khác của học phần:" : "Dành cho học phần:"}
+                                    </p>
                                     <h2 className="text-2xl font-black uppercase tracking-tight">{selSub.subjectName}</h2>
                                     <div className="flex gap-4 mt-2">
                                         <span className="text-[10px] font-black bg-white/20 px-3 py-1 rounded-full uppercase italic border border-white/10">{selSub.subjectCode}</span>
                                         <span className="text-[10px] font-black bg-white/20 px-3 py-1 rounded-full uppercase italic border border-white/10">{selSub.credits} Tín chỉ</span>
+                                        {selSub.currentClassCode ? (
+                                            <span className="text-[10px] font-black bg-white/20 px-3 py-1 rounded-full uppercase italic border border-white/10">
+                                                Lớp hiện tại: {selSub.currentClassCode}
+                                            </span>
+                                        ) : null}
                                     </div>
                                 </div>
                                 <Button variant="ghost" className="h-10 w-10 p-0 rounded-full hover:bg-white/10 text-white" onClick={() => setSelSub(null)}><X className="w-6 h-6" /></Button>
@@ -276,6 +316,7 @@ export default function EnrollPage() {
                                     ) : classes.length > 0 ? classes.map(c => {
                                         const isFull = c.currentSlots >= (c.maxSlots || 80);
                                         const isClipped = c.status !== 'OPEN';
+                                        const isCurrentClass = selSub.mode === "switch" && c.id === selSub.oldClassId;
                                         return (
                                             <tr key={c.id} className="hover:bg-slate-50 transition-colors">
                                                 <td className="px-5 py-4 font-black text-blue-900 border-r border-slate-100">{c.code}</td>
@@ -288,12 +329,24 @@ export default function EnrollPage() {
                                                 </td>
                                                 <td className="px-5 py-4"><Schedule list={c.schedules} /></td>
                                                 <td className="px-5 py-4 text-center">
-                                                    {isClipped ? (
+                                                    {isCurrentClass ? (
+                                                        <div className="text-[10px] font-black text-blue-500 uppercase italic">Lớp hiện tại</div>
+                                                    ) : isClipped ? (
                                                         <div className="text-[10px] font-black text-slate-300 uppercase italic">Đã khóa</div>
                                                     ) : isFull ? (
                                                         <div className="text-[10px] font-black text-red-400 uppercase italic">Hết chỗ</div>
                                                     ) : (
-                                                        <Button disabled={regId === c.id} onClick={() => handleEnroll(c.id)} className="h-9 px-6 rounded-xl bg-emerald-600 text-white text-[10px] font-black uppercase hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100">Chọn lớp</Button>
+                                                        <Button
+                                                            disabled={regId === c.id}
+                                                            onClick={() =>
+                                                                selSub.mode === "switch"
+                                                                    ? handleSwitchClass(selSub.oldClassId, c.id)
+                                                                    : handleEnroll(c.id)
+                                                            }
+                                                            className="h-9 px-6 rounded-xl bg-emerald-600 text-white text-[10px] font-black uppercase hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100"
+                                                        >
+                                                            {selSub.mode === "switch" ? "Đổi sang lớp này" : "Chọn lớp"}
+                                                        </Button>
                                                     )}
                                                 </td>
                                             </tr>
@@ -332,9 +385,29 @@ export default function EnrollPage() {
                                 </Button>
                                 {activeMenu === e.id && (
                                     <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="absolute left-full top-1/2 -translate-y-1/2 ml-2 z-50 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 w-40 min-w-max ring-4 ring-slate-100">
-                                        <button className="flex items-center gap-2 px-3 py-2 text-[10px] font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-600 rounded-xl transition-colors" onClick={() => { setActiveMenu(null); alert("Xem lịch chi tiết..."); }}>
+                                        <button className="flex items-center gap-2 px-3 py-2 text-[10px] font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-600 rounded-xl transition-colors" onClick={() => { setActiveMenu(null); window.location.href = "/portal/schedule"; }}>
                                             <Calendar className="w-3.5 h-3.5" /> Xem lịch học
                                         </button>
+                                        {!isLocked ? (
+                                            <button
+                                                className="flex items-center gap-2 px-3 py-2 text-[10px] font-bold text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors"
+                                                onClick={() => {
+                                                    setActiveMenu(null);
+                                                    openClassPicker({
+                                                        mode: "switch",
+                                                        oldEnrollmentId: e.id,
+                                                        oldClassId: e.courseClass.id,
+                                                        currentClassCode: e.courseClass.code,
+                                                        subjectId: e.courseClass.subject.id,
+                                                        subjectCode: e.courseClass.subject.code,
+                                                        subjectName: e.courseClass.subject.name,
+                                                        credits: e.courseClass.subject.credits,
+                                                    });
+                                                }}
+                                            >
+                                                <ArrowRightLeft className="w-3.5 h-3.5" /> Đổi lớp
+                                            </button>
+                                        ) : null}
                                         <button className="flex items-center gap-2 px-3 py-2 text-[10px] font-bold text-red-500 hover:bg-red-50 rounded-xl transition-colors" onClick={() => { setActiveMenu(null); handleDrop(e.id); }}>
                                             <Trash2 className="w-3.5 h-3.5" /> Hủy đăng ký
                                         </button>

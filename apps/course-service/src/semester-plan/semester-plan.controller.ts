@@ -6,6 +6,7 @@ import {
   Query,
   Param,
   Patch,
+  Delete,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { SemesterPlanService } from './semester-plan-v2.service';
@@ -112,6 +113,32 @@ export class SemesterPlanController {
   @ApiOperation({ summary: 'Xếp lại lịch cho semester plan đã sinh lớp' })
   async rebuildSchedule(@Param('id') id: string) {
     return this.semesterPlanService.rebuildSchedule(id);
+  }
+
+  @Post('executions/:id/reset-classes')
+  @ApiOperation({
+    summary:
+      'Xóa toàn bộ lớp học phần đã tách của execution hiện tại và trả execution về trạng thái điều phối',
+  })
+  async resetExecutionClasses(@Param('id') id: string) {
+    return this.semesterPlanService.resetExecutionClasses(id);
+  }
+
+  @Delete('execution-classes/:classId')
+  @ApiOperation({
+    summary: 'Xóa một lớp học phần đã sinh để tạo lại từ execution item',
+  })
+  async deleteExecutionClass(@Param('classId') classId: string) {
+    return this.semesterPlanService.deleteExecutionClass(classId);
+  }
+
+  @Post('reset-study-schedules')
+  @ApiOperation({
+    summary:
+      'Xóa toàn bộ lịch học thường hiện tại, chuẩn hóa mặc định 1 buổi/tuần và dựng lại từ đầu',
+  })
+  async resetStudySchedules(@Body() body: { semesterId?: string }) {
+    return this.semesterPlanService.resetStudySchedules(body?.semesterId);
   }
 
   @Post('executions/auto-run-up-to-current')
@@ -348,5 +375,11 @@ export class SemesterPlanController {
       body.sessionsPerWeek,
       body.periodsPerSession,
     );
+  }
+
+  @Delete('classes/:id')
+  @ApiOperation({ summary: 'Xóa lớp học phần và hoàn tác mục kế hoạch' })
+  async deleteCourseClass(@Param('id') id: string) {
+    return this.semesterPlanService.deleteExecutionClass(id);
   }
 }

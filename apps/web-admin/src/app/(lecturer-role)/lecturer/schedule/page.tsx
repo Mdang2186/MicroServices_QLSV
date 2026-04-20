@@ -254,7 +254,7 @@ export default function LecturerSchedulePage() {
             setLoading(false);
             return;
         }
-        
+
         setLoading(true);
         fetch(`/api/courses/schedule/lecturer/${user.profileId}?semesterId=${selectedSemesterId}`, {
             headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}
@@ -311,7 +311,7 @@ export default function LecturerSchedulePage() {
             // normalization to YYYY-MM-DD for reliable comparison
             const sessionDateStr = `${sessionDate.getFullYear()}-${sessionDate.getMonth()}-${sessionDate.getDate()}`;
             const targetDateStr = dateAtIdx ? `${dateAtIdx.getFullYear()}-${dateAtIdx.getMonth()}-${dateAtIdx.getDate()}` : "";
-            
+
             if (sessionDateStr !== targetDateStr) return false;
 
             const start = Number(s.startShift);
@@ -336,15 +336,8 @@ export default function LecturerSchedulePage() {
     };
 
     return (
-        <div className="min-h-screen space-y-4 pb-20 max-w-7xl mx-auto p-4 md:p-6 animate-in fade-in duration-700 bg-[#fbfcfd]">
-            <CompactLecturerHeader 
-                userName={`${user?.degree || "Giảng viên"} ${user?.fullName || "Cao cấp"}`} 
-                userId={`GV-${user?.username || "UNETI"}`}
-                minimal={true}
-                title="Lịch giảng dạy chi tiết"
-                onSemesterChange={setSelectedSemesterId}
-                selectedSemesterId={selectedSemesterId}
-            />
+        <div className="min-h-screen space-y-4 pb-20 w-full max-w-full p-4 md:p-6 animate-in fade-in duration-700 bg-[#fbfcfd]">
+
 
             {/* Compact Toolbar & Navigation */}
             <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-3 px-5 rounded-2xl border border-slate-100 shadow-sm">
@@ -412,10 +405,11 @@ export default function LecturerSchedulePage() {
                             <ChevronRight size={18} />
                         </button>
                     </div>
-                    
+
                     <Button
                         variant="ghost"
                         size="sm"
+                        onClick={() => window.print()}
                         className="h-10 w-10 p-0 rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-100 shadow-sm"
                     >
                         <Printer size={16} />
@@ -495,12 +489,12 @@ export default function LecturerSchedulePage() {
                                                 <div className="space-y-2">
                                                     {daySchedules.map((s, i) => {
                                                         // Extract nominal class name (the part after " - ")
-                                                        const nominalName = s.courseClass?.name?.includes(" - ") 
-                                                            ? s.courseClass?.name?.split(" - ")[1] 
-                                                            : s.courseClass?.name;
-                                                        const subjectName = s.courseClass?.name?.includes(" - ")
-                                                            ? s.courseClass?.name?.split(" - ")[0]
-                                                            : s.courseClass?.subject?.name;
+                                                        const parts = s.courseClass?.name?.split(" - ");
+                                                        const nominalName = parts?.length > 1 ? parts[1].trim() : s.courseClass?.name;
+                                                        const subjectName = parts?.length > 1 ? parts[0].trim() : s.courseClass?.subject?.name;
+
+                                                        // Fallback full name inside the block if something goes wrong
+                                                        const displayClassDetails = `${nominalName || "Lớp học phần"} ${s.courseClass?.semester?.code ? `[${s.courseClass.semester.code}]` : ""}`;
 
                                                         return (
                                                             <Link
@@ -508,23 +502,23 @@ export default function LecturerSchedulePage() {
                                                                 href={`/lecturer/courses/${s.courseClassId}`}
                                                                 className={cn(
                                                                     "block p-3.5 rounded-2xl border text-left transition-all group relative overflow-hidden",
-                                                                    s.type === 'EXAM' 
-                                                                        ? "bg-orange-50 border-orange-100 hover:shadow-orange-100" 
+                                                                    s.type === 'EXAM'
+                                                                        ? "bg-orange-50 border-orange-100 hover:shadow-orange-100"
                                                                         : (s.type === 'PRACTICE')
-                                                                        ? "bg-emerald-50 border-emerald-100 hover:shadow-emerald-100"
-                                                                        : "bg-white border-slate-100 hover:border-uneti-blue hover:shadow-lg active:scale-[0.98]"
+                                                                            ? "bg-emerald-50 border-emerald-100 hover:shadow-emerald-100"
+                                                                            : "bg-white border-slate-100 hover:border-uneti-blue hover:shadow-lg active:scale-[0.98]"
                                                                 )}
                                                             >
                                                                 <div className="space-y-1 relative z-10">
                                                                     <p className="text-[9px] font-black text-uneti-blue uppercase tracking-widest opacity-60 leading-none">
                                                                         {subjectName}
                                                                     </p>
-                                                                    <h4 className="text-[13px] font-black text-slate-800 leading-tight tracking-tight capitalize group-hover:text-uneti-blue transition-colors">
-                                                                        {nominalName || "Lớp học phần"}
+                                                                    <h4 className="text-[13px] font-black text-slate-800 leading-tight tracking-tight capitalize group-hover:text-uneti-blue transition-colors mt-0.5">
+                                                                        {displayClassDetails}
                                                                     </h4>
-                                                                    
+
                                                                     <div className="flex items-center gap-2 mt-2">
-                                                                        <span className="text-[9px] font-black text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded leading-none border border-slate-100">{s.courseClass?.code}</span>
+                                                                        <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded leading-none border border-slate-100">{s.courseClass?.code}</span>
                                                                     </div>
 
                                                                     <div className="space-y-1 pt-2 border-t border-slate-50/50 mt-2">

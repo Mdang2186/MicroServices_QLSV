@@ -159,28 +159,132 @@ function formatSemesterLabel(semester: any) {
   return semester?.name || semester?.code || "Học kỳ";
 }
 
-function getPlannedTotalPeriods(item: any) {
-  const sessionsPerWeek =
-    Number(item?.theorySessionsPerWeek || 0) +
-      Number(item?.practiceSessionsPerWeek || 0) || 1;
+function countTeachingWeeks(semester: any) {
+  if (!semester?.startDate || !semester?.endDate) return 15;
+  const start = new Date(semester.startDate);
+  const end = new Date(semester.endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+    return 15;
+  }
+  const diffDays =
+    Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+  return Math.max(1, Math.ceil(diffDays / 7));
+}
+
+function getBlockPlannedPeriods(
+  totalPeriods: number,
+  sessionsPerWeek: number,
+  periodsPerSession: number,
+  semester?: any,
+) {
+  const total = Number(totalPeriods || 0);
+  const sessions = Number(sessionsPerWeek || 0);
+  const periods = Number(periodsPerSession || 0);
+  const weeks = countTeachingWeeks(semester);
+
+  if (total <= 0 || sessions <= 0 || periods <= 0) {
+    return 0;
+  }
+
+  const requiredSessions = Math.max(1, Math.ceil(total / periods));
+  const availableSessions = Math.max(weeks, 1) * sessions;
+  return Math.min(requiredSessions, availableSessions) * periods;
+}
+
+function getPlannedTotalPeriods(item: any, semester?: any) {
   const periodsPerSession = Number(item?.periodsPerSession || 3);
-  return sessionsPerWeek * periodsPerSession * 15;
+  const totalPeriods =
+    Number(item?.theoryPeriods || 0) + Number(item?.practicePeriods || 0);
+  const sessionsPerWeek = Math.max(
+    Number(item?.theorySessionsPerWeek || 0),
+    Number(item?.practiceSessionsPerWeek || 0),
+    1,
+  );
+
+  return getBlockPlannedPeriods(
+    totalPeriods,
+    sessionsPerWeek,
+    periodsPerSession,
+    semester,
+  );
 }
 
 function getRequiredTotalPeriods(item: any) {
   return Number(item?.subject?.credits || 0) * 15;
 }
 
-function getValidationState(item: any) {
+function getValidationState(item: any, semester?: any) {
   const required = getRequiredTotalPeriods(item);
-  const planned = getPlannedTotalPeriods(item);
+  const planned = getPlannedTotalPeriods(item, semester);
   const matched = required > 0 && planned === required;
   const ratio = required > 0 ? Math.min((planned / required) * 100, 100) : 0;
   return { required, planned, matched, ratio };
 }
 
+function getDisplayedSessionsPerWeek(item: any) {
+  return (
+    Math.max(
+      Number(item?.theorySessionsPerWeek || 0),
+      Number(item?.practiceSessionsPerWeek || 0),
+      1,
+    ) || 1
+  );
+}
+
+function buildSessionsPerWeekPatch(item: any, nextValue: number) {
+  const normalized = Math.max(Number(nextValue || 0), 1);
+  const hasTheory = Number(item?.theoryPeriods || 0) > 0;
+  const hasPractice = Number(item?.practicePeriods || 0) > 0;
+
+  return {
+    theorySessionsPerWeek: hasTheory ? normalized : 0,
+    practiceSessionsPerWeek: hasPractice ? normalized : 0,
+  };
+}
+
 function normalizeExecutionPayload(payload: any) {
   return payload?.execution || payload || null;
+}
+
+function isSplitAdminClassCode(code?: string | null, cohort?: string | null) {
+  const normalizedCode = `${code || ""}`.trim().toUpperCase();
+  const normalizedCohort = `${cohort || ""}`.trim().toUpperCase();
+  if (!normalizedCode || !normalizedCohort) {
+    return false;
+  }
+
+  return (
+    normalizedCode.startsWith(`${normalizedCohort}-`) ||
+    normalizedCode.startsWith(`${normalizedCohort}_`)
+  );
+}
+
+function getVisibleExecutionItems(execution: any, cohort?: string | null) {
+  const items = Array.isArray(execution?.items) ? execution.items : [];
+  if (!items.length) {
+    return [];
+  }
+
+  const desiredSubjectIds = new Set(
+    (execution?.template?.items || [])
+      .filter(
+        (item: any) =>
+          Number(item?.conceptualSemester || 0) ===
+          Number(execution?.conceptualSemester || 0),
+      )
+      .map((item: any) => item.subjectId),
+  );
+
+  let filtered = items;
+  if (desiredSubjectIds.size > 0) {
+    filtered = filtered.filter((item: any) => desiredSubjectIds.has(item.subjectId));
+  }
+
+  const splitPreferred = filtered.filter((item: any) =>
+    isSplitAdminClassCode(item?.adminClass?.code, cohort),
+  );
+
+  return splitPreferred.length > 0 ? splitPreferred : filtered;
 }
 
 async function requestApi<T = any>(path: string, init?: RequestInit): Promise<T> {
@@ -255,6 +359,9 @@ export default function SemesterPlanScreen() {
   const [publishing, setPublishing] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [resettingSchedules, setResettingSchedules] = useState(false);
+  const [resettingClasses, setResettingClasses] = useState(false);
+  const [deletingClassId, setDeletingClassId] = useState<string | null>(null);
 
   const [activeStep, setActiveStep] = useState<Step>("KHUNG");
   const [majors, setMajors] = useState<any[]>([]);
@@ -317,12 +424,12 @@ export default function SemesterPlanScreen() {
   }, [subjects, searchQuery, assignedSubjectIds]);
 
   const coordinationItems = useMemo(
-    () => execution?.items || [],
-    [execution],
+    () => getVisibleExecutionItems(execution, selectedCohort),
+    [execution, selectedCohort],
   );
   const runningClasses = useMemo(
-    () => (execution?.items || []).filter((item: any) => item.generatedCourseClass),
-    [execution],
+    () => coordinationItems.filter((item: any) => item.generatedCourseClass),
+    [coordinationItems],
   );
   const selectedMajor = useMemo(
     () => majors.find((item) => item.id === selectedMajorId) || null,
@@ -566,11 +673,21 @@ export default function SemesterPlanScreen() {
         }),
       });
       const nextExecution = normalizeExecutionPayload(data);
+      const visibleItems = getVisibleExecutionItems(nextExecution, selectedCohort);
       setExecution(nextExecution);
       setActiveStep("DIEU_PHOI");
       toast.success(
-        `Đã tách ${nextExecution?.items?.length || 0} lớp học phần cho ${formatSemesterLabel(activeSemester)}.`,
+        `Đã tách ${visibleItems.length || 0} lớp học phần cho ${formatSemesterLabel(activeSemester)}.`,
       );
+      const alreadyScheduledCount =
+        visibleItems.filter(
+          (item: any) => (item?.generatedCourseClass?.sessions?.length || 0) > 0,
+        )?.length || 0;
+      if (alreadyScheduledCount > 0) {
+        toast.error(
+          `${alreadyScheduledCount} lớp học phần đã có lịch sẵn. Hệ thống sẽ giữ nguyên, không tạo chồng lịch mới.`,
+        );
+      }
     } catch (error: any) {
       toast.error(error?.message || "Không thể tạo lớp dự thảo.");
     } finally {
@@ -608,9 +725,24 @@ export default function SemesterPlanScreen() {
         method: "POST",
         headers: authHeaders,
       });
-      setExecution(data.execution || data);
+      const params = new URLSearchParams({
+        majorId: selectedMajorId,
+        cohort: selectedCohort,
+        semesterId: selectedSemesterId,
+      });
+      const refreshedExecution = await requestApi(
+        `/semester-plan/executions/current?${params.toString()}`,
+        { headers: authHeaders },
+      ).catch(() => null);
+
+      setExecution(normalizeExecutionPayload(refreshedExecution) || data.execution || data);
       setActiveStep("VAN_HANH");
       toast.success("Chốt kế hoạch và đẩy sinh viên thành công.");
+      if (Number(data?.summary?.alreadyScheduledClasses || 0) > 0) {
+        toast.error(
+          `Đã giữ nguyên ${data.summary.alreadyScheduledClasses} lớp đã có lịch, không xếp chồng thêm.`,
+        );
+      }
       if (data?.summary?.conflicts?.length) {
         toast.error(`Có ${data.summary.conflicts.length} lớp cần rà soát lại lịch hoặc giảng viên.`);
       }
@@ -618,6 +750,142 @@ export default function SemesterPlanScreen() {
       toast.error(error?.message || "Không thể chốt và mở lớp.");
     } finally {
       setProcessing(false);
+    }
+  };
+
+  const handleResetSchedulesFromScratch = async () => {
+    if (!selectedSemesterId) {
+      toast.error("Chưa chọn học kỳ để dựng lại lịch.");
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Hệ thống sẽ xóa toàn bộ lịch học thường của ${formatSemesterLabel(activeSemester)}, chuẩn hóa mặc định 1 buổi/tuần và dựng lại từ đầu. Tiếp tục?`,
+      )
+    ) {
+      return;
+    }
+
+    setResettingSchedules(true);
+    try {
+      const data = await requestApi("/semester-plan/reset-study-schedules", {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ semesterId: selectedSemesterId }),
+      });
+
+      const params = new URLSearchParams({
+        majorId: selectedMajorId,
+        cohort: selectedCohort,
+        semesterId: selectedSemesterId,
+      });
+      const executionData = await requestApi(
+        `/semester-plan/executions/current?${params.toString()}`,
+        { headers: authHeaders },
+      ).catch(() => null);
+
+      setExecution(normalizeExecutionPayload(executionData));
+      setActiveStep("VAN_HANH");
+
+      toast.success(
+        `Đã xóa ${Number(data?.clearedSessions || 0)} buổi và dựng lại ${Number(data?.rebuiltClasses || 0)} lớp học phần.`,
+      );
+
+      if (Number(data?.orphanCourseClasses || 0) > 0) {
+        toast.error(
+          `Còn ${data.orphanCourseClasses} lớp học phần ngoài kế hoạch nên chưa được dựng lại.`,
+        );
+      }
+
+      if (Array.isArray(data?.conflicts) && data.conflicts.length > 0) {
+        toast.error(
+          `Còn ${data.conflicts.length} lớp cần rà soát lại giảng viên hoặc phòng.`,
+        );
+      }
+    } catch (error: any) {
+      toast.error(error?.message || "Không thể xóa lịch cũ và dựng lại từ đầu.");
+    } finally {
+      setResettingSchedules(false);
+    }
+  };
+
+  const handleResetExecutionClasses = async () => {
+    if (!execution?.id) {
+      toast.error("Chưa có execution để xóa lớp đã tách.");
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Hệ thống sẽ xóa toàn bộ lớp học phần đã tách của ${formatSemesterLabel(activeSemester)} và trả về trạng thái điều phối để tách lại theo template hiện tại. Tiếp tục?`,
+      )
+    ) {
+      return;
+    }
+
+    setResettingClasses(true);
+    try {
+      const data = await requestApi(`/semester-plan/executions/${execution.id}/reset-classes`, {
+        method: "POST",
+        headers: authHeaders,
+      });
+      setExecution(normalizeExecutionPayload(data));
+      setActiveStep("DIEU_PHOI");
+      toast.success(
+        `Đã xóa ${Number(data?.removedClasses || 0)} lớp học phần và làm sạch ${Number(data?.removedItems || 0)} mục cũ ngoài template.`,
+      );
+      if (Array.isArray(data?.skippedProtectedClasses) && data.skippedProtectedClasses.length > 0) {
+        toast.error(
+          `${data.skippedProtectedClasses.length} lớp đã có điểm hoặc đã khóa điểm nên chưa thể xóa tự động.`,
+        );
+      }
+    } catch (error: any) {
+      toast.error(error?.message || "Không thể xóa lớp đã tách.");
+    } finally {
+      setResettingClasses(false);
+    }
+  };
+
+  const handleDeleteExecutionClass = async (item: any) => {
+    const classId = item?.generatedCourseClass?.id;
+    if (!classId) {
+      toast.error("Lớp học phần chưa được sinh.");
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Xóa lớp học phần ${item?.generatedCourseClass?.code || ""} để tạo lại từ execution item này?`,
+      )
+    ) {
+      return;
+    }
+
+    setDeletingClassId(classId);
+    try {
+      await requestApi(`/semester-plan/execution-classes/${classId}`, {
+        method: "DELETE",
+        headers: authHeaders,
+      });
+
+      const params = new URLSearchParams({
+        majorId: selectedMajorId,
+        cohort: selectedCohort,
+        semesterId: selectedSemesterId,
+      });
+      const executionData = await requestApi(
+        `/semester-plan/executions/current?${params.toString()}`,
+        { headers: authHeaders },
+      ).catch(() => null);
+
+      setExecution(normalizeExecutionPayload(executionData));
+      setActiveStep("DIEU_PHOI");
+      toast.success("Đã xóa lớp học phần để tạo lại.");
+    } catch (error: any) {
+      toast.error(error?.message || "Không thể xóa lớp học phần.");
+    } finally {
+      setDeletingClassId(null);
     }
   };
 
@@ -762,8 +1030,8 @@ export default function SemesterPlanScreen() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="mx-auto max-w-7xl">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        <div className="w-full">
           {activeStep === "KHUNG" ? (
             <div className="animate-in fade-in slide-in-from-bottom-2">
               <div className="mb-6 flex items-center justify-between gap-4">
@@ -933,6 +1201,14 @@ export default function SemesterPlanScreen() {
                     <ShieldCheck size={16} /> Cơ chế: Tách độc lập
                   </div>
                   <button
+                    onClick={handleResetExecutionClasses}
+                    disabled={!execution?.id || resettingClasses || processing}
+                    className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-5 py-2.5 text-xs font-black uppercase tracking-widest text-rose-700 transition-all hover:bg-rose-100 disabled:opacity-50"
+                  >
+                    {resettingClasses ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                    Xóa lớp đã tách
+                  </button>
+                  <button
                     onClick={handleExecuteZap}
                     disabled={!execution?.id || processing}
                     className="flex items-center gap-2 rounded-xl bg-[#004ea1] px-5 py-2.5 text-xs font-black uppercase tracking-widest text-white shadow-md transition-all hover:bg-blue-700 disabled:opacity-50"
@@ -952,13 +1228,15 @@ export default function SemesterPlanScreen() {
                         <th className="w-1/4 px-6 py-5">Giảng viên (Nhập tay)</th>
                         <th className="px-4 py-5 text-center">Buổi/Tuần</th>
                         <th className="px-4 py-5 text-center">Tiết/Buổi</th>
-                        <th className="w-48 px-6 py-5 text-right">Khớp Khung (15 Tuần)</th>
+                        <th className="w-48 px-6 py-5 text-right">
+                          Khớp Khung ({countTeachingWeeks(activeSemester)} Tuần)
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-sm">
                       {coordinationItems.length > 0 ? (
                         coordinationItems.map((item: any) => {
-                          const validation = getValidationState(item);
+                          const validation = getValidationState(item, activeSemester);
                           return (
                             <tr key={item.id} className="transition-colors hover:bg-blue-50/30">
                               <td className="px-6 py-5">
@@ -972,6 +1250,11 @@ export default function SemesterPlanScreen() {
                                   <span className="flex items-center gap-1 rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-slate-600">
                                     <Users size={10} /> {item.adminClass.code} ({item.expectedStudentCount} SV)
                                   </span>
+                                  {(item?.generatedCourseClass?.sessions?.length || 0) > 0 ? (
+                                    <span className="rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-700">
+                                      Đã có lịch
+                                    </span>
+                                  ) : null}
                                 </div>
                               </td>
                               <td className="px-6 py-5">
@@ -996,12 +1279,12 @@ export default function SemesterPlanScreen() {
                                   type="number"
                                   min="1"
                                   max="5"
-                                  value={Number(item.theorySessionsPerWeek || 0) + Number(item.practiceSessionsPerWeek || 0) || 1}
+                                  value={getDisplayedSessionsPerWeek(item)}
                                   onChange={(e) =>
-                                    updateDraft(item.id, {
-                                      theorySessionsPerWeek: Number(e.target.value),
-                                      practiceSessionsPerWeek: 0,
-                                    })
+                                    updateDraft(
+                                      item.id,
+                                      buildSessionsPerWeekPatch(item, Number(e.target.value)),
+                                    )
                                   }
                                   className="w-16 rounded-xl border border-slate-200 px-2 py-2.5 text-center text-xs font-bold outline-none focus:border-blue-500"
                                 />
@@ -1012,6 +1295,7 @@ export default function SemesterPlanScreen() {
                                   onChange={(e) => updateDraft(item.id, { periodsPerSession: Number(e.target.value) })}
                                   className="w-20 cursor-pointer rounded-xl border border-slate-200 px-2 py-2.5 text-center text-xs font-bold outline-none focus:border-blue-500"
                                 >
+                                  <option value={1}>1 Tiết</option>
                                   <option value={2}>2 Tiết</option>
                                   <option value={3}>3 Tiết</option>
                                   <option value={4}>4 Tiết</option>
@@ -1064,9 +1348,23 @@ export default function SemesterPlanScreen() {
                     Danh sách Lớp học phần đang vận hành
                   </h2>
                 </div>
-                <div className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-700">
-                  <div className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]" />
-                  Đang diễn ra ({formatSemesterLabel(activeSemester)})
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleResetSchedulesFromScratch}
+                    disabled={resettingSchedules || processing || !selectedSemesterId}
+                    className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-black uppercase tracking-widest text-amber-700 transition-all hover:bg-amber-100 disabled:opacity-60"
+                  >
+                    {resettingSchedules ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Trash2 size={14} />
+                    )}
+                    Xóa lịch cũ & dựng lại
+                  </button>
+                  <div className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-700">
+                    <div className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]" />
+                    Đang diễn ra ({formatSemesterLabel(activeSemester)})
+                  </div>
                 </div>
               </div>
 
@@ -1113,6 +1411,18 @@ export default function SemesterPlanScreen() {
                           </td>
                           <td className="px-6 py-5 text-right">
                             <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => handleDeleteExecutionClass(item)}
+                                disabled={deletingClassId === item?.generatedCourseClass?.id}
+                                className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-[10px] font-black uppercase text-rose-700 transition-all hover:bg-rose-100 disabled:opacity-60"
+                              >
+                                {deletingClassId === item?.generatedCourseClass?.id ? (
+                                  <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                  <Trash2 size={14} />
+                                )}
+                                Xóa lớp
+                              </button>
                               <button
                                 onClick={() => handleAttendance(item)}
                                 className="flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-[10px] font-black uppercase text-white shadow-md transition-all"

@@ -8,15 +8,19 @@ export class DashboardController {
   @Get("stats")
   getStats(
     @Query("semesterId") semesterId?: string,
+    @Query("date") date?: string,
     @Query("facultyId") facultyId?: string,
     @Query("majorId") majorId?: string,
     @Query("intake") intake?: string,
+    @Query("keyword") keyword?: string,
   ) {
     return this.dashboardService.getStats(
       semesterId,
+      date,
       facultyId,
       majorId,
       intake,
+      keyword,
     );
   }
 

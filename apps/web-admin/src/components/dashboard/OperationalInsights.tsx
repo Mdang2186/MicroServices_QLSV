@@ -7,9 +7,14 @@ interface OperationalInsightsProps {
 }
 
 export function OperationalInsights({ stats }: OperationalInsightsProps) {
+    const compactCurrency = new Intl.NumberFormat("vi-VN", {
+        notation: "compact",
+        maximumFractionDigits: 1,
+    });
+
     const items = [
         { label: "Sinh viên", value: stats?.semesterStudents || 0, icon: Users, sub: "Đang tham gia" },
-        { label: "Doanh thu", value: `${((stats?.semesterRevenue || 0) / 1e9).toFixed(1)}B`, icon: CircleDollarSign, sub: "Học phí dự kiến" },
+        { label: "Doanh thu", value: compactCurrency.format(stats?.semesterRevenue || 0), icon: CircleDollarSign, sub: "Học phí dự kiến" },
         { label: "Tỉ lệ Slots", value: `${stats?.registrationProgress || 0}%`, icon: BookOpen, sub: "Đăng ký học phần" },
         { label: "Vào điểm", value: `${stats?.gradeProgress || 0}%`, icon: GraduationCap, sub: "Tiến độ nhập điểm" },
     ];
@@ -23,10 +28,10 @@ export function OperationalInsights({ stats }: OperationalInsightsProps) {
             <div className="grid grid-cols-2 gap-4">
                 {items.map((insight, i) => (
                     <div key={i} className="bg-slate-50/50 p-4 rounded-3xl border border-slate-50 hover:bg-white hover:shadow-lg transition-all group">
-                        <insight.icon size={14} className="text-slate-300 group-hover:text-uneti-blue mb-2 transition-colors" />
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">{insight.label}</p>
-                        <p className="text-sm font-black text-slate-800 tabular-nums">{insight.value}</p>
-                        <p className="text-[8px] font-bold text-slate-300 uppercase tracking-tight mt-1 group-hover:text-slate-400 transition-colors">{insight.sub}</p>
+                        <insight.icon size={14} className="text-slate-400 group-hover:text-uneti-blue mb-2 transition-colors" />
+                        <p className="text-[9px] font-black text-slate-950 uppercase tracking-tighter">{insight.label}</p>
+                        <p className="text-sm font-black text-slate-950 tabular-nums">{insight.value}</p>
+                        <p className="text-[8px] font-bold text-slate-900 font-black uppercase tracking-tight mt-1 transition-colors">{insight.sub}</p>
                     </div>
                 ))}
             </div>

@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import { StudentService } from "@/services/student.service";
 import api from "@/lib/api";
 import { Wallet, Check, AlertCircle } from "lucide-react";
-import { getStudentProfileId, getStudentUserId, readStudentSessionUser } from "@/lib/student-session";
+import { resolveCurrentStudentContext } from "@/lib/current-student";
 
 export default function TuitionPage() {
     const [studentId, setStudentId] = useState("");
@@ -16,18 +16,8 @@ export default function TuitionPage() {
 
     useEffect(() => {
         const resolveStudentId = async () => {
-            const user = readStudentSessionUser();
-            const userId = getStudentUserId(user);
-            const profileId = getStudentProfileId(user);
-
-            if (profileId) {
-                setStudentId(profileId);
-                return;
-            }
-
-            if (!userId) return;
-            const profile = await StudentService.getProfile(userId);
-            if (profile?.id) setStudentId(profile.id);
+            const context = await resolveCurrentStudentContext();
+            if (context.studentId) setStudentId(context.studentId);
         };
 
         resolveStudentId().catch(console.error);
