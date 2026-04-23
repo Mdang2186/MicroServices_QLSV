@@ -28,6 +28,16 @@ import { OperationalInsights } from "@/components/dashboard/OperationalInsights"
 import { FacultyChart } from "@/components/dashboard/FacultyChart";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 
+async function readJsonSafely(response: Response) {
+    const rawText = await response.text();
+    if (!rawText) return null;
+    try {
+        return JSON.parse(rawText);
+    } catch {
+        return null;
+    }
+}
+
 export default function AdminDashboard() {
     const [user, setUser] = useState<any>(null);
     const [stats, setStats] = useState<any>(null);
@@ -42,16 +52,37 @@ export default function AdminDashboard() {
     }, []);
 
     useEffect(() => {
+        const controller = new AbortController();
         setLoading(true);
         const params = new URLSearchParams();
         if (selectedDate) params.append("date", selectedDate);
         if (selectedFacultyId && selectedFacultyId !== "all") params.append("facultyId", selectedFacultyId);
 
-        fetch(`/api/students/dashboard/stats?${params.toString()}`)
-            .then(r => r.json())
-            .then(setStats)
-            .catch(console.error)
-            .finally(() => setLoading(false));
+        fetch(`/api/students/dashboard/stats?${params.toString()}`, {
+            signal: controller.signal,
+        })
+            .then(async (response) => {
+                const payload = await readJsonSafely(response);
+                if (!response.ok || !payload) {
+                    throw new Error(
+                        (typeof payload === "object" && payload?.message) ||
+                        "Không thể tải dữ liệu dashboard.",
+                    );
+                }
+                setStats(payload);
+            })
+            .catch((error) => {
+                if (error?.name === "AbortError") return;
+                console.error(error);
+                setStats(null);
+            })
+            .finally(() => {
+                if (!controller.signal.aborted) {
+                    setLoading(false);
+                }
+            });
+
+        return () => controller.abort();
     }, [selectedDate, selectedFacultyId]);
 
     const adminStats = [

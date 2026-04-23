@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useDeferredValue } from "react";
 import Cookies from "js-cookie";
 import {
   LayoutList,
@@ -53,6 +53,7 @@ export default function RedesignedStaffCoursesPage() {
   const [faculties, setFaculties] = useState<any[]>([]);
   const [cohorts, setCohorts] = useState<any[]>([]);
   const [majors, setMajors] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<any[]>([]);
   const [rooms, setRooms] = useState<any[]>([]);
   const [lecturers, setLecturers] = useState<any[]>([]);
   
@@ -63,134 +64,131 @@ export default function RedesignedStaffCoursesPage() {
 
   // --- Filtering & UI State ---
   const [selectedCohort, setSelectedCohort] = useState<string>("all");
-  const [selectedSemesterId, setSelectedSemesterId] = useState<string>("all");
   const [selectedFacultyId, setSelectedFacultyId] = useState<string>("all");
   const [selectedMajorId, setSelectedMajorId] = useState<string>("all");
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCourseClassId, setSelectedCourseClassId] = useState<string | null>(null);
-  const [showWizard, setShowWizard] = useState(false);
-
-  const cohortSemesters = useMemo(() => {
-     if (selectedCohort === "all" || !selectedCohort) return semesters;
-     const targetCohort = cohorts.find(c => c.code === selectedCohort);
-     if (!targetCohort) return semesters;
-
-     // Sort semesters descending immediately
-     const sortedSemesters = [...semesters].sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
-     
-     // Filter those where start year falls in the cohort learning duration
-     return sortedSemesters.filter(s => {
-       const startYr = new Date(s.startDate).getFullYear();
-       return startYr >= targetCohort.startYear && startYr <= (targetCohort.endYear || targetCohort.startYear + 4);
-     });
-  }, [semesters, selectedCohort, cohorts]);
+  const [showCreationWizard, setShowCreationWizard] = useState(false);
+  const deferredSearchTerm = useDeferredValue(searchTerm.trim());
 
   const filteredMajors = useMemo(() => {
     if (selectedFacultyId === "all") return majors;
     return majors.filter(m => m.facultyId === selectedFacultyId);
   }, [majors, selectedFacultyId]);
 
-  // Frontend local search on current page data
-  const filteredClasses = useMemo(() => {
-    let list = [...courseClasses];
-    if (searchTerm) {
-      const s = searchTerm.toLowerCase();
-      list = list.filter(c =>
-        (c.code && c.code.toLowerCase().includes(s)) ||
-        (c.name && c.name.toLowerCase().includes(s)) ||
-        (c.subject?.name && c.subject.name.toLowerCase().includes(s)) ||
-        (c.subject?.code && c.subject.code.toLowerCase().includes(s)) ||
-        (c.lecturer?.fullName && c.lecturer.fullName.toLowerCase().includes(s)) ||
-        (c.semester?.name && c.semester.name.toLowerCase().includes(s)) ||
-        (c.status && c.status.toLowerCase().includes(s))
-      );
-    }
-    return list;
-  }, [courseClasses, searchTerm]);
+  const filteredDepartments = useMemo(() => {
+    if (selectedFacultyId === "all") return departments;
+    return departments.filter(
+      d => d.facultyId === selectedFacultyId || d.faculty?.id === selectedFacultyId,
+    );
+  }, [departments, selectedFacultyId]);
+
+  const operationalSemester = useMemo(() => {
+    const sortedSemesters = [...semesters].sort(
+      (left, right) =>
+        new Date(right.startDate).getTime() - new Date(left.startDate).getTime(),
+    );
+    return sortedSemesters.find((semester: any) => semester.isCurrent) || sortedSemesters[0] || null;
+  }, [semesters]);
+  const isInitialLoading =
+    semesters.length === 0 &&
+    faculties.length === 0 &&
+    majors.length === 0 &&
+    departments.length === 0 &&
+    cohorts.length === 0;
 
   // --- Fetching ---
-  const fetchData = useCallback(async () => {
+  const fetchMasters = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (selectedSemesterId !== "all") params.append("semesterId", selectedSemesterId);
-      if (selectedFacultyId !== "all") params.append("facultyId", selectedFacultyId);
-      if (selectedMajorId !== "all") params.append("majorId", selectedMajorId);
-      if (selectedCohort !== "all") params.append("cohort", selectedCohort);
-      params.append("page", currentPage.toString());
-      params.append("limit", "50");
-
-      const [semRes, classRes, majorRes, roomRes, lectRes, facRes, cohortRes] = await Promise.all([
+      const [semRes, majorRes, deptRes, roomRes, lectRes, facRes, cohortRes] = await Promise.all([
         fetch(API("/semesters"), { headers }),
-        fetch(API(`/courses?${params.toString()}`), { headers }),
         fetch(API("/courses/majors"), { headers }),
+        fetch("/api/departments", { headers }),
         fetch(API("/rooms"), { headers }),
         fetch(API("/courses/lecturers/by-faculty"), { headers }),
         fetch(API("/courses/faculties"), { headers }),
         fetch(API("/courses/cohorts"), { headers })
       ]);
 
-      if (semRes.ok) {
-        const semData = await semRes.json();
-        setSemesters(semData);
-        if (semData.length > 0) {
-           const sorted = [...semData].sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
-           const current = sorted.find((s: any) => s.isCurrent) || sorted[0];
-
-           if (!selectedSemesterId && current) {
-               setSelectedSemesterId(current.id);
-           } else if (
-               selectedSemesterId !== "all" &&
-               selectedSemesterId &&
-               !semData.some((s: any) => s.id === selectedSemesterId)
-           ) {
-               setSelectedSemesterId(current?.id || "all");
-           }
-        }
-      }
-      if (classRes.ok) {
-          const resMap = await classRes.json();
-          setCourseClasses(resMap.data);
-          setTotalPages(resMap.metadata.lastPage);
-          setTotalItems(resMap.metadata.total);
-      }
+      if (semRes.ok) setSemesters(await semRes.json());
       if (majorRes.ok) setMajors(await majorRes.json());
+      if (deptRes.ok) setDepartments(await deptRes.json());
       if (roomRes.ok) setRooms(await roomRes.json());
       if (lectRes.ok) setLecturers(await lectRes.json());
       if (facRes.ok) setFaculties(await facRes.json());
       if (cohortRes.ok) setCohorts(await cohortRes.json());
     } catch (err) {
-      console.error("Fetch failed", err);
+      console.error("Failed to fetch master data", err);
     } finally {
       setLoading(false);
     }
-  }, [headers, selectedSemesterId, selectedFacultyId, selectedMajorId, selectedCohort, currentPage]);
+  }, [headers]);
+
+  const fetchClasses = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedFacultyId !== "all") params.append("facultyId", selectedFacultyId);
+      if (selectedMajorId !== "all") params.append("majorId", selectedMajorId);
+      if (selectedDepartmentId !== "all") params.append("departmentId", selectedDepartmentId);
+      if (selectedCohort !== "all") params.append("cohort", selectedCohort);
+      if (deferredSearchTerm) params.append("search", deferredSearchTerm);
+      params.append("page", currentPage.toString());
+      params.append("limit", "50");
+
+      const classRes = await fetch(API(`/courses?${params.toString()}`), { headers });
+      if (classRes.ok) {
+          const resMap = await classRes.json();
+          setCourseClasses(resMap.data || []);
+          setTotalPages(resMap.metadata?.lastPage || 1);
+          setTotalItems(resMap.metadata?.total || 0);
+      }
+    } catch (err) {
+      console.error("Fetch course classes failed", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    headers,
+    selectedFacultyId,
+    selectedMajorId,
+    selectedDepartmentId,
+    selectedCohort,
+    currentPage,
+    deferredSearchTerm,
+  ]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    fetchMasters();
+  }, [fetchMasters]);
+
+  useEffect(() => {
+    fetchClasses();
+  }, [fetchClasses]);
 
   const handleBulkAutomate = async () => {
-    if (!selectedSemesterId || selectedSemesterId === 'all') {
-        alert("Vui lòng chọn 1 Học kỳ cụ thể để chạy xếp lịch thông minh.");
+    if (!operationalSemester?.id) {
+        alert("Chưa có học kỳ khả dụng để chạy xếp lịch.");
         return;
     }
-    if (!confirm(`Xếp lịch tự động toàn bộ cho Học kỳ đã chọn?`)) return;
+    if (!confirm(`Xếp lịch tự động toàn bộ cho ${operationalSemester.name}?`)) return;
     setLoading(true);
     try {
         const res = await fetch(API("/semester-plan/bulk-create"), {
             method: "POST",
             headers: { "Content-Type": "application/json", ...headers },
-            body: JSON.stringify({ semesterId: selectedSemesterId })
+            body: JSON.stringify({ semesterId: operationalSemester.id })
         });
         if (res.ok) {
             alert("Đã hoàn tất tiến trình xếp lịch thông minh.");
-            fetchData();
+            fetchClasses();
         }
     } catch (err) { console.error(err); } finally { setLoading(false); }
   };
 
-  if (loading && semesters.length === 0) return (
+  if (isInitialLoading) return (
     <div className="h-screen flex items-center justify-center bg-white">
       <div className="flex flex-col items-center gap-3">
         <Loader2 className="w-8 h-8 text-uneti-blue animate-spin" />
@@ -220,10 +218,19 @@ export default function RedesignedStaffCoursesPage() {
              <button onClick={handleBulkAutomate} className="flex items-center gap-2 px-6 py-2.5 bg-slate-50 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all border border-slate-100">
                 <Zap size={13} className="text-uneti-blue" /> Xếp lịch thông minh
              </button>
-             <button onClick={() => setShowWizard(true)} className="flex items-center gap-2 px-6 py-2.5 bg-uneti-blue text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all shadow-lg shadow-uneti-blue/20">
-                <Plus size={14} strokeWidth={3} /> Tạo Học phần mới
+             <button
+               onClick={() => setShowCreationWizard(true)}
+               className="flex items-center gap-2 px-6 py-2.5 bg-uneti-blue text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all shadow-lg shadow-uneti-blue/20"
+             >
+                <Plus size={14} strokeWidth={3} /> Tạo lớp học phần
              </button>
-             <button onClick={() => { setCurrentPage(1); fetchData(); }} className="w-10 h-10 flex items-center justify-center bg-slate-50 text-slate-400 hover:bg-slate-100 transition-all rounded-xl border border-slate-100">
+             <button
+               onClick={() => {
+                 if (currentPage !== 1) setCurrentPage(1);
+                 else fetchClasses();
+               }}
+               className="w-10 h-10 flex items-center justify-center bg-slate-50 text-slate-400 hover:bg-slate-100 transition-all rounded-xl border border-slate-100"
+             >
                 <RefreshCw size={16} />
              </button>
           </div>
@@ -235,7 +242,6 @@ export default function RedesignedStaffCoursesPage() {
               <span className="text-[9px] font-black text-uneti-blue uppercase tracking-widest">Khóa SV:</span>
               <select className="bg-transparent border-none text-[10px] font-black text-slate-700 focus:ring-0 outline-none cursor-pointer" value={selectedCohort} onChange={e => {
                   setSelectedCohort(e.target.value);
-                  setSelectedSemesterId("all");
                   setCurrentPage(1);
               }}>
                  <option value="all">TẤT CẢ KHÓA</option>
@@ -244,21 +250,11 @@ export default function RedesignedStaffCoursesPage() {
            </div>
 
            <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-100">
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Học kỳ:</span>
-              <select className="bg-transparent border-none text-[10px] font-black text-slate-700 focus:ring-0 outline-none cursor-pointer max-w-[150px]" value={selectedSemesterId} onChange={e => {
-                  setSelectedSemesterId(e.target.value);
-                  setCurrentPage(1);
-              }}>
-                 <option value="all">TẤT CẢ KỲ HỌC</option>
-                 {cohortSemesters.map(s => <option key={s.id} value={s.id}>{s.name.toUpperCase()}</option>)}
-              </select>
-           </div>
-
-           <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-100">
               <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Khoa:</span>
               <select className="bg-transparent border-none text-[10px] font-black text-slate-700 focus:ring-0 outline-none cursor-pointer max-w-[150px]" value={selectedFacultyId} onChange={e => {
                   setSelectedFacultyId(e.target.value);
                   setSelectedMajorId("all");
+                  setSelectedDepartmentId("all");
                   setCurrentPage(1);
               }}>
                  <option value="all">TẤT CẢ KHOA</option>
@@ -277,14 +273,28 @@ export default function RedesignedStaffCoursesPage() {
               </select>
            </div>
 
+           <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-100">
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Bộ môn:</span>
+              <select className="bg-transparent border-none text-[10px] font-black text-slate-700 focus:ring-0 outline-none cursor-pointer max-w-[180px]" value={selectedDepartmentId} onChange={e => {
+                  setSelectedDepartmentId(e.target.value);
+                  setCurrentPage(1);
+              }}>
+                 <option value="all">TẤT CẢ BỘ MÔN</option>
+                 {filteredDepartments.map(d => <option key={d.id} value={d.id}>{d.name.toUpperCase()}</option>)}
+              </select>
+           </div>
+
 
            <div className="flex-1 min-w-[200px] relative group">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-uneti-blue transition-colors" size={14} />
               <input
                 type="text"
                 value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                placeholder="Tìm mã môn, tên môn học, mã lớp học phần..."
+                onChange={e => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
+                placeholder="Tìm mã lớp, mã môn, tên môn, giảng viên, khoa, ngành, bộ môn..."
                 className="w-full pl-12 pr-6 py-2.5 bg-white border border-slate-100 rounded-xl text-[10px] font-bold placeholder:text-slate-300 focus:ring-4 focus:ring-uneti-blue/5 focus:border-uneti-blue transition-all outline-none uppercase"
               />
            </div>
@@ -298,7 +308,7 @@ export default function RedesignedStaffCoursesPage() {
                  <h2 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Danh sách vận hành hiện tại</h2>
                  <div className="h-4 w-px bg-slate-200" />
                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                    Hiển thị {filteredClasses.length} / {totalItems} kết quả
+                    Hiển thị {courseClasses.length} / {totalItems} kết quả
                  </p>
               </div>
           </div>
@@ -317,7 +327,7 @@ export default function RedesignedStaffCoursesPage() {
 
                {/* LIST ITEMS */}
                <div className="space-y-1 py-1">
-                {filteredClasses.map(c => (
+                {courseClasses.map(c => (
                     <div 
                         key={c.id}
                         onClick={() => setSelectedCourseClassId(c.id)}
@@ -358,11 +368,11 @@ export default function RedesignedStaffCoursesPage() {
                 ))}
                </div>
 
-               {filteredClasses.length === 0 && !loading && (
+               {courseClasses.length === 0 && !loading && (
                     <div className="py-40 flex flex-col items-center opacity-30 text-center">
                         <Layers size={64} className="text-slate-200 mb-6" strokeWidth={1} />
                         <p className="text-[11px] font-black uppercase tracking-[0.4em]">Danh sách vận hành trống</p>
-                        <p className="text-[10px] font-bold mt-2 uppercase tracking-widest text-slate-400 italic">Dữ liệu đang được đồng bộ hoặc lọc sai điều kiện</p>
+                        <p className="text-[10px] font-bold mt-2 uppercase tracking-widest text-slate-400 italic">Không có lớp học phần khớp bộ lọc hoặc từ khóa tìm kiếm</p>
                     </div>
                )}
           </div>
@@ -420,24 +430,29 @@ export default function RedesignedStaffCoursesPage() {
           <CourseClassDetailDrawer
             courseClass={courseClasses.find(c => c.id === selectedCourseClassId)}
             onClose={() => setSelectedCourseClassId(null)}
-            onRefresh={() => { fetchData(); setSelectedCourseClassId(null); }}
+            onRefresh={() => { fetchClasses(); setSelectedCourseClassId(null); }}
             headers={headers}
             rooms={rooms}
             lecturers={lecturers}
           />
       )}
 
-      {showWizard && (
-          <CourseClassCreationWizard
-            onClose={() => setShowWizard(false)}
-            onSuccess={() => { fetchData(); setShowWizard(false); }}
-            headers={headers}
-            semesters={semesters}
-            majors={majors}
-            rooms={rooms}
-            lecturers={lecturers}
-          />
-      )}
+      <CourseClassCreationWizard
+        open={showCreationWizard}
+        onClose={() => setShowCreationWizard(false)}
+        onSuccess={async () => {
+          await fetchClasses();
+          setShowCreationWizard(false);
+        }}
+        headers={headers}
+        semesters={semesters}
+        faculties={faculties}
+        majors={majors}
+        departments={departments}
+        cohorts={cohorts}
+        rooms={rooms}
+        lecturers={lecturers}
+      />
 
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap');

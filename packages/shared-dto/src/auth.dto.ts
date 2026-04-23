@@ -30,9 +30,12 @@ export interface ChangePasswordDto {
 
 export interface ForgotPasswordDto {
     email: string;
+    clientBaseUrl?: string;
 }
 
 export interface ResetPasswordDto {
-    token: string;
+    token?: string;
+    sessionToken?: string;
+    otp?: string;
     newPassword: string;
 }

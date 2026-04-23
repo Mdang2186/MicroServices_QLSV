@@ -176,18 +176,6 @@ export default function Sidebar({
                         {!isCollapsed && <span className="text-[13px] truncate">Đăng xuất</span>}
                     </button>
 
-                    {/* App Version Info */}
-                    {!isCollapsed && (
-                        <div className="mt-3 px-3 py-2.5 rounded-xl bg-white border border-slate-100 animate-in fade-in duration-500">
-                            <div className="flex items-center gap-2 mb-1">
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                    System v2.1
-                                </span>
-                            </div>
-                            <p className="text-[10px] font-bold text-slate-600 tracking-tight">Compact Design</p>
-                        </div>
-                    )}
                 </div>
             </aside>
         </>

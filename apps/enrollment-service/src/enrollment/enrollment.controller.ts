@@ -54,6 +54,11 @@ export class EnrollmentController {
         return this.enrollmentService.switchClass(body.studentId, body.oldClassId, body.newClassId);
     }
 
+    @Get('registration-overview/:studentId')
+    getRegistrationOverview(@Param('studentId') studentId: string) {
+        return this.enrollmentService.getRegistrationOverview(studentId);
+    }
+
     @Get('semesters')
     getSemesters() {
         return this.enrollmentService.getSemesters();
@@ -126,8 +131,15 @@ export class EnrollmentController {
     })
     bulkMarkAttendance(@Body() body: {
         date: string;
+        sessionId?: string;
+        classId?: string;
+        method?: string;
         attendances: { enrollmentId: string; status: string; note?: string }[]
     }) {
-        return this.enrollmentService.bulkMarkAttendance(body.date, body.attendances);
+        return this.enrollmentService.bulkMarkAttendance(body.date, body.attendances, {
+            sessionId: body.sessionId,
+            classId: body.classId,
+            method: body.method,
+        });
     }
 }

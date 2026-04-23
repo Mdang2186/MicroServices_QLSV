@@ -12,10 +12,13 @@ export function normalizeSqlServerUrl(url?: string | null) {
   };
 
   if (/;\s*encrypt\s*=/i.test(normalized)) {
-    normalized = normalized.replace(/;\s*encrypt\s*=\s*[^;]*/i, ";encrypt=false");
+    normalized = normalized.replace(
+      /;\s*encrypt\s*=\s*[^;]*/i,
+      ";encrypt=DANGER_PLAINTEXT",
+    );
   } else {
     ensureTrailingSemicolon();
-    normalized += "encrypt=false;";
+    normalized += "encrypt=DANGER_PLAINTEXT;";
   }
 
   if (!/;\s*trustServerCertificate\s*=/i.test(normalized)) {

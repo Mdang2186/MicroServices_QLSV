@@ -995,10 +995,8 @@ export default function ClassSetupPanel({
                   <p className="font-black uppercase tracking-wider">
                     Quy trình sau điểm danh:
                   </p>
-                  <p>• SV vắng thi: Điểm thi 1 = 0, chờ lịch thi lại</p>
-                  <p>
-                    • Thi lại vẫn không đạt (TK2 &lt; 5.0): Học lại học phần
-                  </p>
+                  <p>• SV vắng hoặc trễ giờ thi: đưa vào danh sách thi lại</p>
+                  <p>• Thi lại không đạt: Học lại học phần</p>
                   <p>• Không đăng ký học lại: Nợ tín chỉ học phần này</p>
                 </div>
               </div>

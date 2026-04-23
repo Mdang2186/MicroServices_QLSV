@@ -14,6 +14,21 @@ export default function QRScannerPage() {
     const [scanResult, setScanResult] = useState<{ success: boolean; message: string } | null>(null);
     const [isScanning, setIsScanning] = useState(true);
     const [studentId, setStudentId] = useState("");
+    const [gpsStatus, setGpsStatus] = useState<"idle" | "locating" | "ready" | "error">("idle");
+
+    const getCurrentPosition = () =>
+        new Promise<GeolocationPosition>((resolve, reject) => {
+            if (typeof navigator === "undefined" || !navigator.geolocation) {
+                reject(new Error("Thiết bị không hỗ trợ định vị."));
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0,
+            });
+        });
 
     useEffect(() => {
         resolveCurrentStudentContext()
@@ -40,14 +55,33 @@ export default function QRScannerPage() {
                     throw new Error("Mã QR không hợp lệ của hệ thống.");
                 }
 
+                let position: GeolocationPosition | null = null;
+                if (payload.hasLocationAnchor !== false) {
+                    setGpsStatus("locating");
+                    position = await getCurrentPosition();
+                    setGpsStatus("ready");
+                }
+
                 // Connect to WS and send scan request
-                const socket = io("http://localhost:3004");
+                const socket = io("http://localhost:3004", {
+                    transports: ['websocket'],
+                    reconnectionAttempts: 3,
+                });
+                
+                socket.on('connect_error', (err) => {
+                    console.error("Student portal socket error:", err);
+                    setScanResult({ success: false, message: "Không thể kết nối đến máy chủ điểm danh." });
+                });
                 
                 socket.on('connect', () => {
                     socket.emit('scan_qr', {
                         sessionId: payload.sessionId,
                         otp: payload.otp,
-                        studentId
+                        studentId,
+                        latitude: position?.coords.latitude,
+                        longitude: position?.coords.longitude,
+                        accuracyMeters: position?.coords.accuracy,
+                        deviceInfo: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 200) : undefined,
                     });
                 });
 
@@ -65,6 +99,7 @@ export default function QRScannerPage() {
                 }, 10000);
 
             } catch (error: any) {
+                setGpsStatus("error");
                 setScanResult({ success: false, message: error.message || "Không thể nhận diện mã QR" });
             }
         }, (error) => {
@@ -95,10 +130,18 @@ export default function QRScannerPage() {
                                  <Camera size={24} />
                              </div>
                              <h2 className="text-base font-black text-slate-800 uppercase tracking-tight text-center">Đưa mã QR vào khung hình</h2>
-                             <p className="text-[11px] font-bold text-slate-400 mt-2 text-center leading-relaxed">Hướng camera thiết bị về phía QR Code do Giảng viên cung cấp trên màn hình.</p>
+                             <p className="text-[11px] font-bold text-slate-400 mt-2 text-center leading-relaxed">Hướng camera thiết bị về phía QR Code do Giảng viên cung cấp trên màn hình. Hệ thống sẽ dùng GPS để xác thực bạn đang ở đúng lớp học.</p>
                          </div>
 
                          <div className="w-full bg-slate-900 rounded-2xl overflow-hidden relative shadow-inner aspect-square" id="reader">
+                         </div>
+
+                         <div className="mt-4 w-full rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-[11px] font-bold text-indigo-700">
+                             {gpsStatus === "locating"
+                                 ? "Đang lấy vị trí hiện tại của bạn..."
+                                 : gpsStatus === "ready"
+                                     ? "Vị trí thiết bị sẵn sàng để xác thực điểm danh."
+                                     : "Bật GPS trước khi quét để điểm danh thành công."}
                          </div>
                     </>
                 ) : (
@@ -121,7 +164,7 @@ export default function QRScannerPage() {
                             </>
                         )}
 
-                        <Button onClick={() => { setScanResult(null); setIsScanning(true); }} className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black uppercase tracking-wider text-xs transition-all shadow-lg shadow-indigo-200">
+                        <Button onClick={() => { setScanResult(null); setIsScanning(true); setGpsStatus("idle"); }} className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black uppercase tracking-wider text-xs transition-all shadow-lg shadow-indigo-200">
                             Quét lại mã khác
                         </Button>
                     </div>

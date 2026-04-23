@@ -126,4 +126,59 @@ export class TrainingResultService {
         rating: item.classification,
       }));
   }
+
+  async getAdminClassTrainingResults(adminClassId: string, semesterId?: string) {
+    const students = await this.prisma.student.findMany({
+      where: { adminClassId, status: "STUDYING" },
+      select: {
+        id: true,
+        studentCode: true,
+        fullName: true,
+      },
+      orderBy: { studentCode: 'asc' },
+    });
+
+    const studentIds = students.map(s => s.id);
+    const scores = await this.prisma.trainingScore.findMany({
+      where: {
+        studentId: { in: studentIds },
+        ...(semesterId ? { semesterId } : {}),
+      },
+    });
+
+    return students.map(student => {
+      const studentScores = scores.filter(s => s.studentId === student.id);
+      return {
+        ...student,
+        scores: studentScores.map(score => ({
+          semesterId: score.semesterId,
+          score: score.score,
+          classification: score.classification,
+        })),
+      };
+    });
+  }
+
+  async batchSaveTrainingResults(data: { studentId: string; semesterId: string; score: number; classification: string }[]) {
+     const promises = data.map(item => this.prisma.trainingScore.upsert({
+       where: {
+         studentId_semesterId: {
+           studentId: item.studentId,
+           semesterId: item.semesterId,
+         }
+       },
+       update: {
+         score: item.score,
+         classification: item.classification,
+       },
+       create: {
+         studentId: item.studentId,
+         semesterId: item.semesterId,
+         score: item.score,
+         classification: item.classification,
+       }
+     }));
+     await this.prisma.$transaction(promises);
+     return { success: true, updatedCount: data.length };
+  }
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { usePathname } from "next/navigation";
 import Footer from "./Footer";
 import { SidebarProvider, useSidebar } from "./SidebarContext";
 
@@ -12,6 +13,8 @@ interface DashboardLayoutProps {
 
 function LayoutContent({ children, sidebar, header }: DashboardLayoutProps) {
     const { isCollapsed } = useSidebar();
+    const pathname = usePathname();
+    const isGradeDetailWorkspace = /^\/(staff|lecturer)\/grades\/[^/]+$/.test(pathname || "");
 
     return (
         <div className="flex h-screen overflow-hidden bg-[#f8fafc] text-slate-800 font-sans">
@@ -20,11 +23,21 @@ function LayoutContent({ children, sidebar, header }: DashboardLayoutProps) {
             <div className={`flex-1 flex flex-col min-w-0 overflow-hidden relative transition-all duration-300 bg-white`}>
                 {header}
 
-                <main className="flex-1 overflow-y-auto p-4 lg:p-6 scroll-smooth bg-white">
-                    <div className="max-w-full mx-auto min-h-[calc(100vh-180px)] animate-in fade-in duration-700">
+                <main
+                    className={`flex-1 scroll-smooth bg-white ${
+                        isGradeDetailWorkspace
+                            ? "min-h-0 overflow-hidden p-2 lg:p-3"
+                            : "overflow-y-auto p-4 lg:p-6"
+                    }`}
+                >
+                    <div
+                        className={`max-w-full mx-auto animate-in fade-in duration-700 ${
+                            isGradeDetailWorkspace ? "h-full min-h-0" : "min-h-[calc(100vh-180px)]"
+                        }`}
+                    >
                         {children}
                     </div>
-                    <Footer />
+                    {isGradeDetailWorkspace ? null : <Footer />}
                 </main>
             </div>
         </div>

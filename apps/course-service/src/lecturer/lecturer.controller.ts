@@ -38,4 +38,14 @@ export class LecturerController {
   async delete(@Param('id') id: string) {
     return this.lecturerService.delete(id);
   }
+
+  @Get('user/:userId')
+  async findByUserId(@Param('userId') userId: string) {
+    return this.lecturerService.findByUserId(userId);
+  }
+
+  @Get(':idOrCode')
+  async findOne(@Param('idOrCode') idOrCode: string) {
+    return this.lecturerService.findOne(idOrCode);
+  }
 }

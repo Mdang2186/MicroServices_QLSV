@@ -1,0 +1,80 @@
+ERROR CAUGHT IN 
+GETSTATS:
+At line:1 char:1
++ & "C:\Program 
+Files\nodejs/node.exe" 
+"C:\Users\Admin\AppData\Roaming\ 
+...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~
+    + CategoryInfo          : Not 
+   Specified: (ERROR CAUGHT IN G  
+  ETSTATS::String) [], RemoteEx   
+ ception
+    + FullyQualifiedErrorId : Nat 
+   iveCommandError
+ 
+PrismaClientValidationError: 
+Invalid 
+`this.prisma.student.count()` 
+invocation in
+D:\KHOA_LUAN_TOT_NGHIEP\MicroServi
+ces_QLSV\apps\student-service\src\
+dashboard\dashboard.service.ts:274
+:29
+
+  271 this.prisma.student.count({
+  272   where: { ...studentWhere, 
+gpa: { gte: 2.0, lt: 2.5 } },
+  273 }),
+→ 274 this.prisma.student.count({
+        select: {
+          _count: {
+            select: {
+              _all: true
+            }
+          }
+        },
+        where: {
+          gpa: {
+            lt: 2,
+      +     not: Float
+          }
+        }
+      })
+
+Argument `not` must not be null.
+    at wn (D:\KHOA_LUAN_TOT_NGHIEP
+\MicroServices_QLSV\node_modules\@
+prisma\client\runtime\library.js:2
+9:1363)
+    at $n.handleRequestError (D:\K
+HOA_LUAN_TOT_NGHIEP\MicroServices_
+QLSV\node_modules\@prisma\client\r
+untime\library.js:121:6958)
+    at 
+$n.handleAndLogRequestError (D:\KH
+OA_LUAN_TOT_NGHIEP\MicroServices_Q
+LSV\node_modules\@prisma\client\ru
+ntime\library.js:121:6623)
+    at $n.request (D:\KHOA_LUAN_TO
+T_NGHIEP\MicroServices_QLSV\node_m
+odules\@prisma\client\runtime\libr
+ary.js:121:6307)
+    at async l (D:\KHOA_LUAN_TOT_N
+GHIEP\MicroServices_QLSV\node_modu
+les\@prisma\client\runtime\library
+.js:130:9633)
+    at async Promise.all (index 
+16)
+    at async D:\KHOA_LUAN_TOT_NGHI
+EP\MicroServices_QLSV\apps\student
+-service\src\dashboard\dashboard.s
+ervice.ts:229:11
+    at async main (D:\KHOA_LUAN_TO
+T_NGHIEP\MicroServices_QLSV\apps\s
+tudent-service\src\test-stats2.ts:
+11:19) {
+  clientVersion: '5.22.0'
+}

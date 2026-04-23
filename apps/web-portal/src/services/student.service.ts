@@ -11,6 +11,11 @@ export const StudentService = {
         return response.data;
     },
 
+    getLecturerProfile: async (userId: string) => {
+        const response = await api.get(`/api/lecturers/user/${userId}`);
+        return response.data;
+    },
+
     // Helper to get current logged in student's profile if ID is not known but stored in token/state
     // However, usually we store user ID in state. 
     // Let's assume we pass the ID.

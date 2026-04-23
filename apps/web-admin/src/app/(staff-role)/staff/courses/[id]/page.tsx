@@ -75,7 +75,7 @@ export default function StaffCourseDetailPage() {
         const total = totalEstimatedSessions > 0 ? totalEstimatedSessions : (courseClass?.sessions?.length || 15);
 
         if (!attendances || attendances.length === 0) return 0;
-        const absent = attendances.filter(a => a.status === "ABSENT").length;
+        const absent = attendances.filter(a => a.status === "ABSENT" || a.status === "ABSENT_UNEXCUSED").length;
         const presentRate = ((total - absent) / total) * 100;
         return Math.max(0, Math.min(100, Math.round(presentRate)));
     };
@@ -227,7 +227,7 @@ export default function StaffCourseDetailPage() {
                                         </td>
                                         <td className="py-4 px-4 text-center">
                                             <span className="text-[11px] font-black text-slate-700 tabular-nums">
-                                                {studentGrade?.totalScore10 !== null ? studentGrade?.totalScore10 : "---"}
+                                                {studentGrade?.totalScore10 !== null && studentGrade?.totalScore10 !== undefined ? studentGrade?.totalScore10 : ""}
                                             </span>
                                         </td>
                                         <td className="py-4 px-8 text-right">

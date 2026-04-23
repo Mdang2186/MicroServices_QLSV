@@ -105,16 +105,26 @@ export function CompactLecturerHeader({
             const r = await fetch("/api/semesters");
             const data = await r.json();
             if (Array.isArray(data)) {
+                // 1. Sort semesters by startDate DESC so the newest are first
+                const sorted = [...data].sort((a, b) => {
+                    const aDate = new Date(a.startDate || 0).getTime();
+                    const bDate = new Date(b.startDate || 0).getTime();
+                    return bDate - aDate;
+                });
+
                 const filteredSemesters =
                     semesterFilter === "all"
-                        ? data
-                        : data.filter((semester: Semester) =>
+                        ? sorted
+                        : sorted.filter((semester: Semester) =>
                             isPastOrCurrentSemester(semester),
                         );
-                const safeSemesters = filteredSemesters.length > 0 ? filteredSemesters : data;
+                const safeSemesters = filteredSemesters.length > 0 ? filteredSemesters : sorted;
                 setSemesters(safeSemesters);
+
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
+
+                // 2. Select logic: Provided ID > Current Semester (Date range) > Current Flag > First in sorted list
                 const current =
                     (selectedSemesterIdProp
                         ? safeSemesters.find((s: Semester) => (s.selectionKey || s.id) === selectedSemesterIdProp)
@@ -129,6 +139,7 @@ export function CompactLecturerHeader({
                     }) ||
                     safeSemesters.find((s: Semester) => s.isCurrent) ||
                     safeSemesters[0];
+
                 if (current) {
                     const value = current.selectionKey || current.id;
                     setSelectedSemesterId(value);

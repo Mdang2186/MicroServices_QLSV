@@ -50,6 +50,8 @@ export class AppModule {
         createProxyMiddleware({
           target: "http://127.0.0.1:3002", // Student Service
           changeOrigin: true,
+          proxyTimeout: 60000,
+          timeout: 60000,
           pathRewrite: {
             "^/api/students": "/students",
             "^/api/student-fees": "/student-fees",
@@ -72,6 +74,8 @@ export class AppModule {
         createProxyMiddleware({
           target: "http://127.0.0.1:3004", // Enrollment Service
           changeOrigin: true,
+          proxyTimeout: 60000,
+          timeout: 60000,
           pathRewrite: {
             "^/api/enrollments": "/enrollments",
           },
@@ -88,6 +92,8 @@ export class AppModule {
         createProxyMiddleware({
           target: "http://127.0.0.1:3003", // Course Service
           changeOrigin: true,
+          proxyTimeout: 60000,
+          timeout: 60000,
           pathRewrite: {
             "^/api/courses": "/courses",
             "^/api/faculties": "/faculties",
@@ -137,6 +143,8 @@ export class AppModule {
         createProxyMiddleware({
           target: "http://127.0.0.1:3005", // Grade Service
           changeOrigin: true,
+          proxyTimeout: 60000,
+          timeout: 60000,
           pathRewrite: {
             "^/api/grades": "/grades",
           },

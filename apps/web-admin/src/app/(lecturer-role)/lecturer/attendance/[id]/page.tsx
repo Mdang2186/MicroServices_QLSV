@@ -2,30 +2,31 @@
 
 import { useEffect, useState } from "react";
 import Cookies from "js-cookie";
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
     Calendar as CalendarIcon,
-    ArrowLeft,
     Save,
     AlertCircle,
     CheckCircle2,
-    Users,
     Search,
     Info,
     CheckSquare,
-    ChevronRight,
     SearchX,
     ChevronLeft,
-    ChevronRight as ChevronRightIcon,
+    ChevronRight,
     Zap,
     QrCode,
-    X
+    X,
+    MapPin,
+    ShieldCheck,
+    Clock3,
+    UserCheck,
+    UserX,
+    AlertTriangle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { CompactLecturerHeader } from "@/components/dashboard/CompactLecturerHeader";
 import { QRCodeSVG } from "qrcode.react";
 import { io, Socket } from "socket.io-client";
 
@@ -40,12 +41,65 @@ export default function LecturerAttendancePage() {
     const [message, setMessage] = useState({ text: "", type: "" });
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [searchQuery, setSearchQuery] = useState("");
-    const [filterStatus, setFilterStatus] = useState<"ALL" | "PRESENT" | "ABSENT_EXCUSED" | "ABSENT">("ALL");
+    const [filterStatus, setFilterStatus] = useState<"ALL" | "PRESENT" | "ABSENT_EXCUSED" | "ABSENT_UNEXCUSED">("ALL");
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
     const [viewDate, setViewDate] = useState(new Date());
     const [isQrModalOpen, setIsQrModalOpen] = useState(false);
-    const [qrCodeData, setQrCodeData] = useState<{ otp: string, sessionId: string } | null>(null);
+    const [qrCodeData, setQrCodeData] = useState<{ otp: string, sessionId: string; radiusMeters?: number; hasLocationAnchor?: boolean } | null>(null);
+    const [geoAnchor, setGeoAnchor] = useState<{ latitude: number; longitude: number; accuracyMeters?: number } | null>(null);
+    const [geoError, setGeoError] = useState("");
+    const [qrLiveFeed, setQrLiveFeed] = useState<any[]>([]);
     const [socket, setSocket] = useState<Socket | null>(null);
+    const [recentlyScanId, setRecentlyScanId] = useState<string | null>(null);
+    const [showConfirmSave, setShowConfirmSave] = useState(false);
+    const [pendingSaveData, setPendingSaveData] = useState<any[]>([]);
+
+    const parseAttendanceNote = (note?: string | null) => {
+        if (!note) return { manualNote: "", meta: {} as any };
+        try {
+            const parsed = JSON.parse(note);
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+                return {
+                    manualNote: `${parsed.manualNote || ""}`,
+                    meta: parsed.meta && typeof parsed.meta === "object" ? parsed.meta : {},
+                };
+            }
+        } catch {
+            // Legacy plain text note
+        }
+        return { manualNote: `${note}`, meta: {} as any };
+    };
+
+    const normalizeAttendance = (attendance: any) => {
+        if (!attendance) return null;
+        const parsed = parseAttendanceNote(attendance.note);
+        return {
+            ...attendance,
+            note: parsed.manualNote,
+            ...parsed.meta,
+        };
+    };
+
+    const getCurrentPosition = () =>
+        new Promise<GeolocationPosition>((resolve, reject) => {
+            if (typeof navigator === "undefined" || !navigator.geolocation) {
+                reject(new Error("Thiết bị không hỗ trợ định vị."));
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0,
+            });
+        });
+
+    const formatAttendanceMethod = (attendance: any) => {
+        if (!attendance?.method) return "Thủ công";
+        if (attendance.method === "QR_GEO") return "QR + GPS";
+        if (attendance.method === "QR") return "QR";
+        return "Thủ công";
+    };
 
     const toYYYYMMDD = (d: Date) => {
         return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -71,40 +125,116 @@ export default function LecturerAttendancePage() {
 
     useEffect(() => {
         if (!isQrModalOpen || !currentSessionId) return;
+        let cancelled = false;
+        let newSocket: Socket | null = null;
+        let interval: ReturnType<typeof setInterval> | null = null;
 
-        const newSocket = io("http://localhost:3004");
-        setSocket(newSocket);
+        setQrCodeData(null);
+        setGeoError("");
+        setGeoAnchor(null);
+        setQrLiveFeed([]);
 
-        newSocket.on('connect', () => {
-            newSocket.emit('generate_otp', { sessionId: currentSessionId });
-        });
+        const connectSocket = (anchor?: { latitude?: number; longitude?: number; accuracyMeters?: number } | null) => {
+            newSocket = io("http://localhost:3004", {
+                transports: ['websocket'],
+                reconnectionAttempts: 5,
+                reconnectionDelay: 1000,
+            });
+            setSocket(newSocket);
 
-        newSocket.on('otp_generated', (res: any) => {
-            setQrCodeData(res.data);
-        });
+            const emitOtp = () => {
+                if (newSocket?.connected) {
+                    newSocket.emit("generate_otp", {
+                        sessionId: currentSessionId,
+                        latitude: anchor?.latitude,
+                        longitude: anchor?.longitude,
+                        accuracyMeters: anchor?.accuracyMeters,
+                        radiusMeters: 150,
+                    });
+                }
+            };
 
-        newSocket.on('student_scanned', (data: any) => {
-            setEnrollments(prev => prev.map(e => 
-                e.id === data.enrollmentId ? { ...e, currentStatus: 'PRESENT' } : e
-            ));
-            setMessage({ text: "Một sinh viên vừa điểm danh thành công!", type: "success" });
-            setTimeout(() => setMessage({ text: "", type: "" }), 3000);
-        });
+            newSocket.on('connect', emitOtp);
 
-        const interval = setInterval(() => {
-            newSocket.emit('generate_otp', { sessionId: currentSessionId });
-        }, 10000);
+            newSocket.on('connect_error', (err) => {
+                console.error("Socket connect error:", err);
+                setGeoError("Không thể kết nối đến máy chủ điểm danh. Đang thử lại...");
+            });
+
+            newSocket.on('otp_generated', (res: any) => {
+                setQrCodeData(res.data);
+                setGeoError(""); // Clear any previous connection errors
+            });
+
+            newSocket.on('student_scanned', (data: any) => {
+                setEnrollments(prev => prev.map(e =>
+                    e.id === data.enrollmentId
+                        ? {
+                            ...e,
+                            currentStatus: 'PRESENT',
+                            currentAttendance: {
+                                ...(e.currentAttendance || {}),
+                                status: 'PRESENT',
+                                method: data.method,
+                                markedAt: data.markedAt,
+                                distanceMeters: data.distanceMeters,
+                                isLocationVerified: data.isLocationVerified,
+                            },
+                        }
+                        : e
+                ));
+                setRecentlyScanId(data.enrollmentId);
+                setTimeout(() => setRecentlyScanId(null), 3000);
+                setQrLiveFeed((prev) => [
+                    {
+                        studentName: data.studentName,
+                        studentCode: data.studentCode,
+                        distanceMeters: data.distanceMeters,
+                        markedAt: data.markedAt,
+                    },
+                    ...prev,
+                ].slice(0, 5));
+                setMessage({
+                    text: `${data.studentName || "Sinh viên"} đã điểm danh thành công.`,
+                    type: "success",
+                });
+                setTimeout(() => setMessage({ text: "", type: "" }), 3000);
+            });
+
+            interval = setInterval(emitOtp, 10000);
+        };
+
+        (async () => {
+            try {
+                const position = await getCurrentPosition();
+                if (cancelled) return;
+
+                const anchor = {
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude,
+                    accuracyMeters: position.coords.accuracy,
+                };
+                setGeoAnchor(anchor);
+                connectSocket(anchor);
+            } catch (error: any) {
+                if (!cancelled) {
+                    setGeoError((error?.message || "Không lấy được vị trí hiện tại của giảng viên.") + " QR vẫn được phát nhưng sẽ không kiểm tra GPS.");
+                    connectSocket(null);
+                }
+            }
+        })();
 
         return () => {
-            clearInterval(interval);
-            newSocket.disconnect();
+            cancelled = true;
+            if (interval) clearInterval(interval);
+            newSocket?.disconnect();
         };
     }, [isQrModalOpen, currentSessionId]);
 
-    const TOKEN = Cookies.get("admin_accessToken");
+    const TOKEN = Cookies.get("lecturer_accessToken") || Cookies.get("admin_accessToken");
 
     useEffect(() => {
-        const c = Cookies.get("admin_user");
+        const c = Cookies.get("lecturer_user") || Cookies.get("admin_user");
         if (c) try { setUser(JSON.parse(c)); } catch { }
     }, []);
 
@@ -128,11 +258,12 @@ export default function LecturerAttendancePage() {
                     setCourseClass(classData);
 
                     const transformed = data.map((e: any) => {
-                        const existingAtt = e.attendances?.find((a: any) => a.date.startsWith(date));
+                        const existingAtt = normalizeAttendance(e.attendances?.find((a: any) => a.date.startsWith(date)));
                         return {
                             ...e,
                             currentStatus: existingAtt?.status || "PRESENT",
-                            note: existingAtt?.note || ""
+                            note: existingAtt?.note || "",
+                            currentAttendance: existingAtt || null,
                         };
                     });
                     setEnrollments(transformed);
@@ -153,14 +284,38 @@ export default function LecturerAttendancePage() {
         ));
     };
 
-    const handleSave = async () => {
+    const handleSaveRequest = () => {
+        // Mark unattended students as ABSENT_UNEXCUSED before saving
+        const prepared = enrollments.map(e => {
+            if (e.currentStatus === 'PRESENT' && !e.currentAttendance) {
+                return { ...e, currentStatus: 'ABSENT_UNEXCUSED' };
+            }
+            return e;
+        });
+        const willMarkAbsent = prepared.filter(e => e.currentStatus === 'ABSENT_UNEXCUSED' && !enrollments.find(orig => orig.id === e.id && orig.currentStatus === 'ABSENT_UNEXCUSED')).length;
+        if (willMarkAbsent > 0) {
+            setPendingSaveData(prepared);
+            setShowConfirmSave(true);
+        } else {
+            doSave(prepared);
+        }
+    };
+
+    const doSave = async (data: any[]) => {
         setSaving(true);
+        setShowConfirmSave(false);
         setMessage({ text: "", type: "" });
+
+        // Update UI state immediately
+        setEnrollments(data);
 
         try {
             const body = {
                 date,
-                attendances: enrollments.map(e => ({
+                classId,
+                sessionId: currentSessionId,
+                method: "MANUAL",
+                attendances: data.map(e => ({
                     enrollmentId: e.id,
                     status: e.currentStatus,
                     note: e.note
@@ -177,8 +332,44 @@ export default function LecturerAttendancePage() {
             });
 
             if (res.ok) {
-                setMessage({ text: "Đã lưu thông tin điểm danh của " + enrollments.length + " sinh viên", type: "success" });
-                setTimeout(() => setMessage({ text: "", type: "" }), 3000);
+                const savedAt = new Date().toISOString();
+                setEnrollments((prev) =>
+                    prev.map((item) => ({
+                        ...item,
+                        currentAttendance: {
+                            ...(item.currentAttendance || {}),
+                            status: item.currentStatus,
+                            note: item.note,
+                            method: item.currentAttendance?.method || "MANUAL",
+                            markedAt: item.currentAttendance?.markedAt || savedAt,
+                            isLocationVerified: item.currentAttendance?.isLocationVerified || false,
+                        },
+                    }))
+                );
+
+                // Send notifications to students
+                const subjectName = courseClass?.subject?.name || courseClass?.name || 'Môn học';
+                const dateStr = new Date(date).toLocaleDateString('vi-VN');
+                for (const e of data) {
+                    const userId = e.student?.user?.id || e.student?.userId;
+                    if (!userId) continue;
+                    const statusLabel = e.currentStatus === 'PRESENT' ? 'Có mặt'
+                        : e.currentStatus === 'ABSENT_EXCUSED' ? 'Vắng có phép'
+                        : 'Vắng không phép';
+                    fetch('/api/notifications', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
+                        body: JSON.stringify({
+                            userId,
+                            title: `Điểm danh: ${subjectName}`,
+                            content: `Giảng viên đã cập nhật điểm danh ngày ${dateStr}. Trạng thái của bạn: ${statusLabel}.`,
+                            type: 'ATTENDANCE',
+                        }),
+                    }).catch(() => {});
+                }
+
+                setMessage({ text: `Đã lưu điểm danh cho ${data.length} sinh viên. Thông báo đã được gửi.`, type: "success" });
+                setTimeout(() => setMessage({ text: "", type: "" }), 4000);
             } else {
                 throw new Error("Lỗi khi lưu dữ liệu");
             }
@@ -192,9 +383,6 @@ export default function LecturerAttendancePage() {
     const currentPeriods = getPeriodsForDate(new Date(date));
 
     const filtered = enrollments.filter(e => {
-        const checkD = new Date(date);
-        if (!isDateInSchedule(checkD)) return false;
-
         const matchesSearch = e.student?.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
             e.student?.studentCode?.toLowerCase().includes(searchQuery.toLowerCase());
         const matchesStatus = filterStatus === "ALL" || e.currentStatus === filterStatus;
@@ -211,13 +399,7 @@ export default function LecturerAttendancePage() {
 
     return (
         <div className="min-h-screen p-4 md:p-8 space-y-6 bg-[#fbfcfd]">
-            <CompactLecturerHeader 
-                userName={`${user?.degree || "Giảng viên"} ${user?.fullName || "Cao cấp"}`} 
-                userId={`GV-${user?.username || "UNETI"}`}
-                minimal={true}
-                title={`Điểm danh: ${courseClass?.subject?.name || "Lớp học phần"}`}
-                onSemesterChange={() => {}} // Controlled by classId already
-            />
+
 
             {/* Compact Action Bar */}
             <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm flex items-center justify-between gap-6">
@@ -230,8 +412,8 @@ export default function LecturerAttendancePage() {
                         {courseClass?.name || courseClass?.subject?.name}
                     </h1>
                     <div className="flex items-center gap-3 mt-1 underline decoration-uneti-blue/20 decoration-2 underline-offset-4">
-                         <span className="text-[10px] font-black text-slate-400 uppercase italic leading-none">{courseClass?.code}</span>
-                         <span className="text-[10px] font-black text-emerald-600 uppercase tracking-tighter leading-none">{courseClass?.semester?.name}</span>
+                        <span className="text-[10px] font-black text-slate-400 uppercase italic leading-none">{courseClass?.code}</span>
+                        <span className="text-[10px] font-black text-emerald-600 uppercase tracking-tighter leading-none">{courseClass?.semester?.name}</span>
                     </div>
                 </div>
 
@@ -248,10 +430,10 @@ export default function LecturerAttendancePage() {
                                 <div className="flex flex-col items-end">
                                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Tỷ lệ chuyên cần</p>
                                     <div className="flex items-center gap-2">
-                                         <div className="h-1.5 w-12 bg-slate-100 rounded-full overflow-hidden">
-                                             <div className="h-full bg-indigo-600" style={{ width: `${rate}%` }} />
-                                         </div>
-                                         <span className="text-sm font-black text-slate-800 tabular-nums">{rate}%</span>
+                                        <div className="h-1.5 w-12 bg-slate-100 rounded-full overflow-hidden">
+                                            <div className="h-full bg-indigo-600" style={{ width: `${rate}%` }} />
+                                        </div>
+                                        <span className="text-sm font-black text-slate-800 tabular-nums">{rate}%</span>
                                     </div>
                                 </div>
                                 <div className="flex flex-col items-end">
@@ -274,8 +456,8 @@ export default function LecturerAttendancePage() {
                     <div className="relative" onClick={(e) => { e.stopPropagation(); setIsCalendarOpen(!isCalendarOpen); }}>
                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5 text-right">Ngày học</p>
                         <div className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 px-2 py-1 rounded-lg transition-all border border-transparent hover:border-slate-100">
-                             <CalendarIcon size={14} className="text-indigo-500" />
-                             <span className="text-sm font-black text-slate-800">{new Date(date).toLocaleDateString('vi-VN')}</span>
+                            <CalendarIcon size={14} className="text-indigo-500" />
+                            <span className="text-sm font-black text-slate-800">{new Date(date).toLocaleDateString('vi-VN')}</span>
                         </div>
                         {isCalendarOpen && (
                             <div className="absolute top-full right-0 mt-2 z-50 bg-white border border-slate-200 rounded-2xl shadow-2xl p-4 w-[280px]" onClick={e => e.stopPropagation()}>
@@ -299,7 +481,7 @@ export default function LecturerAttendancePage() {
                                         const hasSchedule = isDateInSchedule(d);
 
                                         return (
-                                            <div 
+                                            <div
                                                 key={i}
                                                 onClick={() => { if (isCurrentMonth) { setDate(toYYYYMMDD(d)); setIsCalendarOpen(false); } }}
                                                 className={cn(
@@ -340,7 +522,7 @@ export default function LecturerAttendancePage() {
                             Quay lại
                         </Button>
                         <Button
-                            onClick={handleSave}
+                            onClick={handleSaveRequest}
                             disabled={saving}
                             className="h-10 px-6 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-100/50 rounded-xl uppercase tracking-wider transition-all active:scale-95 flex items-center gap-2"
                         >
@@ -355,7 +537,14 @@ export default function LecturerAttendancePage() {
             <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col h-[calc(100vh-180px)] min-h-[500px]">
                 <div className="px-8 py-6 border-b border-slate-50 flex items-center justify-between sticky top-0 bg-white z-30">
                     <div className="flex items-center gap-6">
-                        <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight">Danh sách lớp học</h2>
+                        <div className="flex flex-col">
+                            <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight">Danh sách lớp học</h2>
+                            {!currentSessionId && (
+                                <span className="text-[9px] font-bold text-rose-500 uppercase tracking-tighter flex items-center gap-1 mt-0.5">
+                                    <AlertCircle size={10} /> Không có lịch học hôm nay
+                                </span>
+                            )}
+                        </div>
 
                         <div className="hidden lg:flex items-center gap-1 p-1 bg-slate-50 rounded-xl border border-slate-100">
                             {[
@@ -398,20 +587,31 @@ export default function LecturerAttendancePage() {
                                 <th className="py-4 px-8 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">STT</th>
                                 <th className="py-4 px-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Thông tin cá nhân</th>
                                 <th className="py-4 px-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Lớp hành chính</th>
-                                <th className="py-4 px-4 text-center text-[9px] font-black text-emerald-600 uppercase tracking-widest w-40 underline decoration-emerald-100 decoration-2 underline-offset-4">Nghỉ có phép</th>
-                                <th className="py-4 px-4 text-center text-[9px] font-black text-rose-600 uppercase tracking-widest w-40 underline decoration-rose-100 decoration-2 underline-offset-4">Không phép</th>
-                                <th className="py-4 px-8 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Phản hồi / Ghi chú</th>
+                                <th className="py-4 px-4 text-center text-[9px] font-black text-slate-500 uppercase tracking-widest w-36">Trạng thái</th>
+                                <th className="py-4 px-4 text-center text-[9px] font-black text-emerald-600 uppercase tracking-widest w-36 underline decoration-emerald-100 decoration-2 underline-offset-4">Nghỉ có phép</th>
+                                <th className="py-4 px-4 text-center text-[9px] font-black text-rose-600 uppercase tracking-widest w-36 underline decoration-rose-100 decoration-2 underline-offset-4">Không phép</th>
+                                <th className="py-4 px-8 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Ghi chú</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {filtered.map((e, idx) => (
-                                <tr key={e.id} className="border-b border-slate-50 hover:bg-slate-50/30 transition-all group">
+                            {filtered.map((e, idx) => {
+                                const isScanned = recentlyScanId === e.id;
+                                const hasAttendance = !!e.currentAttendance;
+                                const status = e.currentStatus;
+                                return (
+                                <tr key={e.id} className={cn(
+                                    "border-b border-slate-50 transition-all group",
+                                    isScanned ? "bg-emerald-50 animate-pulse" : "hover:bg-slate-50/30"
+                                )}>
                                     <td className="py-4 px-8">
                                         <span className="text-[11px] font-black text-slate-200 tabular-nums">{(idx + 1).toString().padStart(2, '0')}</span>
                                     </td>
                                     <td className="py-4 px-4">
                                         <div className="flex items-center gap-4">
-                                            <div className="h-9 w-9 rounded-xl bg-white border-2 border-slate-100 flex items-center justify-center text-[11px] font-black text-slate-400 shadow-sm transition-all group-hover:rotate-6 group-hover:scale-110 group-hover:bg-indigo-600 group-hover:text-white group-hover:border-indigo-100">
+                                            <div className={cn(
+                                                "h-9 w-9 rounded-xl border-2 flex items-center justify-center text-[11px] font-black shadow-sm transition-all",
+                                                isScanned ? "bg-emerald-500 border-emerald-400 text-white" : "bg-white border-slate-100 text-slate-400 group-hover:rotate-6 group-hover:scale-110 group-hover:bg-indigo-600 group-hover:text-white group-hover:border-indigo-100"
+                                            )}>
                                                 {e.student?.fullName?.charAt(0)}
                                             </div>
                                             <div className="space-y-0.5">
@@ -422,6 +622,35 @@ export default function LecturerAttendancePage() {
                                     </td>
                                     <td className="py-4 px-4 font-black text-slate-500 text-[11px]">
                                         {e.student?.adminClass?.code || "N/A"}
+                                    </td>
+                                    {/* Status Badge Column */}
+                                    <td className="py-4 px-4">
+                                        <div className="flex justify-center">
+                                            {status === 'PRESENT' && hasAttendance ? (
+                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100 text-[9px] font-black uppercase tracking-tight">
+                                                    <UserCheck size={11} />
+                                                    Có mặt
+                                                    {e.currentAttendance?.method?.startsWith('QR') && (
+                                                        <span className="ml-1 px-1 rounded bg-indigo-100 text-indigo-600">QR</span>
+                                                    )}
+                                                </span>
+                                            ) : status === 'PRESENT' && !hasAttendance ? (
+                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-50 text-slate-400 border border-slate-100 text-[9px] font-black uppercase tracking-tight">
+                                                    <AlertTriangle size={11} />
+                                                    Chưa ĐD
+                                                </span>
+                                            ) : status === 'ABSENT_UNEXCUSED' ? (
+                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 text-rose-600 border border-rose-100 text-[9px] font-black uppercase tracking-tight">
+                                                    <UserX size={11} />
+                                                    Vắng KP
+                                                </span>
+                                            ) : status === 'ABSENT_EXCUSED' ? (
+                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-600 border border-blue-100 text-[9px] font-black uppercase tracking-tight">
+                                                    <CheckSquare size={11} />
+                                                    Vắng CP
+                                                </span>
+                                            ) : null}
+                                        </div>
                                     </td>
                                     <td className="py-4 px-4">
                                         <div className="flex justify-center">
@@ -453,22 +682,43 @@ export default function LecturerAttendancePage() {
                                             </button>
                                         </div>
                                     </td>
-                                    <td className="py-4 px-8">
-                                        <input
-                                            type="text"
-                                            placeholder="Thêm lý do vắng..."
-                                            className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-5 py-2 text-[10px] font-bold text-slate-600 focus:bg-white focus:ring-2 focus:ring-indigo-100 outline-none transition-all shadow-inner"
-                                            value={e.note || ""}
-                                            onChange={(ev) => {
-                                                const val = ev.target.value;
-                                                setEnrollments(prev => prev.map(enr =>
-                                                    enr.id === e.id ? { ...enr, note: val } : enr
-                                                ));
-                                            }}
-                                        />
+                                    <td className="py-4 px-4">
+                                        <div className="space-y-2">
+                                            <input
+                                                type="text"
+                                                placeholder="Thêm lý do vắng..."
+                                                className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold text-slate-600 focus:bg-white focus:ring-2 focus:ring-indigo-100 outline-none transition-all shadow-inner"
+                                                value={e.note || ""}
+                                                onChange={(ev) => {
+                                                    const val = ev.target.value;
+                                                    setEnrollments(prev => prev.map(enr =>
+                                                        enr.id === e.id ? { ...enr, note: val } : enr
+                                                    ));
+                                                }}
+                                            />
+                                            {e.currentAttendance && (
+                                                <div className="flex flex-wrap gap-1.5 text-[9px] font-bold">
+                                                    <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                                                        {formatAttendanceMethod(e.currentAttendance)}
+                                                    </span>
+                                                    {e.currentAttendance?.markedAt && (
+                                                        <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 flex items-center gap-1">
+                                                            <Clock3 size={9} />
+                                                            {new Date(e.currentAttendance.markedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                                                        </span>
+                                                    )}
+                                                    {e.currentAttendance?.isLocationVerified && (
+                                                        <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 flex items-center gap-1">
+                                                            <ShieldCheck size={9} />
+                                                            GPS{typeof e.currentAttendance?.distanceMeters === "number" ? ` ${Math.round(e.currentAttendance.distanceMeters)}m` : ""}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
                                     </td>
-                                </tr>
-                            ))}
+                                </tr>);
+                            })}
                         </tbody>
                     </table>
 
@@ -491,35 +741,152 @@ export default function LecturerAttendancePage() {
                 </div>
             </div>
 
+            {/* Confirm Save Dialog */}
+            <AnimatePresence>
+                {showConfirmSave && (
+                    <div className="fixed inset-0 z-[200] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.9 }}
+                            className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full border border-slate-100"
+                        >
+                            <div className="flex flex-col items-center text-center">
+                                <div className="h-14 w-14 rounded-2xl bg-rose-50 flex items-center justify-center mb-4">
+                                    <AlertTriangle size={28} className="text-rose-500" />
+                                </div>
+                                <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight mb-2">Xác nhận lưu điểm danh</h3>
+                                <p className="text-[11px] text-slate-500 font-bold leading-relaxed mb-6">
+                                    {pendingSaveData.filter(e => e.currentStatus === 'ABSENT_UNEXCUSED' && !enrollments.find(orig => orig.id === e.id && orig.currentStatus === 'ABSENT_UNEXCUSED')).length} sinh viên chưa điểm danh sẽ bị đánh <span className="text-rose-600">Vắng không phép</span>. Bạn có thể bỏ dấu tích trước khi lưu nếu sinh viên có mặt.
+                                </p>
+                                <div className="flex gap-3 w-full">
+                                    <Button
+                                        variant="ghost"
+                                        className="flex-1 h-10 text-xs font-black text-slate-500 hover:bg-slate-50 rounded-xl border border-slate-200"
+                                        onClick={() => { setShowConfirmSave(false); setPendingSaveData([]); }}
+                                    >
+                                        Hủy
+                                    </Button>
+                                    <Button
+                                        className="flex-1 h-10 text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl"
+                                        onClick={() => doSave(pendingSaveData)}
+                                    >
+                                        <Save size={14} className="mr-1.5" /> Xác nhận lưu
+                                    </Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Toast message */}
+            <AnimatePresence>
+                {message.text && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 40 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 40 }}
+                        className={cn(
+                            "fixed bottom-6 left-1/2 -translate-x-1/2 z-[300] px-6 py-3 rounded-2xl shadow-2xl border flex items-center gap-3 text-sm font-black",
+                            message.type === 'success' ? "bg-emerald-600 text-white border-emerald-700" : "bg-rose-600 text-white border-rose-700"
+                        )}
+                    >
+                        {message.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+                        {message.text}
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {isQrModalOpen && (
                 <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full relative flex flex-col items-center justify-center animate-in zoom-in-95 duration-200 border border-slate-100">
+                    <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full relative flex flex-col items-center justify-center animate-in zoom-in-95 duration-200 border border-slate-100">
                         <button onClick={() => setIsQrModalOpen(false)} className="absolute top-4 right-4 p-2 bg-slate-50 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-all">
-                            <X size={20}/>
+                            <X size={20} />
                         </button>
                         <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest mb-2 flex items-center gap-2">
-                            <QrCode size={18} className="text-indigo-600"/> QR Điểm Danh
+                            <QrCode size={18} className="text-indigo-600" /> QR Điểm Danh
                         </h3>
                         <p className="text-[10px] text-slate-500 font-bold uppercase mb-6 text-center leading-relaxed">
-                            Yêu cầu sinh viên dùng Web Portal để quét mã này.<br/>Mã sẽ tự động làm mới mỗi 10 giây.
+                            Yêu cầu sinh viên dùng Web Portal để quét mã này.<br />Mã sẽ tự động làm mới mỗi 10 giây.
                         </p>
-                        
-                        <div className="p-4 bg-white border-2 border-indigo-50 rounded-2xl shadow-inner mb-4 relative overflow-hidden group">
-                            <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/5 to-transparent pointer-events-none"></div>
-                            {qrCodeData ? (
-                                <QRCodeSVG value={JSON.stringify({ ...qrCodeData, type: 'UNETI_ATTENDANCE' })} size={240} fgColor="#3730A3" />
-                            ) : (
-                                <div className="h-[240px] w-[240px] flex items-center justify-center bg-slate-50/50 rounded-xl relative">
-                                    <div className="absolute inset-0 border-[3px] border-dashed border-slate-200 rounded-xl animate-[spin_10s_linear_infinite]"></div>
-                                    <div className="h-8 w-8 animate-spin border-4 border-slate-200 border-t-indigo-600 rounded-full"></div>
-                                </div>
-                            )}
+
+                        <div className="w-full mb-4 space-y-3">
+                            <div className={cn(
+                                "rounded-2xl border px-4 py-3 text-[11px] font-bold",
+                                geoError
+                                    ? "border-rose-200 bg-rose-50 text-rose-600"
+                                    : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            )}>
+                                {geoError ? (
+                                    geoError
+                                ) : (
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <span className="flex items-center gap-1">
+                                            <MapPin size={13} />
+                                            Vị trí giảng viên đã khóa
+                                        </span>
+                                        {geoAnchor?.accuracyMeters ? (
+                                            <span className="text-emerald-600/80">Sai số {Math.round(geoAnchor.accuracyMeters)}m</span>
+                                        ) : null}
+                                        <span className="text-emerald-600/80">Bán kính {qrCodeData?.radiusMeters || 150}m</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="p-4 bg-white border-2 border-indigo-50 rounded-2xl shadow-inner relative overflow-hidden group">
+                                <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/5 to-transparent pointer-events-none"></div>
+                                {currentSessionId ? (
+                                    qrCodeData ? (
+                                        <QRCodeSVG value={JSON.stringify({ ...qrCodeData, type: 'UNETI_ATTENDANCE' })} size={240} fgColor="#3730A3" />
+                                    ) : (
+                                        <div className="h-[240px] w-[240px] flex items-center justify-center bg-slate-50/50 rounded-xl relative">
+                                            <div className="absolute inset-0 border-[3px] border-dashed border-slate-200 rounded-xl animate-[spin_10s_linear_infinite]"></div>
+                                            <div className="h-8 w-8 animate-spin border-4 border-slate-200 border-t-indigo-600 rounded-full"></div>
+                                        </div>
+                                    )
+                                ) : (
+                                    <div className="h-[240px] w-[240px] flex flex-col items-center justify-center bg-rose-50/30 rounded-xl border-2 border-dashed border-rose-100 p-6 text-center">
+                                        <AlertCircle size={40} className="text-rose-400 mb-3" />
+                                        <p className="text-[11px] font-black text-rose-600 uppercase tracking-tighter">
+                                            Không tìm thấy lịch học
+                                        </p>
+                                        <p className="text-[9px] font-bold text-rose-400 uppercase mt-1">
+                                            QR chỉ khả dụng cho các buổi học đã được lên lịch
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         <div className="flex items-center gap-2 bg-indigo-50 px-4 py-2 rounded-xl border border-indigo-100/50">
                             <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
                             <span className="text-[10px] font-black uppercase text-indigo-700 tracking-wider">Đang phát dữ liệu trực tiếp</span>
                         </div>
+
+                        {qrLiveFeed.length > 0 && (
+                            <div className="w-full mt-4 space-y-2">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sinh viên vừa quét</p>
+                                <div className="space-y-2">
+                                    {qrLiveFeed.map((item, index) => (
+                                        <div key={`${item.studentCode || item.studentName}-${index}`} className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2">
+                                            <div>
+                                                <p className="text-[11px] font-black text-slate-700">{item.studentName || "Sinh viên"}</p>
+                                                <p className="text-[10px] font-bold text-slate-400">{item.studentCode || "N/A"}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-[10px] font-bold text-emerald-600">
+                                                    {typeof item.distanceMeters === "number" ? `${item.distanceMeters}m` : "QR"}
+                                                </p>
+                                                <p className="text-[10px] font-bold text-slate-400">
+                                                    {item.markedAt ? new Date(item.markedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "--:--"}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

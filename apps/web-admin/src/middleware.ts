@@ -6,6 +6,10 @@ export function middleware(request: NextRequest) {
   const token = request.cookies.get("admin_accessToken")?.value;
   const role = normalizeRole(request.cookies.get("admin_role")?.value);
   const { pathname } = request.nextUrl;
+  const isPublicAuthPage =
+    pathname === "/login" ||
+    pathname === "/forgot-password" ||
+    pathname === "/reset-password";
 
   if (pathname.startsWith("/_next") || pathname === "/favicon.ico") {
     return NextResponse.next();
@@ -18,6 +22,10 @@ export function middleware(request: NextRequest) {
       );
     }
 
+    return NextResponse.next();
+  }
+
+  if (isPublicAuthPage) {
     return NextResponse.next();
   }
 

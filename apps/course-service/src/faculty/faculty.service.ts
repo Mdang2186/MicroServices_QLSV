@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -27,14 +27,21 @@ export class FacultyService {
   }
 
   async create(data: any) {
-    return this.prisma.faculty.create({ data });
+    try {
+      return await this.prisma.faculty.create({ data });
+    } catch (error: any) {
+      if (error.code === 'P2002') throw new BadRequestException('Mã Khoa đã tồn tại.');
+      throw new BadRequestException('Lỗi hệ thống: ' + (error.message || 'Không thể tạo Khoa'));
+    }
   }
 
   async update(id: string, data: any) {
-    return this.prisma.faculty.update({
-      where: { id },
-      data,
-    });
+    try {
+      return await this.prisma.faculty.update({ where: { id }, data });
+    } catch (error: any) {
+      if (error.code === 'P2002') throw new BadRequestException('Mã Khoa đã tồn tại.');
+      throw new BadRequestException('Lỗi hệ thống: ' + (error.message || 'Không thể cập nhật Khoa'));
+    }
   }
 
   async delete(id: string) {
@@ -51,7 +58,7 @@ export class FacultyService {
       },
     });
 
-    if (!faculty) throw new BadRequestException('Khoa không tồn tại');
+    if (!faculty) throw new NotFoundException('Khoa không tồn tại');
 
     if (
       faculty._count.majors > 0 ||
@@ -63,8 +70,13 @@ export class FacultyService {
       );
     }
 
-    return this.prisma.faculty.delete({
-      where: { id },
-    });
+    try {
+      return await this.prisma.faculty.delete({ where: { id } });
+    } catch (error: any) {
+      if (error.code === 'P2003' || error.code === 'P2014') {
+        throw new BadRequestException('Không thể xóa Khoa vì vẫn còn dữ liệu liên kết trong hệ thống.');
+      }
+      throw new BadRequestException('Lỗi hệ thống: ' + (error.message || 'Không thể xóa Khoa'));
+    }
   }
 }

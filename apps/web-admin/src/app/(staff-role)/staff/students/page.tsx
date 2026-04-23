@@ -17,30 +17,14 @@ import {
 } from "lucide-react";
 import Modal from "@/components/modal";
 import DataTable from "@/components/DataTable";
+import FamilyMembersEditor, {
+    createEmptyFamilyMember,
+    normalizeFamilyMembers,
+    serializeFamilyMembers,
+} from "@/components/students/FamilyMembersEditor";
 
 export default function StaffStudentsPage() {
-    const [students, setStudents] = useState<any[]>([]);
-    const [majors, setMajors] = useState<any[]>([]);
-    const [faculties, setFaculties] = useState<any[]>([]);
-    const [cohorts, setCohorts] = useState<any[]>([]);
-    const [adminClasses, setAdminClasses] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [isExporting, setIsExporting] = useState(false);
-
-    // Filter states
-    const [selectedFacultyId, setSelectedFacultyId] = useState("");
-    const [selectedMajorId, setSelectedMajorId] = useState("");
-    const [selectedCohort, setSelectedCohort] = useState("");
-
-    // Modal states
-    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-    const [selectedStudent, setSelectedStudent] = useState<any>(null);
-    const [formLoading, setFormLoading] = useState(false);
-
-    // Form states
-    const [formData, setFormData] = useState({
+    const buildEmptyFormData = () => ({
         studentCode: "",
         fullName: "",
         email: "",
@@ -77,7 +61,31 @@ export default function StaffStudentsPage() {
         gpa: 0,
         cpa: 0,
         totalEarnedCredits: 0,
+        familyMembers: [createEmptyFamilyMember()],
     });
+
+    const [students, setStudents] = useState<any[]>([]);
+    const [majors, setMajors] = useState<any[]>([]);
+    const [faculties, setFaculties] = useState<any[]>([]);
+    const [cohorts, setCohorts] = useState<any[]>([]);
+    const [adminClasses, setAdminClasses] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [isExporting, setIsExporting] = useState(false);
+
+    // Filter states
+    const [selectedFacultyId, setSelectedFacultyId] = useState("");
+    const [selectedMajorId, setSelectedMajorId] = useState("");
+    const [selectedCohort, setSelectedCohort] = useState("");
+
+    // Modal states
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [selectedStudent, setSelectedStudent] = useState<any>(null);
+    const [formLoading, setFormLoading] = useState(false);
+
+    // Form states
+    const [formData, setFormData] = useState(buildEmptyFormData);
 
     const TOKEN = Cookies.get("staff_accessToken") || Cookies.get("admin_accessToken");
 
@@ -202,15 +210,25 @@ export default function StaffStudentsPage() {
                         />
                     </div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Email cá nhân</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Email hệ thống / đăng nhập</label>
                         <input
                             type="email"
                             className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
-                            value={formData.emailPersonal}
-                            onChange={(e) => setFormData({ ...formData, emailPersonal: e.target.value })}
-                            placeholder="example@gmail.com"
+                            value={formData.email}
+                            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                            placeholder="sv@uneti.edu.vn"
                         />
                     </div>
+                </div>
+                <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Email cá nhân</label>
+                    <input
+                        type="email"
+                        className="w-full px-5 py-3 bg-slate-50 border-transparent rounded-2xl text-[14px] font-bold outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10"
+                        value={formData.emailPersonal}
+                        onChange={(e) => setFormData({ ...formData, emailPersonal: e.target.value })}
+                        placeholder="example@gmail.com"
+                    />
                 </div>
             </div>
 
@@ -585,6 +603,11 @@ export default function StaffStudentsPage() {
                     </div>
                 </div>
             </div>
+
+            <FamilyMembersEditor
+                value={formData.familyMembers}
+                onChange={(familyMembers) => setFormData({ ...formData, familyMembers })}
+            />
         </div>
     );
 
@@ -617,6 +640,7 @@ export default function StaffStudentsPage() {
                 },
                 body: JSON.stringify({
                     ...formData,
+                    familyMembers: serializeFamilyMembers(formData.familyMembers),
                     dob: formData.dob ? new Date(formData.dob).toISOString() : new Date().toISOString(),
                     admissionDate: formData.admissionDate ? new Date(formData.admissionDate).toISOString() : undefined,
                     idIssueDate: formData.idIssueDate ? new Date(formData.idIssueDate).toISOString() : undefined,
@@ -627,16 +651,7 @@ export default function StaffStudentsPage() {
             if (res.ok) {
                 await fetchStudents();
                 setIsAddModalOpen(false);
-                setFormData({
-                    studentCode: "", fullName: "", email: "", intake: "", status: "STUDYING", majorId: "", adminClassId: "", specializationId: "",
-                    dob: "", phone: "", gender: "MALE", citizenId: "", address: "",
-                    emailPersonal: "", idIssueDate: "", idIssuePlace: "", admissionDate: "", campus: "",
-                    educationLevel: "", educationType: "", region: "", policyBeneficiary: "",
-                    youthUnionDate: "", partyDate: "", ethnicity: "", religion: "", nationality: "Việt Nam",
-                    birthPlace: "", permanentAddress: "", bankName: "", bankBranch: "",
-                    bankAccountName: "", bankAccountNumber: "",
-                    gpa: 0, cpa: 0, totalEarnedCredits: 0
-                });
+                setFormData(buildEmptyFormData());
             }
         } catch (error) {
             alert("Lỗi khi thêm sinh viên");
@@ -657,6 +672,7 @@ export default function StaffStudentsPage() {
                 },
                 body: JSON.stringify({
                     ...formData,
+                    familyMembers: serializeFamilyMembers(formData.familyMembers),
                     dob: formData.dob ? new Date(formData.dob).toISOString() : undefined,
                     admissionDate: formData.admissionDate ? new Date(formData.admissionDate).toISOString() : undefined,
                     idIssueDate: formData.idIssueDate ? new Date(formData.idIssueDate).toISOString() : undefined,
@@ -732,6 +748,7 @@ export default function StaffStudentsPage() {
             gpa: student.gpa || 0,
             cpa: student.cpa || 0,
             totalEarnedCredits: student.totalEarnedCredits || 0,
+            familyMembers: normalizeFamilyMembers(student.familyMembers),
         });
         setIsEditModalOpen(true);
     };
@@ -773,6 +790,26 @@ export default function StaffStudentsPage() {
                     </span>
                 </div>
             )
+        },
+        {
+            header: "Gia đình",
+            accessorKey: "familyMembers",
+            cell: (s: any) => {
+                const familyMembers = Array.isArray(s.familyMembers) ? s.familyMembers : [];
+                const primaryMember = familyMembers[0];
+                return (
+                    <div className="flex flex-col gap-1">
+                        <span className="text-[12px] font-black text-slate-700">
+                            {familyMembers.length > 0 ? `${familyMembers.length} liên hệ` : "Chưa có"}
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                            {primaryMember
+                                ? `${primaryMember.relationship}: ${primaryMember.fullName}${primaryMember.phone ? ` - ${primaryMember.phone}` : ""}`
+                                : "Bổ sung trong lúc sửa hồ sơ"}
+                        </span>
+                    </div>
+                );
+            }
         },
         {
             header: "Trạng thái",

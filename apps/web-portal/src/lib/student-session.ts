@@ -72,6 +72,31 @@ export function persistStudentSession(accessToken: string, user: StudentSessionU
     }
 }
 
+export function readStudentAccessToken(): string | null {
+    if (typeof window === "undefined") return null;
+
+    return (
+        Cookies.get(STUDENT_TOKEN_KEY) ||
+        localStorage.getItem(STUDENT_TOKEN_KEY) ||
+        Cookies.get(LEGACY_TOKEN_KEY) ||
+        localStorage.getItem(LEGACY_TOKEN_KEY)
+    );
+}
+
+export function updateStudentSessionUser(patch: Partial<StudentSessionUser>) {
+    const currentUser = readStudentSessionUser();
+    const accessToken = readStudentAccessToken();
+
+    if (!currentUser || !accessToken) {
+        return;
+    }
+
+    persistStudentSession(accessToken, {
+        ...currentUser,
+        ...patch,
+    });
+}
+
 export function clearStudentSession() {
     Cookies.remove(STUDENT_TOKEN_KEY);
     Cookies.remove(STUDENT_ROLE_KEY);

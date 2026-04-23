@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -23,18 +23,21 @@ export class DepartmentService {
   }
 
   async create(data: any) {
-    return this.prisma.department.create({
-      data,
-      include: { faculty: true },
-    });
+    try {
+      return await this.prisma.department.create({ data, include: { faculty: true } });
+    } catch (error: any) {
+      if (error.code === 'P2002') throw new BadRequestException('Mã Bộ môn đã tồn tại.');
+      throw new BadRequestException('Lỗi hệ thống: ' + (error.message || 'Không thể tạo Bộ môn'));
+    }
   }
 
   async update(id: string, data: any) {
-    return this.prisma.department.update({
-      where: { id },
-      data,
-      include: { faculty: true },
-    });
+    try {
+      return await this.prisma.department.update({ where: { id }, data, include: { faculty: true } });
+    } catch (error: any) {
+      if (error.code === 'P2002') throw new BadRequestException('Mã Bộ môn đã tồn tại.');
+      throw new BadRequestException('Lỗi hệ thống: ' + (error.message || 'Không thể cập nhật Bộ môn'));
+    }
   }
 
   async delete(id: string) {
@@ -49,7 +52,7 @@ export class DepartmentService {
       },
     });
 
-    if (!department) throw new BadRequestException('Bộ môn không tồn tại');
+    if (!department) throw new NotFoundException('Bộ môn không tồn tại');
 
     if (department._count.subjects > 0) {
       throw new BadRequestException(
@@ -57,6 +60,13 @@ export class DepartmentService {
       );
     }
 
-    return this.prisma.department.delete({ where: { id } });
+    try {
+      return await this.prisma.department.delete({ where: { id } });
+    } catch (error: any) {
+      if (error.code === 'P2003' || error.code === 'P2014') {
+        throw new BadRequestException('Không thể xóa Bộ môn vì vẫn còn dữ liệu liên kết trong hệ thống.');
+      }
+      throw new BadRequestException('Lỗi hệ thống: ' + (error.message || 'Không thể xóa Bộ môn'));
+    }
   }
 }

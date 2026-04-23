@@ -115,10 +115,10 @@ export class SemesterPlanService {
   private getTargetTotalPeriods(subject: any, input: any = {}) {
     const credits = this.positive(subject?.credits);
     const creditPeriods = credits * 15;
-    
+
     const explicitTheoryPeriods = this.numericOrNull(input?.theoryPeriods);
     const explicitPracticePeriods = this.numericOrNull(input?.practicePeriods);
-    
+
     const rawTheoryPeriods =
       explicitTheoryPeriods !== null
         ? Math.max(explicitTheoryPeriods, 0)
@@ -133,12 +133,25 @@ export class SemesterPlanService {
             subject?.practicePeriods,
             this.positive(subject?.practiceHours),
           );
-          
-    const rawTotalPeriods = rawTheoryPeriods + rawPracticePeriods;
 
-    // If we have credits, the total MUST be credits * 15
+    const rawTotalPeriods = rawTheoryPeriods + rawPracticePeriods;
+    const practiceOriented = this.isPracticeOrientedSubject(
+      subject,
+      rawTheoryPeriods,
+      rawPracticePeriods,
+    );
+
+    // UNETI curriculum usually publishes explicit LT/TH(TL) periods per subject.
+    // When those values exist, they are more accurate than a generic credits*15 fallback.
+    if (rawTotalPeriods > 0) {
+      return rawTotalPeriods;
+    }
+
     if (credits > 0) {
-      return creditPeriods;
+      // Legacy subjects without explicit LT/TH should still follow UNETI credit rules.
+      // Theory defaults to 15 periods/credit; practice-oriented subjects default
+      // to the practical baseline of 30 periods/credit.
+      return practiceOriented ? credits * 30 : creditPeriods;
     }
 
     return Math.max(rawTotalPeriods, 15);
@@ -194,6 +207,7 @@ export class SemesterPlanService {
   private resolveSessionsPerWeek(
     totalPeriods: number,
     configuredSessionsPerWeek: number | null,
+    availableWeeks = DEFAULT_TEACHING_WEEKS,
   ) {
     if (totalPeriods <= 0) {
       return 0;
@@ -204,7 +218,26 @@ export class SemesterPlanService {
         ? Math.max(configuredSessionsPerWeek, 0)
         : 0;
 
-    return configured || DEFAULT_SESSIONS_PER_WEEK;
+    if (configured) {
+      return configured;
+    }
+
+    const effectiveWeeks = Math.max(
+      Math.min(availableWeeks, DEFAULT_TEACHING_WEEKS),
+      1,
+    );
+    const preferredSessions = [1, 2, 3, 4];
+
+    for (const sessions of preferredSessions) {
+      const periodsPerSession = Math.ceil(
+        totalPeriods / effectiveWeeks / sessions,
+      );
+      if (periodsPerSession <= 4) {
+        return sessions;
+      }
+    }
+
+    return DEFAULT_SESSIONS_PER_WEEK;
   }
 
   private resolvePeriodsPerSession(
@@ -439,25 +472,25 @@ export class SemesterPlanService {
     const theorySessionsPerWeek = this.resolveSessionsPerWeek(
       theoryPeriods,
       theoryConfig,
+      availableWeeks,
     );
     const practiceSessionsPerWeek = this.resolveSessionsPerWeek(
       practicePeriods,
       practiceConfig,
+      availableWeeks,
     );
-    const combinedSessionsPerWeek = Math.max(
-      theorySessionsPerWeek,
-      practiceSessionsPerWeek,
-      DEFAULT_SESSIONS_PER_WEEK,
-    );
-    const combinedTotalPeriods = theoryPeriods + practicePeriods;
 
     const periodsPerSession = this.resolvePeriodsPerSession(
       [
         {
-          totalPeriods: combinedTotalPeriods,
-          sessionsPerWeek: combinedSessionsPerWeek,
+          totalPeriods: theoryPeriods,
+          sessionsPerWeek: theorySessionsPerWeek,
         },
-      ],
+        {
+          totalPeriods: practicePeriods,
+          sessionsPerWeek: practiceSessionsPerWeek,
+        },
+      ].filter((block) => block.totalPeriods > 0 && block.sessionsPerWeek > 0),
       this.numericOrNull(input.periodsPerSession),
       availableWeeks,
     );
@@ -478,15 +511,12 @@ export class SemesterPlanService {
       { ...(fallback || {}), ...(snapshot || {}) },
       { availableWeeks: fallback?.availableWeeks },
     );
-    const totalPeriods =
-      normalized.theoryPeriods + normalized.practicePeriods;
-    if (totalPeriods <= 0) {
-      return [];
-    }
-    const sessionsPerWeek = Math.max(
-      normalized.theorySessionsPerWeek,
-      normalized.practiceSessionsPerWeek,
-      DEFAULT_SESSIONS_PER_WEEK,
+    const availableWeeks = this.positive(
+      fallback?.availableWeeks,
+      DEFAULT_TEACHING_WEEKS,
+    );
+    const configuredPeriodsPerSession = this.numericOrNull(
+      snapshot?.periodsPerSession ?? fallback?.periodsPerSession,
     );
     const usePracticeRoom = this.shouldUsePracticeRoom(
       subject,
@@ -494,12 +524,74 @@ export class SemesterPlanService {
       normalized.practicePeriods,
     );
 
+    const blocks: Array<{
+      type: 'THEORY' | 'PRACTICE';
+      roomType: 'THEORY' | 'PRACTICE';
+      totalPeriods: number;
+      sessionsPerWeek: number;
+      periodsPerSession: number;
+    }> = [];
+
+    if (normalized.theoryPeriods > 0 && normalized.theorySessionsPerWeek > 0) {
+      blocks.push({
+        type: 'THEORY',
+        roomType: 'THEORY',
+        totalPeriods: normalized.theoryPeriods,
+        sessionsPerWeek: normalized.theorySessionsPerWeek,
+        periodsPerSession: this.resolvePeriodsPerSession(
+          [
+            {
+              totalPeriods: normalized.theoryPeriods,
+              sessionsPerWeek: normalized.theorySessionsPerWeek,
+            },
+          ],
+          configuredPeriodsPerSession,
+          availableWeeks,
+        ),
+      });
+    }
+
+    if (
+      normalized.practicePeriods > 0 &&
+      normalized.practiceSessionsPerWeek > 0
+    ) {
+      blocks.push({
+        type: 'PRACTICE',
+        roomType: usePracticeRoom ? 'PRACTICE' : 'THEORY',
+        totalPeriods: normalized.practicePeriods,
+        sessionsPerWeek: normalized.practiceSessionsPerWeek,
+        periodsPerSession: this.resolvePeriodsPerSession(
+          [
+            {
+              totalPeriods: normalized.practicePeriods,
+              sessionsPerWeek: normalized.practiceSessionsPerWeek,
+            },
+          ],
+          configuredPeriodsPerSession,
+          availableWeeks,
+        ),
+      });
+    }
+
+    if (blocks.length > 0) {
+      return blocks;
+    }
+
+    const totalPeriods = normalized.theoryPeriods + normalized.practicePeriods;
+    if (totalPeriods <= 0) {
+      return [];
+    }
+
     return [
       {
         type: usePracticeRoom ? 'PRACTICE' : 'THEORY',
         roomType: usePracticeRoom ? 'PRACTICE' : 'THEORY',
         totalPeriods,
-        sessionsPerWeek,
+        sessionsPerWeek: Math.max(
+          normalized.theorySessionsPerWeek,
+          normalized.practiceSessionsPerWeek,
+          DEFAULT_SESSIONS_PER_WEEK,
+        ),
         periodsPerSession: normalized.periodsPerSession,
       },
     ];
@@ -515,11 +607,16 @@ export class SemesterPlanService {
     return {
       totalPeriods: blocks.reduce((sum, block) => sum + block.totalPeriods, 0),
       sessionsPerWeek: this.positive(
-        primaryBlock?.sessionsPerWeek ?? snapshot?.sessionsPerWeek,
+        blocks.reduce((sum, block) => sum + this.positive(block.sessionsPerWeek), 0) ||
+          primaryBlock?.sessionsPerWeek ||
+          snapshot?.sessionsPerWeek,
         DEFAULT_SESSIONS_PER_WEEK,
       ),
       periodsPerSession: this.positive(
-        primaryBlock?.periodsPerSession ?? snapshot?.periodsPerSession,
+        Math.max(
+          ...blocks.map((block) => this.positive(block.periodsPerSession)),
+          this.positive(primaryBlock?.periodsPerSession ?? snapshot?.periodsPerSession),
+        ),
         DEFAULT_PERIODS_PER_SESSION,
       ),
     };
@@ -832,73 +929,13 @@ export class SemesterPlanService {
     semesterId: string,
     plannedLoad?: Map<string, { itemCount: number; totalPeriods: number }>,
   ) {
-    const queryLecturers = (where?: any) =>
-      this.prisma.lecturer.findMany({
-        where,
-        include: {
-          classes: {
-            where: { semesterId },
-            select: { id: true, totalPeriods: true },
-          },
+    const fallbackLecturers = await this.prisma.lecturer.findMany({
+      include: {
+        classes: {
+          select: { id: true, totalPeriods: true },
         },
-      });
-
-    if (subject?.departmentId) {
-      const departmentLecturers = await queryLecturers({
-        departmentId: subject.departmentId,
-      });
-      if (departmentLecturers.length) {
-        return this.sortLecturersByLoad(departmentLecturers, plannedLoad);
-      }
-    }
-
-    const major =
-      subject?.major ||
-      (await this.prisma.major.findFirst({
-        where: { id: majorId },
-        select: { id: true, facultyId: true },
-      }));
-    const facultyId = major?.facultyId || null;
-
-    if (facultyId) {
-      const facultyLecturers = await queryLecturers({
-        OR: [{ facultyId }, { department: { facultyId } }],
-      });
-
-      if (facultyLecturers.length) {
-        return this.sortLecturersByLoad(facultyLecturers, plannedLoad);
-      }
-    }
-
-    const equivalentMajorIds = await this.resolveEquivalentMajorIds(majorId);
-    if (equivalentMajorIds.length > 1) {
-      const equivalentFaculties = await this.prisma.major.findMany({
-        where: { id: { in: equivalentMajorIds } },
-        select: { facultyId: true },
-      });
-      const facultyIds = [
-        ...new Set(
-          equivalentFaculties
-            .map((item) => item.facultyId)
-            .filter((value): value is string => !!value),
-        ),
-      ];
-
-      if (facultyIds.length) {
-        const equivalentLecturers = await queryLecturers({
-          OR: [
-            { facultyId: { in: facultyIds } },
-            { department: { facultyId: { in: facultyIds } } },
-          ],
-        });
-
-        if (equivalentLecturers.length) {
-          return this.sortLecturersByLoad(equivalentLecturers, plannedLoad);
-        }
-      }
-    }
-
-    const fallbackLecturers = await queryLecturers();
+      },
+    });
     return this.sortLecturersByLoad(fallbackLecturers, plannedLoad);
   }
 
@@ -1200,6 +1237,19 @@ export class SemesterPlanService {
       await prisma.classSession.deleteMany({
         where: { courseClassId: context.courseClass.id },
       });
+    }
+
+    const isNoScheduleSubject = 
+      context.subject?.examType === 'BAO_VE' || 
+      /khóa luận|khoá luận|đồ án|thực tập|kltn/i.test(context.subject?.name || '');
+
+    if (isNoScheduleSubject) {
+      return {
+        alreadyScheduled: true,
+        scheduledSessions: 0,
+        incomplete: false,
+        issues: [] as string[],
+      };
     }
 
     const semesterStart = this.toDateOnly(context.semester.startDate);
@@ -3841,22 +3891,7 @@ export class SemesterPlanService {
         where: { courseClassId: classId },
       });
 
-      // 5. Cleanup TeachingPlans and Schedules
-      const teachingPlans = await tx.teachingPlan.findMany({
-        where: { courseClassId: classId },
-        select: { id: true },
-      });
-      const tpIds = teachingPlans.map((tp) => tp.id);
-      if (tpIds.length > 0) {
-        await tx.classSchedule.deleteMany({
-          where: { planId: { in: tpIds } },
-        });
-        await tx.teachingPlan.deleteMany({
-          where: { courseClassId: classId },
-        });
-      }
-
-      // 6. Reset item defaults after class removal
+      // 5. Reset item defaults after class removal
       for (const item of linkedItems) {
         const semesterPlan = await tx.semesterPlan.findFirst({
           where: { id: item.semesterPlanId },

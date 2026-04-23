@@ -861,31 +861,31 @@ export default function ScheduleListView() {
   }, [selectedDate, semesterOptions, selectedSemesterId]);
 
   const visibleEnrollments = useMemo(() => {
-    // We want to show all enrollments that have sessions in the currently viewed week
-    // OR belong to the currently resolved semester (to show curriculum/missing items)
-    
-    const weekStart = weekDays[0];
-    const weekEnd = weekDays[6];
-
     return normalizedEnrollments.filter((enrollment) => {
-      // 1. Session is in this week
-      const sessions = getCourseClassSessions(enrollment.courseClass);
-      const hasSessionInWeek = sessions.some(s => isDateInRange(s.date, weekStart, weekEnd));
-      if (hasSessionInWeek) return true;
+      // 1. MUST belong to the selected semester
+      const belongsToSemester = selectedSemester
+        ? enrollmentMatchesSemester(enrollment, selectedSemester, selectedSemesterKeys)
+        : true;
+      if (!belongsToSemester) return false;
 
-      // 2. Or matches the resolved semester
-      if (selectedSemester && enrollmentMatchesSemester(enrollment, selectedSemester, selectedSemesterKeys)) {
-        return true;
+      // 2. If curriculum data is available for this semester, ONLY show subjects in the plan
+      if (selectedCurriculumSubjectKeys.size > 0) {
+        const enrollmentTokens = getEnrollmentSubjectTokens(enrollment);
+        const isInCurriculum = [...enrollmentTokens].some((token) =>
+          selectedCurriculumSubjectKeys.has(token)
+        );
+        if (!isInCurriculum) return false;
       }
 
-      return false;
+      return true;
     });
   }, [
     normalizedEnrollments,
     selectedSemester,
     selectedSemesterKeys,
-    weekDays,
+    selectedCurriculumSubjectKeys,
   ]);
+
 
   const scheduledSubjectSummaries = useMemo(
     () =>
@@ -1028,8 +1028,15 @@ export default function ScheduleListView() {
           </div>
         </div>
 
-        {/* Right: date picker + week nav */}
+      {/* Right: Today + date picker + week nav */}
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setSelectedDate(new Date())}
+            className="inline-flex items-center gap-1.5 h-9 rounded-lg border border-blue-200 bg-blue-50 px-3 text-[12px] font-bold text-blue-700 hover:bg-blue-100 transition-colors"
+          >
+            <CalendarCheck className="h-3.5 w-3.5" />
+            Hôm nay
+          </button>
           <input
             type="date"
             value={formatDateForInput(selectedDate)}

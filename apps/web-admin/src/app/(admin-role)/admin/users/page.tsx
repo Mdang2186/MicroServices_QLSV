@@ -44,6 +44,7 @@ export default function AdminUsersPage() {
         username: "",
         email: "",
         role: "",
+        isActive: true,
     });
 
     const TOKEN = Cookies.get("admin_accessToken");
@@ -126,6 +127,7 @@ export default function AdminUsersPage() {
             username: u.username || "",
             email: u.email || "",
             role: u.role || "",
+            isActive: u.isActive !== false,
         });
         setIsEditModalOpen(true);
     };
@@ -289,8 +291,10 @@ export default function AdminUsersPage() {
 
                                     <td className="py-5 px-8">
                                         <div className="flex items-center gap-2">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
-                                            <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Hoạt động</span>
+                                            <div className={`w-1.5 h-1.5 rounded-full ${u.isActive === false ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]' : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]'}`}></div>
+                                            <span className={`text-[10px] font-black uppercase tracking-widest ${u.isActive === false ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                {u.isActive === false ? 'Đã khóa' : 'Hoạt động'}
+                                            </span>
                                         </div>
                                     </td>
                                     <td className="py-5 px-8 text-right">
@@ -393,6 +397,23 @@ export default function AdminUsersPage() {
 
                             <ChevronRight size={16} className="absolute right-4 top-1/2 -translate-y-1/2 rotate-90 text-slate-400 pointer-events-none" />
                         </div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 flex items-center justify-between">
+                        <div>
+                            <p className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Trạng thái tài khoản</p>
+                            <p className="mt-1 text-[12px] font-bold text-slate-500">
+                                {formData.isActive ? "Cho phép đăng nhập hệ thống" : "Khóa đăng nhập tạm thời"}
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setFormData({ ...formData, isActive: !formData.isActive })}
+                            className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${formData.isActive ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                        >
+                            <span
+                                className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${formData.isActive ? 'translate-x-6' : 'translate-x-1'}`}
+                            />
+                        </button>
                     </div>
                 </form>
             </Modal>

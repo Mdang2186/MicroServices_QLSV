@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Cookies from "js-cookie";
+import Link from "next/link";
 import {
     ChevronLeft,
     ChevronRight,
@@ -13,10 +14,8 @@ import {
     CalendarDays,
     ArrowUpRight
 } from "lucide-react";
-import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import Link from "next/link";
 import { CompactLecturerHeader } from "@/components/dashboard/CompactLecturerHeader";
 
 const SESSIONS = [
@@ -35,311 +34,119 @@ const DAYS = [
     { name: "Chủ nhật", short: "CN", value: 8 },
 ];
 
-type SemesterOption = {
-    id: string;
-    code?: string;
-    name: string;
-    startDate?: Date | null;
-    endDate?: Date | null;
-    sessionDates: Date[];
-};
+const getLecturerProfileId = (user: any) =>
+    user?.profileId || user?.lecturerId || user?.lecturer?.id || "";
 
-const normalizeDate = (value: any) => {
+const toDateInputValue = (date: Date) => date.toISOString().split("T")[0];
+
+const getWeekStart = (value: Date) => {
     const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date;
+    const day = date.getDay();
+    date.setDate(date.getDate() - (day === 0 ? 6 : day - 1));
+    date.setHours(0, 0, 0, 0);
+    return date;
 };
 
-const getSemesterSortTime = (semester: SemesterOption) => {
-    const lastSession = semester.sessionDates[semester.sessionDates.length - 1];
-    return (lastSession || semester.endDate || semester.startDate || new Date(0)).getTime();
+const addDays = (value: Date, days: number) => {
+    const date = new Date(value);
+    date.setDate(date.getDate() + days);
+    return date;
 };
 
-const formatSemesterOptionLabel = (semester: Partial<SemesterOption>) => {
-    const code = `${semester.code || ""}`.trim();
-    const name = `${semester.name || ""}`.trim();
-
-    if (!code) return name || "Học kỳ";
-    if (!name) return code;
-    if (name.toUpperCase().includes(code.toUpperCase())) return name;
-    return `${code} - ${name}`;
-};
-
-const pickSemesterAnchorDate = (semester: SemesterOption) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const startDate = semester.startDate ? new Date(semester.startDate) : null;
-    const endDate = semester.endDate ? new Date(semester.endDate) : null;
-
-    if (startDate) startDate.setHours(0, 0, 0, 0);
-    if (endDate) endDate.setHours(0, 0, 0, 0);
-
-    if (startDate && endDate && today >= startDate && today <= endDate) {
-        return today;
-    }
-
-    const futureSession = semester.sessionDates.find((date) => date >= today);
-    if (futureSession) {
-        return new Date(futureSession);
-    }
-
-    if (semester.sessionDates.length > 0) {
-        return new Date(semester.sessionDates[0]);
-    }
-
-    if (startDate) {
-        return new Date(startDate);
-    }
-
-    return today;
-};
-
-const isDateWithinSemester = (date: Date, semester: SemesterOption | null) => {
-    if (!semester) return true;
-    const target = new Date(date);
-    target.setHours(0, 0, 0, 0);
-
-    const startDate = semester.startDate ? new Date(semester.startDate) : null;
-    const endDate = semester.endDate ? new Date(semester.endDate) : null;
-
-    if (!startDate || !endDate) {
-        return true;
-    }
-
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(0, 0, 0, 0);
-    return target >= startDate && target <= endDate;
+const getShiftBucket = (startShift: number) => {
+    if (startShift <= 6) return "morning";
+    if (startShift <= 12) return "afternoon";
+    return "evening";
 };
 
 export default function LecturerSchedulePage() {
     const [user, setUser] = useState<any>(null);
     const [loading, setLoading] = useState(false);
-    const [schedule, setSchedule] = useState<any[]>([]);
-    const [allSemesters, setAllSemesters] = useState<any[]>([]);
-    const [semesterOptions, setSemesterOptions] = useState<SemesterOption[]>([]);
-    const [selectedSemesterId, setSelectedSemesterId] = useState<string>("");
     const [selectedDate, setSelectedDate] = useState(new Date());
-    const [filter, setFilter] = useState("all");
+    const [schedule, setSchedule] = useState<any[]>([]);
+    const [filter, setFilter] = useState<"all" | "study" | "exam">("all");
 
-    const TOKEN = Cookies.get("admin_accessToken");
+    const token = Cookies.get("lecturer_accessToken") || Cookies.get("admin_accessToken");
+    const lecturerProfileId = getLecturerProfileId(user);
+    const weekStart = useMemo(() => getWeekStart(selectedDate), [selectedDate]);
+    const weekDays = useMemo(
+        () => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)),
+        [weekStart],
+    );
 
     useEffect(() => {
-        const c = Cookies.get("admin_user");
-        if (c) try { setUser(JSON.parse(c)); } catch { }
+        const raw = Cookies.get("lecturer_user") || Cookies.get("admin_user");
+        if (raw) {
+            try {
+                setUser(JSON.parse(raw));
+            } catch {
+                setUser(null);
+            }
+        }
     }, []);
 
     useEffect(() => {
-        fetch("/api/semesters", {
-            headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {},
-        })
-            .then((response) => (response.ok ? response.json() : []))
-            .then((data) => setAllSemesters(Array.isArray(data) ? data : []))
-            .catch(() => setAllSemesters([]));
-    }, [TOKEN]);
-
-    useEffect(() => {
-        if (!user?.profileId) {
-            setSemesterOptions([]);
-            return;
-        }
-
-        fetch(`/api/courses/lecturer/${user.profileId}`, {
-            headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}
-        })
-            .then((response) => (response.ok ? response.json() : []))
-            .then((data) => {
-                const classes = Array.isArray(data) ? data : [];
-                const semesterMap = new Map<string, SemesterOption & { sessionKeys: Set<string> }>();
-
-                allSemesters.forEach((semester) => {
-                    if (!semester?.id) return;
-                    semesterMap.set(semester.id, {
-                        id: semester.id,
-                        code: semester.code,
-                        name: semester.name || semester.id,
-                        startDate: normalizeDate(semester.startDate),
-                        endDate: normalizeDate(semester.endDate),
-                        sessionDates: [],
-                        sessionKeys: new Set<string>(),
-                    });
-                });
-
-                classes.forEach((courseClass: any) => {
-                    const semester = courseClass.semester;
-                    const semesterId = courseClass.semesterId || semester?.id;
-                    if (!semesterId) return;
-
-                    const existing = semesterMap.get(semesterId);
-                    const sessionDates = (courseClass.sessions || [])
-                        .map((session: any) => normalizeDate(session.date))
-                        .filter(Boolean) as Date[];
-
-                    if (!existing) {
-                        const option: SemesterOption & { sessionKeys: Set<string> } = {
-                            id: semesterId,
-                            code: semester?.code,
-                            name: semester?.name || semesterId,
-                            startDate: normalizeDate(semester?.startDate),
-                            endDate: normalizeDate(semester?.endDate),
-                            sessionDates: [],
-                            sessionKeys: new Set<string>(),
-                        };
-
-                        sessionDates.forEach((date) => {
-                            const key = date.toISOString();
-                            if (!option.sessionKeys.has(key)) {
-                                option.sessionKeys.add(key);
-                                option.sessionDates.push(date);
-                            }
-                        });
-
-                        semesterMap.set(semesterId, option);
-                        return;
-                    }
-
-                    sessionDates.forEach((date) => {
-                        const key = date.toISOString();
-                        if (!existing.sessionKeys.has(key)) {
-                            existing.sessionKeys.add(key);
-                            existing.sessionDates.push(date);
-                        }
-                    });
-                });
-
-                const options = Array.from(semesterMap.values())
-                    .map(({ sessionKeys, ...semester }) => ({
-                        ...semester,
-                        sessionDates: [...semester.sessionDates].sort(
-                            (left, right) => left.getTime() - right.getTime(),
-                        ),
-                    }))
-                    .sort((left, right) => getSemesterSortTime(right) - getSemesterSortTime(left));
-
-                setSemesterOptions(options);
-            })
-            .catch(() => setSemesterOptions([]));
-    }, [user, TOKEN, allSemesters]);
-
-    useEffect(() => {
-        if (!semesterOptions.length) return;
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const semestersWithSessions = semesterOptions.filter(
-            (semester) => semester.sessionDates.length > 0,
-        );
-        const preferredSemesters =
-            semestersWithSessions.length > 0 ? semestersWithSessions : semesterOptions;
-
-        const currentSemester =
-            preferredSemesters.find((semester) => {
-                const startDate = semester.startDate ? new Date(semester.startDate) : null;
-                const endDate = semester.endDate ? new Date(semester.endDate) : null;
-                if (!startDate || !endDate) return false;
-                startDate.setHours(0, 0, 0, 0);
-                endDate.setHours(0, 0, 0, 0);
-                return today >= startDate && today <= endDate;
-            }) || preferredSemesters[0];
-
-        setSelectedSemesterId((current) =>
-            preferredSemesters.some((semester) => semester.id === current)
-                ? current
-                : currentSemester.id,
-        );
-    }, [semesterOptions]);
-
-    useEffect(() => {
-        if (!user?.profileId || !selectedSemesterId) {
+        if (!lecturerProfileId || !token) {
+            setSchedule([]);
             setLoading(false);
             return;
         }
 
         setLoading(true);
-        fetch(`/api/courses/schedule/lecturer/${user.profileId}?semesterId=${selectedSemesterId}`, {
-            headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}
-        })
-            .then(r => r.ok ? r.json() : [])
-            .then(data => {
-                setSchedule(Array.isArray(data) ? data : []);
-            })
+        const startDate = toDateInputValue(weekDays[0]);
+        const endDate = toDateInputValue(weekDays[6]);
+
+        fetch(
+            `/api/courses/sessions/lecturer/${lecturerProfileId}?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`,
+            {
+                headers: { Authorization: `Bearer ${token}` },
+            },
+        )
+            .then((response) => (response.ok ? response.json() : []))
+            .then((data) => setSchedule(Array.isArray(data) ? data : []))
             .catch(() => setSchedule([]))
             .finally(() => setLoading(false));
-    }, [user, selectedSemesterId, TOKEN]);
-
-    useEffect(() => {
-        if (!schedule.length) return;
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const sessionDates = schedule
-            .map((session) => new Date(session.date))
-            .filter((date) => !Number.isNaN(date.getTime()))
-            .sort((left, right) => left.getTime() - right.getTime());
-
-        const futureSession = sessionDates.find((date) => date >= today);
-        const anchor = futureSession || sessionDates[0];
-        if (anchor) {
-            setSelectedDate(anchor);
-        }
-    }, [selectedSemesterId, schedule]);
-
-    const selectedSemester = useMemo(
-        () =>
-            semesterOptions.find((semester) => semester.id === selectedSemesterId) || null,
-        [semesterOptions, selectedSemesterId],
-    );
-
-    const weekDays = useMemo(() => {
-        const d = new Date(selectedDate);
-        const day = d.getDay();
-        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-        const start = new Date(d.setDate(diff));
-        return Array.from({ length: 7 }, (_, i) => {
-            const date = new Date(start);
-            date.setDate(date.getDate() + i);
-            return date;
-        });
-    }, [selectedDate]);
+    }, [lecturerProfileId, token, weekDays]);
 
     const getSchedulesForDayAndSession = (dayValue: number, sessionValue: string) => {
         const targetJsDay = dayValue === 8 ? 0 : dayValue - 1;
-        const dateAtIdx = weekDays.find(d => d.getDay() === targetJsDay);
-        return schedule.filter(s => {
-            const sessionDate = new Date(s.date);
-            // normalization to YYYY-MM-DD for reliable comparison
-            const sessionDateStr = `${sessionDate.getFullYear()}-${sessionDate.getMonth()}-${sessionDate.getDate()}`;
-            const targetDateStr = dateAtIdx ? `${dateAtIdx.getFullYear()}-${dateAtIdx.getMonth()}-${dateAtIdx.getDate()}` : "";
+        const targetDate = weekDays.find((date) => date.getDay() === targetJsDay);
+        if (!targetDate) return [];
 
-            if (sessionDateStr !== targetDateStr) return false;
+        const targetKey = toDateInputValue(targetDate);
 
-            const start = Number(s.startShift);
-            let sessionMatch = false;
-            if (sessionValue === "morning") sessionMatch = start <= 6;
-            else if (sessionValue === "afternoon") sessionMatch = start > 6 && start <= 12;
-            else if (sessionValue === "evening") sessionMatch = start > 12;
+        return schedule
+            .filter((session) => {
+                const sessionKey = `${session.date || ""}`.slice(0, 10);
+                if (sessionKey !== targetKey) return false;
 
-            if (!sessionMatch) return false;
+                const bucket = getShiftBucket(Number(session.startShift));
+                if (bucket !== sessionValue) return false;
 
-            if (filter === "study" && s.type === "EXAM") return false;
-            if (filter === "exam" && s.type !== "EXAM") return false;
-
-            return true;
-        }).sort((a, b) => Number(a.startShift) - Number(b.startShift));
+                if (filter === "study" && session.type === "EXAM") return false;
+                if (filter === "exam" && session.type !== "EXAM") return false;
+                return true;
+            })
+            .sort((left, right) => Number(left.startShift) - Number(right.startShift));
     };
 
-    const navigateWeek = (direction: 'next' | 'prev') => {
-        const d = new Date(selectedDate);
-        d.setDate(d.getDate() + (direction === 'next' ? 7 : -7));
-        setSelectedDate(d);
+    const navigateWeek = (direction: "next" | "prev") => {
+        const nextDate = new Date(selectedDate);
+        nextDate.setDate(nextDate.getDate() + (direction === "next" ? 7 : -7));
+        setSelectedDate(nextDate);
     };
 
     return (
         <div className="min-h-screen space-y-4 pb-20 w-full max-w-full p-4 md:p-6 animate-in fade-in duration-700 bg-[#fbfcfd]">
+            <CompactLecturerHeader
+                userName={`${user?.degree || "Giảng viên"} ${user?.fullName || "Cao cấp"}`}
+                userId={`GV-${user?.username || "UNETI"}`}
+                minimal={true}
+                title="Lịch giảng dạy"
+                onSemesterChange={() => {}}
+                hideSemester={true}
+            />
 
-
-            {/* Compact Toolbar & Navigation */}
             <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-3 px-5 rounded-2xl border border-slate-100 shadow-sm">
                 <div className="flex items-center gap-6">
                     <div className="flex items-center gap-3 pr-6 border-r border-slate-100">
@@ -347,7 +154,7 @@ export default function LecturerSchedulePage() {
                             <CalendarDays size={18} />
                         </div>
                         <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight">
-                            {weekDays[0].toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })} - {weekDays[6].toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                            {weekDays[0].toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })} - {weekDays[6].toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" })}
                         </h2>
                     </div>
 
@@ -356,16 +163,16 @@ export default function LecturerSchedulePage() {
                             { id: "all", label: "Tất cả" },
                             { id: "study", label: "Giảng dạy" },
                             { id: "exam", label: "Lịch thi" }
-                        ].map((f) => (
+                        ].map((item) => (
                             <button
-                                key={f.id}
-                                onClick={() => setFilter(f.id)}
+                                key={item.id}
+                                onClick={() => setFilter(item.id as "all" | "study" | "exam")}
                                 className={cn(
                                     "px-3 py-1.5 rounded-lg transition-all",
-                                    filter === f.id ? "bg-slate-100 text-uneti-blue" : "hover:text-uneti-blue"
+                                    filter === item.id ? "bg-slate-100 text-uneti-blue" : "hover:text-uneti-blue"
                                 )}
                             >
-                                {f.label}
+                                {item.label}
                             </button>
                         ))}
                     </div>
@@ -374,32 +181,27 @@ export default function LecturerSchedulePage() {
                 <div className="flex items-center gap-2">
                     <div className="flex items-center gap-1 p-1 bg-slate-50 rounded-xl border border-slate-100">
                         <button
-                            onClick={() => navigateWeek('prev')}
+                            onClick={() => navigateWeek("prev")}
                             className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-white hover:shadow-sm text-slate-400 hover:text-uneti-blue transition-all"
                         >
                             <ChevronLeft size={18} />
                         </button>
+                        <input
+                            type="date"
+                            value={toDateInputValue(selectedDate)}
+                            onChange={(event) => setSelectedDate(new Date(event.target.value))}
+                            className="h-8 rounded-lg border border-transparent bg-transparent px-2 text-[10px] font-black uppercase tracking-widest text-slate-600 outline-none"
+                        />
                         <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => {
-                                const today = new Date();
-                                if (isDateWithinSemester(today, selectedSemester)) {
-                                    setSelectedDate(today);
-                                    return;
-                                }
-                                if (selectedSemester) {
-                                    setSelectedDate(pickSemesterAnchorDate(selectedSemester));
-                                    return;
-                                }
-                                setSelectedDate(today);
-                            }}
+                            onClick={() => setSelectedDate(new Date())}
                             className="h-8 px-3 text-[10px] font-black uppercase text-slate-600 hover:bg-white hover:shadow-sm transition-all"
                         >
                             <CalendarCheck className="mr-1.5 h-3.5 w-3.5 text-uneti-blue" /> Hôm nay
                         </Button>
                         <button
-                            onClick={() => navigateWeek('next')}
+                            onClick={() => navigateWeek("next")}
                             className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-white hover:shadow-sm text-slate-400 hover:text-uneti-blue transition-all"
                         >
                             <ChevronRight size={18} />
@@ -417,19 +219,10 @@ export default function LecturerSchedulePage() {
                 </div>
             </div>
 
-            {selectedSemester && !isDateWithinSemester(selectedDate, selectedSemester) && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] font-black text-amber-700">
-                    Tuần đang xem nằm ngoài học kỳ đã chọn. Hệ thống đã giữ học kỳ đúng, nhưng bạn nên quay về tuần có lịch thực bằng nút <span className="font-black">Hôm nay</span> hoặc đổi học kỳ có phân công giảng dạy.
-                </div>
-            )}
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-[11px] font-black text-slate-600">
+                Hiển thị toàn bộ lịch của tuần chứa ngày đã chọn, không lọc theo học kỳ.
+            </div>
 
-            {selectedSemester && schedule.length === 0 && (
-                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-[11px] font-black text-slate-600">
-                    Không có buổi giảng nào trong học kỳ đang chọn. Nếu bạn vừa được phân công lớp, hãy chọn đúng học kỳ có lịch hoặc tải lại trang.
-                </div>
-            )}
-
-            {/* Main Schedule Grid */}
             <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden relative min-h-[600px]">
                 {loading && (
                     <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] z-50 flex items-center justify-center">
@@ -445,8 +238,8 @@ export default function LecturerSchedulePage() {
                         <thead>
                             <tr className="bg-slate-50/50">
                                 <th className="w-20 p-4 text-[10px] font-black text-uneti-blue/60 uppercase border-b border-r border-slate-100 tracking-widest bg-slate-50/80 sticky left-0 z-20 backdrop-blur-md">Ca</th>
-                                {DAYS.map((day, idx) => {
-                                    const isToday = new Date().toDateString() === weekDays[idx].toDateString();
+                                {DAYS.map((day, index) => {
+                                    const isToday = new Date().toDateString() === weekDays[index].toDateString();
                                     return (
                                         <th
                                             key={day.value}
@@ -458,7 +251,7 @@ export default function LecturerSchedulePage() {
                                             <div className="space-y-0.5">
                                                 <p className={cn("text-[10px] font-black uppercase tracking-widest leading-none", isToday ? "text-uneti-blue" : "text-slate-400")}>{day.name}</p>
                                                 <p className={cn("text-[13px] font-black tabular-nums", isToday ? "text-uneti-blue" : "text-slate-700")}>
-                                                    {weekDays[idx].toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
+                                                    {weekDays[index].toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })}
                                                 </p>
                                             </div>
                                         </th>
@@ -468,16 +261,16 @@ export default function LecturerSchedulePage() {
                         </thead>
                         <tbody>
                             {SESSIONS.map((session) => (
-                                <tr key={session.value} className="group/row">
+                                <tr key={session.value}>
                                     <td className="p-0 border-b border-r border-slate-100 bg-slate-50/30 sticky left-0 z-10 backdrop-blur-md">
                                         <div className="flex flex-col items-center justify-center p-4 min-h-[160px] gap-2">
                                             <span className="text-[10px] font-black text-slate-800 uppercase [writing-mode:vertical-lr] rotate-180 tracking-[0.3em]">{session.label}</span>
                                             <Clock size={12} className="text-slate-300" />
                                         </div>
                                     </td>
-                                    {DAYS.map((day, idx) => {
+                                    {DAYS.map((day, index) => {
                                         const daySchedules = getSchedulesForDayAndSession(day.value, session.value);
-                                        const isToday = new Date().toDateString() === weekDays[idx].toDateString();
+                                        const isToday = new Date().toDateString() === weekDays[index].toDateString();
                                         return (
                                             <td
                                                 key={`${day.value}-${session.value}`}
@@ -487,61 +280,50 @@ export default function LecturerSchedulePage() {
                                                 )}
                                             >
                                                 <div className="space-y-2">
-                                                    {daySchedules.map((s, i) => {
-                                                        // Extract nominal class name (the part after " - ")
-                                                        const parts = s.courseClass?.name?.split(" - ");
-                                                        const nominalName = parts?.length > 1 ? parts[1].trim() : s.courseClass?.name;
-                                                        const subjectName = parts?.length > 1 ? parts[0].trim() : s.courseClass?.subject?.name;
+                                                    {daySchedules.map((item, itemIndex) => (
+                                                        <Link
+                                                            key={itemIndex}
+                                                            href={`/lecturer/courses/${item.courseClassId}`}
+                                                            className={cn(
+                                                                "block p-3.5 rounded-2xl border text-left transition-all group relative overflow-hidden",
+                                                                item.type === "EXAM"
+                                                                    ? "bg-orange-50 border-orange-100 hover:shadow-orange-100"
+                                                                    : item.type === "PRACTICE"
+                                                                        ? "bg-emerald-50 border-emerald-100 hover:shadow-emerald-100"
+                                                                        : "bg-white border-slate-100 hover:border-uneti-blue hover:shadow-lg active:scale-[0.98]"
+                                                            )}
+                                                        >
+                                                            <div className="space-y-1 relative z-10">
+                                                                <p className="text-[9px] font-black text-uneti-blue uppercase tracking-widest opacity-60 leading-none">
+                                                                    {item.courseClass?.subject?.name}
+                                                                </p>
+                                                                <h4 className="text-[13px] font-black text-slate-800 leading-tight tracking-tight capitalize group-hover:text-uneti-blue transition-colors mt-0.5">
+                                                                    {item.courseClass?.name || item.courseClass?.subject?.name}
+                                                                </h4>
 
-                                                        // Fallback full name inside the block if something goes wrong
-                                                        const displayClassDetails = `${nominalName || "Lớp học phần"} ${s.courseClass?.semester?.code ? `[${s.courseClass.semester.code}]` : ""}`;
-
-                                                        return (
-                                                            <Link
-                                                                key={i}
-                                                                href={`/lecturer/courses/${s.courseClassId}`}
-                                                                className={cn(
-                                                                    "block p-3.5 rounded-2xl border text-left transition-all group relative overflow-hidden",
-                                                                    s.type === 'EXAM'
-                                                                        ? "bg-orange-50 border-orange-100 hover:shadow-orange-100"
-                                                                        : (s.type === 'PRACTICE')
-                                                                            ? "bg-emerald-50 border-emerald-100 hover:shadow-emerald-100"
-                                                                            : "bg-white border-slate-100 hover:border-uneti-blue hover:shadow-lg active:scale-[0.98]"
-                                                                )}
-                                                            >
-                                                                <div className="space-y-1 relative z-10">
-                                                                    <p className="text-[9px] font-black text-uneti-blue uppercase tracking-widest opacity-60 leading-none">
-                                                                        {subjectName}
-                                                                    </p>
-                                                                    <h4 className="text-[13px] font-black text-slate-800 leading-tight tracking-tight capitalize group-hover:text-uneti-blue transition-colors mt-0.5">
-                                                                        {displayClassDetails}
-                                                                    </h4>
-
-                                                                    <div className="flex items-center gap-2 mt-2">
-                                                                        <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded leading-none border border-slate-100">{s.courseClass?.code}</span>
-                                                                    </div>
-
-                                                                    <div className="space-y-1 pt-2 border-t border-slate-50/50 mt-2">
-                                                                        <div className="flex items-center gap-2 text-[9px] font-bold text-slate-500 uppercase tracking-tight">
-                                                                            <Clock size={10} className="text-slate-300" />
-                                                                            <span>Tiết {s.startShift} - {s.endShift}</span>
-                                                                        </div>
-                                                                        <div className="flex items-center gap-2 text-[9px] font-bold text-slate-500 uppercase tracking-tight">
-                                                                            <MapPin size={10} className="text-slate-300" />
-                                                                            <span className="truncate">P. {s.room?.name || '---'} {s.room?.building ? `(${s.room?.building})` : ''}</span>
-                                                                        </div>
-                                                                    </div>
+                                                                <div className="flex items-center gap-2 mt-2">
+                                                                    <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded leading-none border border-slate-100">{item.courseClass?.code}</span>
                                                                 </div>
 
-                                                                {/* Minimal hover indicator */}
-                                                                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-all">
-                                                                    <div className="p-1 px-2 rounded-lg bg-uneti-blue text-white text-[8px] font-black flex items-center gap-1 shadow-lg shadow-uneti-blue/20">
-                                                                        CHI TIẾT <ArrowUpRight size={10} />
+                                                                <div className="space-y-1 pt-2 border-t border-slate-50/50 mt-2">
+                                                                    <div className="flex items-center gap-2 text-[9px] font-bold text-slate-500 uppercase tracking-tight">
+                                                                        <Clock size={10} className="text-slate-300" />
+                                                                        <span>Tiết {item.startShift} - {item.endShift}</span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2 text-[9px] font-bold text-slate-500 uppercase tracking-tight">
+                                                                        <MapPin size={10} className="text-slate-300" />
+                                                                        <span className="truncate">P. {item.room?.name || "---"} {item.room?.building ? `(${item.room?.building})` : ""}</span>
                                                                     </div>
                                                                 </div>
-                                                            </Link>
-                                                        );
-                                                    })}
+                                                            </div>
+
+                                                            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-all">
+                                                                <div className="p-1 px-2 rounded-lg bg-uneti-blue text-white text-[8px] font-black flex items-center gap-1 shadow-lg shadow-uneti-blue/20">
+                                                                    CHI TIẾT <ArrowUpRight size={10} />
+                                                                </div>
+                                                            </div>
+                                                        </Link>
+                                                    ))}
                                                 </div>
                                             </td>
                                         );
@@ -552,7 +334,6 @@ export default function LecturerSchedulePage() {
                     </table>
                 </div>
 
-                {/* Legend Area */}
                 <div className="px-8 py-5 bg-slate-50/50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-6">
                     <div className="flex flex-wrap gap-8 font-black uppercase tracking-widest text-[9px] text-slate-400">
                         <div className="flex items-center gap-3">
@@ -565,7 +346,7 @@ export default function LecturerSchedulePage() {
                         </div>
                         <div className="flex items-center gap-3">
                             <div className="h-3 w-3 rounded-full bg-orange-100 border border-orange-200" />
-                            <span>Lịch thi / Chấm</span>
+                            <span>Lịch thi</span>
                         </div>
                     </div>
                     <div className="flex items-center gap-2.5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">

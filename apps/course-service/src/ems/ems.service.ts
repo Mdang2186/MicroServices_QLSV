@@ -56,8 +56,8 @@ export class EmsService {
         }
 
         // 4. Placeholder for Auto-Schedule logic
-        // In a real scenario, this would call a sophisticated algorithm
-        // to fill the ClassSchedule table based on Room availability.
+        // In a real scenario, this would call a scheduling algorithm
+        // to generate ClassSession rows based on room availability.
       }
 
       return {

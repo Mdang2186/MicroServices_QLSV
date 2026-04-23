@@ -87,4 +87,43 @@ export class LecturerService {
       );
     }
   }
+
+  private async resolveLecturer(idOrCode: string) {
+    if (!idOrCode) return null;
+
+    // 1. Try find by UUID
+    let lecturer = await this.prisma.lecturer.findUnique({
+      where: { id: idOrCode },
+      include: { faculty: true, department: true, user: true },
+    });
+
+    // 2. Try find by userId
+    if (!lecturer) {
+      lecturer = await this.prisma.lecturer.findFirst({
+        where: { userId: idOrCode },
+        include: { faculty: true, department: true, user: true },
+      });
+    }
+
+    // 3. Try find by lectureCode
+    if (!lecturer) {
+      lecturer = await this.prisma.lecturer.findFirst({
+        where: { lectureCode: idOrCode },
+        include: { faculty: true, department: true, user: true },
+      });
+    }
+
+    return lecturer;
+  }
+
+  async findOne(idOrCode: string) {
+    return this.resolveLecturer(idOrCode);
+  }
+
+  async findByUserId(userId: string) {
+    return this.prisma.lecturer.findFirst({
+      where: { userId },
+      include: { faculty: true, department: true, user: true },
+    });
+  }
 }

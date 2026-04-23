@@ -34,6 +34,11 @@ export class DashboardController {
     return this.dashboardService.getFaculties();
   }
 
+  @Get("filters")
+  getFilters(@Query("facultyId") facultyId?: string) {
+    return this.dashboardService.getFilters(facultyId);
+  }
+
   @Get("majors")
   getMajors(@Query("facultyId") facultyId?: string) {
     return this.dashboardService.getMajors(facultyId);

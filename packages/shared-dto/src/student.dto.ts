@@ -1,5 +1,20 @@
 import { StudentStatus } from './enums';
 
+export interface FamilyMemberDto {
+    id?: string;
+    relationship: string;
+    fullName: string;
+    birthYear?: number;
+    job?: string;
+    phone?: string;
+    ethnicity?: string;
+    religion?: string;
+    nationality?: string;
+    workplace?: string;
+    position?: string;
+    address?: string;
+}
+
 export interface CreateStudentDto {
     studentCode: string;
     fullName: string;
@@ -51,6 +66,8 @@ export interface CreateStudentDto {
     totalEarnedCredits?: number;
     warningLevel?: number;
     academicStatus?: string;
+    isActive?: boolean;
+    familyMembers?: FamilyMemberDto[];
 }
 
 export interface UpdateStudentDto extends Partial<CreateStudentDto> { }
@@ -99,4 +116,5 @@ export interface StudentResponse {
     totalEarnedCredits: number;
     warningLevel: number;
     academicStatus: string;
+    familyMembers?: FamilyMemberDto[];
 }

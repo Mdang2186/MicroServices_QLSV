@@ -4,7 +4,9 @@ import {
   ConflictException,
   NotFoundException,
   BadRequestException,
+  InternalServerErrorException,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../prisma/prisma.service";
 import { JwtService } from "@nestjs/jwt";
 import { MailerService } from "@nestjs-modules/mailer";
@@ -55,10 +57,66 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private mailerService: MailerService,
+    private configService: ConfigService,
   ) {
     console.log(
       `[AuthService] Database URL: ${process.env.DATABASE_URL?.replace(/:([^:@]+)@/, ":****@")}`,
     );
+  }
+
+  private resolveResetPasswordBaseUrl(clientBaseUrl?: string): string {
+    const candidates = [
+      clientBaseUrl,
+      this.configService.get<string>("RESET_PASSWORD_BASE_URL"),
+      "http://localhost:4005",
+    ];
+
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+
+      try {
+        const url = new URL(candidate);
+        if (url.protocol === "http:" || url.protocol === "https:") {
+          return url.origin;
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    return "http://localhost:4005";
+  }
+
+  private normalizeFamilyMembers(members?: any[] | null) {
+    if (!Array.isArray(members)) {
+      return [];
+    }
+
+    return members
+      .map((member) => ({
+        relationship: `${member?.relationship || ""}`.trim(),
+        fullName: `${member?.fullName || ""}`.trim(),
+        birthYear:
+          member?.birthYear === undefined || member?.birthYear === null
+            ? undefined
+            : Number(member.birthYear),
+        job: `${member?.job || ""}`.trim() || undefined,
+        phone: `${member?.phone || ""}`.trim() || undefined,
+        ethnicity: `${member?.ethnicity || ""}`.trim() || undefined,
+        religion: `${member?.religion || ""}`.trim() || undefined,
+        nationality: `${member?.nationality || ""}`.trim() || undefined,
+        workplace: `${member?.workplace || ""}`.trim() || undefined,
+        position: `${member?.position || ""}`.trim() || undefined,
+        address: `${member?.address || ""}`.trim() || undefined,
+      }))
+      .filter((member) => member.relationship && member.fullName)
+      .map((member) => ({
+        ...member,
+        birthYear:
+          member.birthYear && Number.isFinite(member.birthYear)
+            ? Math.trunc(member.birthYear)
+            : undefined,
+      }));
   }
 
   private async reconcileUserRole<
@@ -271,7 +329,7 @@ export class AuthService {
     });
   }
 
-  async forgotPassword(forgotPasswordDto: ForgotPasswordDto): Promise<void> {
+  async forgotPassword(forgotPasswordDto: ForgotPasswordDto): Promise<{ sessionToken: string; message: string }> {
     const user = await this.prisma.user.findUnique({
       where: { email: forgotPasswordDto.email },
     });
@@ -280,35 +338,62 @@ export class AuthService {
       throw new NotFoundException("Email not found");
     }
 
-    // Generate a reset token (simple JWT for MVP)
-    const resetToken = this.jwtService.sign(
-      { sub: user.id, email: user.email, type: "reset" },
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpHash = await bcrypt.hash(otp, 10);
+
+    // Generate a reset token with OTP hash inside payload
+    const sessionToken = this.jwtService.sign(
+      { sub: user.id, email: user.email, type: "reset", otpHash },
       { expiresIn: "15m" },
     );
 
-    // In a real app, we'd store this token or a hash of it in DB with expiry
-    // For now, we send the token via email
-    const resetLink = `http://localhost:3000/reset-password?token=${resetToken}`;
-
-    await this.mailerService.sendMail({
-      to: user.email,
-      subject: "Reset Your Password",
-      html: `
-        <h3>Reset Password Request</h3>
-        <p>You requested to reset your password. Click the link below to proceed:</p>
-        <a href="${resetLink}">Reset Password</a>
-        <p>This link will expire in 15 minutes.</p>
-        <p>If you didn't request this, please ignore this email.</p>
-      `,
-    });
-    console.log(`[AuthService] Password reset email sent to: ${user.email}`);
+    try {
+      await this.mailerService.sendMail({
+        to: user.email,
+        subject: "Mã xác nhận khôi phục mật khẩu",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+            <h2 style="color: #2563eb;">Yêu cầu lấy lại mật khẩu</h2>
+            <p>Chào bạn,</p>
+            <p>Hệ thống đã nhận được yêu cầu khôi phục mật khẩu cho tài khoản của bạn. Vui lòng sử dụng mã xác nhận gồm 6 chữ số dưới đây:</p>
+            <div style="background-color: #f3f4f6; padding: 20px; text-align: center; border-radius: 8px; margin: 20px 0;">
+              <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #1e3a8a;">${otp}</span>
+            </div>
+            <p><strong>Lưu ý:</strong> Mã xác nhận này sẽ hết hạn sau 15 phút.</p>
+            <p>Nếu bạn không yêu cầu đổi mật khẩu, vui lòng bỏ qua email này.</p>
+          </div>
+        `,
+      });
+      console.log(`[AuthService] Password reset OTP sent to: ${user.email}`);
+      console.log(`[AuthService] Reset OTP (Debug): ${otp}`);
+      return {
+        message: "Mã xác nhận đã được gửi đến email của bạn.",
+        sessionToken,
+      };
+    } catch (error: any) {
+      console.error(`[AuthService] Failed to send reset email:`, error.message);
+      console.log(`[AuthService] Reset Session Token: ${sessionToken}`);
+      console.log(`[AuthService] Reset OTP (Debug): ${otp}`);
+      throw new InternalServerErrorException("Không thể gửi email đặt lại mật khẩu do lỗi cấu hình SMTP. Vui lòng liên hệ quản trị viên.");
+    }
   }
 
   async resetPassword(resetPasswordDto: ResetPasswordDto): Promise<void> {
     try {
-      const payload = this.jwtService.verify(resetPasswordDto.token);
+      const token = resetPasswordDto.sessionToken || resetPasswordDto.token;
+      if (!token) throw new BadRequestException("Thiếu token xác thực");
+        
+      const payload = this.jwtService.verify(token);
       if (payload.type !== "reset")
-        throw new BadRequestException("Invalid token type");
+        throw new BadRequestException("Loại token không hợp lệ");
+
+      if (payload.otpHash) {
+        if (!resetPasswordDto.otp) {
+           throw new BadRequestException("Vui lòng nhập mã xác nhận (OTP)");
+        }
+        const isMatch = await bcrypt.compare(resetPasswordDto.otp, payload.otpHash);
+        if (!isMatch) throw new BadRequestException("Mã xác nhận không chính xác");
+      }
 
       const hashedPassword = await bcrypt.hash(
         resetPasswordDto.newPassword,
@@ -321,8 +406,9 @@ export class AuthService {
       console.log(
         `[AuthService] Password reset successful for user: ${payload.sub}`,
       );
-    } catch (error) {
-      throw new BadRequestException("Invalid or expired reset token");
+    } catch (error: any) {
+      if (error instanceof BadRequestException) throw error;
+      throw new BadRequestException("Mã xác nhận không hợp lệ hoặc đã hết hạn.");
     }
   }
 
@@ -335,6 +421,7 @@ export class AuthService {
         username: true,
         email: true,
         role: true,
+        isActive: true,
         createdAt: true,
       },
       orderBy: { createdAt: "desc" },
@@ -514,6 +601,10 @@ export class AuthService {
   // --- Admin Student Management (Proxying to maintain IAM consistency) ---
 
   async createStudent(data: any) {
+    const normalizedFamilyMembers = this.normalizeFamilyMembers(
+      data.familyMembers,
+    );
+
     // 1. Check if student profile already exists by studentCode
     const existingStudent = await this.prisma.student.findUnique({
       where: { studentCode: data.studentCode },
@@ -549,6 +640,18 @@ export class AuthService {
           intake: data.intake || existingStudent.intake,
           majorId: data.majorId || existingStudent.majorId,
           dob: data.dob ? new Date(data.dob) : existingStudent.dob,
+          ...(data.familyMembers !== undefined
+            ? {
+                familyMembers: {
+                  deleteMany: {},
+                  ...(normalizedFamilyMembers.length > 0
+                    ? {
+                        create: normalizedFamilyMembers,
+                      }
+                    : {}),
+                },
+              }
+            : {}),
         },
       });
     } else {
@@ -563,6 +666,13 @@ export class AuthService {
           status: data.status || "ACTIVE",
           majorId: data.majorId || major?.id,
           dob: data.dob ? new Date(data.dob) : new Date("2000-01-01"),
+          ...(normalizedFamilyMembers.length > 0
+            ? {
+                familyMembers: {
+                  create: normalizedFamilyMembers,
+                },
+              }
+            : {}),
         },
       });
     }

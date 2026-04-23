@@ -6,7 +6,6 @@ import {
   LayoutGrid,
   Search,
   Filter,
-  Plus,
   RefreshCw,
   MoreVertical,
   Calendar,
@@ -25,7 +24,6 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
 import CourseClassDetailDrawer from "../courses/components/CourseClassDetailDrawer";
-import CourseClassCreationWizard from "../courses/components/CourseClassCreationWizard";
 
 function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
 
@@ -52,7 +50,6 @@ export default function CourseClassManagementPage() {
 
   // --- UI State ---
   const [selectedCourseClassId, setSelectedCourseClassId] = useState<string | null>(null);
-  const [showWizard, setShowWizard] = useState(false);
 
   // --- Filtering State ---
   const [selectedYear, setSelectedYear] = useState<string>("");
@@ -128,7 +125,10 @@ export default function CourseClassManagementPage() {
           else setSelectedYear(getAcademicYear(semData[0].name));
         }
       }
-      if (classRes.ok) setCourseClasses(await classRes.json());
+      if (classRes.ok) {
+        const classData = await classRes.json();
+        setCourseClasses(Array.isArray(classData) ? classData : classData?.data || []);
+      }
       if (majorRes.ok) setMajors(await majorRes.json());
       if (roomRes.ok) setRooms(await roomRes.json());
       if (lectRes.ok) setLecturers(await lectRes.json());
@@ -181,12 +181,6 @@ export default function CourseClassManagementPage() {
               className="w-80 pl-11 pr-5 py-3 bg-slate-50 border-transparent rounded-[18px] text-[11px] font-bold placeholder:text-slate-300 hover:bg-slate-100 transition-all focus:bg-white focus:ring-4 focus:ring-uneti-blue/5 focus:border-uneti-blue outline-none border"
             />
           </div>
-          <button
-            onClick={() => setShowWizard(true)}
-            className="flex items-center gap-2 px-6 py-3 bg-uneti-blue text-white rounded-[18px] text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all shadow-xl shadow-uneti-blue/20"
-          >
-            <Plus size={16} strokeWidth={3} /> Tạo Môn học mới
-          </button>
           <button onClick={fetchData} className="w-12 h-12 flex items-center justify-center bg-slate-50 text-slate-400 hover:bg-slate-100 transition-all rounded-[18px]">
             <RefreshCw size={18} />
           </button>
@@ -388,18 +382,6 @@ export default function CourseClassManagementPage() {
             onClose={() => setSelectedCourseClassId(null)}
             onRefresh={() => { fetchData(); setSelectedCourseClassId(null); }}
             headers={headers}
-            rooms={rooms}
-            lecturers={lecturers}
-          />
-      )}
-
-      {showWizard && (
-          <CourseClassCreationWizard
-            onClose={() => setShowWizard(false)}
-            onSuccess={() => { fetchData(); setShowWizard(false); }}
-            headers={headers}
-            semesters={semesters}
-            majors={majors}
             rooms={rooms}
             lecturers={lecturers}
           />

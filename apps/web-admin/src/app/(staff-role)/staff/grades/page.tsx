@@ -1,323 +1,682 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import Cookies from "js-cookie";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-    BookOpen,
-    Search,
-    GraduationCap,
-    ChevronRight,
-    Filter,
-    Users,
-    Calendar,
-    ArrowLeft,
-    BookMarked,
-    Edit3,
-    UserCheck,
-    LayoutGrid,
-    MoreHorizontal,
-    ArrowUpRight,
-    TrendingUp,
-    ChevronLeft,
-    Activity,
-    Clock,
-    UserCircle,
-    ArrowRight,
-    BellRing
+  BookOpen,
+  CalendarDays,
+  ClipboardList,
+  Edit3,
+  GraduationCap,
+  Layers3,
+  Search,
+  SlidersHorizontal,
+  Users,
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { CompactLecturerHeader } from "@/components/dashboard/CompactLecturerHeader";
 
-export default function StaffAcademicManagementPage() {
-    const router = useRouter();
-    const [user, setUser] = useState<any>(null);
-    const [courses, setCourses] = useState<any[]>([]);
-    const [filteredCourses, setFilteredCourses] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [selectedSemesterId, setSelectedSemesterId] = useState<string>("");
-    const [searchQuery, setSearchQuery] = useState("");
-    const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 8;
+type Semester = {
+  id: string;
+  code?: string;
+  name: string;
+  isCurrent?: boolean;
+  startDate?: string;
+  endDate?: string;
+};
 
-    const TOKEN = Cookies.get("admin_accessToken");
+type Faculty = {
+  id: string;
+  code?: string;
+  name: string;
+};
 
-    useEffect(() => {
-        const c = Cookies.get("admin_user");
-        if (c) try { setUser(JSON.parse(c)); } catch { }
-    }, []);
+type Major = {
+  id: string;
+  code?: string;
+  name: string;
+  facultyId?: string;
+  faculty?: Faculty | null;
+};
 
-    useEffect(() => {
-        if (!user) return;
-        setLoading(true);
-        const headers: any = TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {};
+type Cohort = {
+  code: string;
+  startYear?: number;
+  endYear?: number;
+  isActive?: boolean;
+};
 
-        const query = selectedSemesterId ? `?semesterId=${selectedSemesterId}` : "";
-        fetch(`/api/courses${query}`, { headers })
-            .then(r => r.ok ? r.json() : [])
-            .then(data => {
-                const fetched = Array.isArray(data) ? data : data?.data || [];
-                setCourses(fetched);
-                setFilteredCourses(fetched);
-            })
-            .catch(() => {
-                setCourses([]);
-                setFilteredCourses([]);
-            })
-            .finally(() => setLoading(false));
-    }, [user, TOKEN, selectedSemesterId]);
+type CourseClass = {
+  id: string;
+  code?: string;
+  name?: string;
+  cohort?: string;
+  semesterId?: string;
+  semester?: Semester | null;
+  lecturer?: {
+    fullName?: string;
+    user?: { fullName?: string };
+  } | null;
+  subject?: {
+    code?: string;
+    name?: string;
+    credits?: number;
+    majorId?: string;
+    major?: Major | null;
+    department?: {
+      code?: string;
+      name?: string;
+    } | null;
+  } | null;
+  adminClasses?: Array<{
+    code?: string;
+    name?: string;
+  }>;
+  _count?: {
+    enrollments?: number;
+  };
+  currentSlots?: number;
+  maxSlots?: number;
+};
 
-    useEffect(() => {
-        const query = searchQuery.toLowerCase();
-        const filtered = courses.filter(c =>
-            (c.name?.toLowerCase().includes(query)) ||
-            (c.subject?.name?.toLowerCase().includes(query)) ||
-            (c.code?.toLowerCase().includes(query))
-        );
-        setFilteredCourses(filtered);
-        setCurrentPage(1);
-    }, [searchQuery, courses]);
+const viDateFormatter = new Intl.DateTimeFormat("vi-VN", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
 
-    const totalCredits = filteredCourses.reduce((acc, c) => acc + (c.subject?.credits || 0), 0);
-    const totalStudents = filteredCourses.reduce((acc, c) => acc + (c.currentSlots || 0), 0);
+const getAuthHeaders = (token?: string): Record<string, string> =>
+  token ? { Authorization: `Bearer ${token}` } : {};
 
-    const paginatedCourses = filteredCourses.slice(
-        (currentPage - 1) * itemsPerPage,
-        currentPage * itemsPerPage
-    );
-    const totalPages = Math.ceil(filteredCourses.length / itemsPerPage);
+const toDateInputValue = (value: Date | string | null | undefined) => {
+  if (!value) return "";
 
-    if (loading && courses.length === 0) {
-        return (
-            <div className="flex min-h-screen items-center justify-center bg-[#fbfcfd]">
-                <div className="w-10 h-10 border-[3px] border-uneti-blue/10 border-t-uneti-blue rounded-full animate-spin"></div>
-            </div>
-        );
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const parseDateInputValue = (value: string) => {
+  const [year, month, day] = value.split("-").map((item) => Number(item));
+  if (!year || !month || !day) return null;
+
+  const parsed = new Date(year, month - 1, day);
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  parsed.setHours(0, 0, 0, 0);
+  return parsed;
+};
+
+const containsDate = (semester: Semester, dateValue: string) => {
+  const selectedDate = parseDateInputValue(dateValue);
+  if (!selectedDate) return false;
+
+  const startDate = semester.startDate ? new Date(semester.startDate) : null;
+  const endDate = semester.endDate ? new Date(semester.endDate) : null;
+
+  if (!startDate || !endDate) return false;
+
+  startDate.setHours(0, 0, 0, 0);
+  endDate.setHours(0, 0, 0, 0);
+
+  return selectedDate >= startDate && selectedDate <= endDate;
+};
+
+const sortSemesters = (semesters: Semester[]) =>
+  [...semesters].sort((left, right) => {
+    const leftTime = new Date(left.startDate || 0).getTime();
+    const rightTime = new Date(right.startDate || 0).getTime();
+    return rightTime - leftTime;
+  });
+
+const formatDateLabel = (value: string) => {
+  const date = parseDateInputValue(value);
+  return date ? viDateFormatter.format(date) : value;
+};
+
+const getStudentCount = (course: CourseClass) =>
+  Number(course._count?.enrollments ?? course.currentSlots ?? 0);
+
+const getLecturerName = (course: CourseClass) =>
+  course.lecturer?.fullName ||
+  course.lecturer?.user?.fullName ||
+  "Chưa phân công";
+
+const getFacultyLabel = (course: CourseClass) =>
+  course.subject?.major?.faculty?.name ||
+  course.subject?.major?.faculty?.code ||
+  "Chưa gắn khoa";
+
+const getMajorLabel = (course: CourseClass) =>
+  course.subject?.major?.name || "Chưa gắn ngành";
+
+const getAdminClassLabel = (course: CourseClass) => {
+  const items = (course.adminClasses || [])
+    .map((item) => item.code || item.name)
+    .filter(Boolean);
+  return items.length > 0 ? items.join(", ") : "Chưa gắn lớp hành chính";
+};
+
+const sortCourses = (courses: CourseClass[]) =>
+  [...courses].sort((left, right) => {
+    const leftSemesterTime = new Date(left.semester?.startDate || 0).getTime();
+    const rightSemesterTime = new Date(right.semester?.startDate || 0).getTime();
+
+    if (leftSemesterTime !== rightSemesterTime) {
+      return rightSemesterTime - leftSemesterTime;
     }
 
-    return (
-        <div className="space-y-6 animate-in fade-in duration-700 bg-[#fbfcfd] min-h-screen pb-20 px-1 max-w-7xl mx-auto">
-            <CompactLecturerHeader 
-                userName={`${user?.fullName || "Cán bộ Đào tạo"}`} 
-                userId={`CB-${user?.username || "UNETI"}`}
-                minimal={true}
-                title="Danh mục học phần"
-                onSemesterChange={setSelectedSemesterId}
-            />
+    return `${left.code || ""}`.localeCompare(`${right.code || ""}`, "vi");
+  });
 
-            {/* Summary Statistics Bar */}
-            <div className="flex flex-wrap items-center gap-4 px-1">
-                <div className="bg-white px-5 py-3 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600">
-                        <BookMarked size={16} />
-                    </div>
-                    <div className="flex flex-col">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Tổng học phần</span>
-                        <span className="text-sm font-black text-slate-800">{filteredCourses.length} Lớp</span>
-                    </div>
-                </div>
+async function fetchAllCoursesForSemester(
+  semesterId: string,
+  token: string,
+  filters: {
+    facultyId: string;
+    majorId: string;
+    cohort: string;
+    search: string;
+  },
+) {
+  const collected: CourseClass[] = [];
+  let page = 1;
+  let lastPage = 1;
 
-                <div className="bg-white px-5 py-3 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-uneti-blue-light text-uneti-blue">
-                        <TrendingUp size={16} />
-                    </div>
-                    <div className="flex flex-col">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Tổng tín chỉ</span>
-                        <span className="text-sm font-black text-slate-800">{totalCredits} Tín chỉ</span>
-                    </div>
-                </div>
+  do {
+    const params = new URLSearchParams({
+      semesterId,
+      page: `${page}`,
+      limit: "200",
+    });
 
-                <div className="bg-white px-5 py-3 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-orange-50 text-orange-600">
-                        <Users size={16} />
-                    </div>
-                    <div className="flex flex-col">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Tổng sinh viên</span>
-                        <span className="text-sm font-black text-slate-800">{totalStudents} SV</span>
-                    </div>
-                </div>
+    if (filters.facultyId) params.set("facultyId", filters.facultyId);
+    if (filters.majorId) params.set("majorId", filters.majorId);
+    if (filters.cohort) params.set("cohort", filters.cohort);
+    if (filters.search) params.set("search", filters.search);
 
-                <Button
-                    onClick={async () => {
-                        if (!selectedSemesterId) {
-                            alert("Vui lòng chọn học kỳ để gửi nhắc nhở.");
-                            return;
-                        }
-                        if (!confirm("Hệ thống sẽ gửi thông báo nhắc nhở nộp điểm tới TẤT CẢ giảng viên chưa hoàn tất nhập điểm trong học kỳ này. Bạn có chắc chắn?")) return;
-                        
-                        try {
-                            const res = await fetch(`/api/grades/admin/remind-all`, {
-                                method: 'POST',
-                                headers: { 
-                                    'Content-Type': 'application/json',
-                                    Authorization: `Bearer ${TOKEN}`
-                                },
-                                body: JSON.stringify({ semesterId: selectedSemesterId })
-                            });
-                            const data = await res.json();
-                            if (res.ok) {
-                                alert(`Đã gửi thông báo tới ${data.notifiedLecturers} giảng viên của ${data.totalPendingClasses} lớp học phần.`);
-                            }
-                        } catch (err) {
-                            alert("Lỗi khi gửi thông báo nhắc nhở.");
-                        }
-                    }}
-                    className="h-11 rounded-xl px-5 text-[10px] font-black uppercase text-white bg-amber-500 hover:bg-amber-600 shadow-lg shadow-amber-100 transition-all ml-2"
-                >
-                    <BellRing size={16} className="mr-2" />
-                    Nhắc nộp điểm (Toàn bộ)
-                </Button>
+    const response = await fetch(`/api/courses?${params.toString()}`, {
+      headers: getAuthHeaders(token),
+    });
 
-                <div className="ml-auto w-full md:w-80 relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                    <input
-                        type="text"
-                        placeholder="Tìm kiếm lớp học phần..."
-                        className="bg-white border border-slate-100 rounded-xl pl-10 pr-4 py-2.5 text-[11px] font-bold text-slate-700 w-full focus:ring-2 focus:ring-uneti-blue/10 focus:border-uneti-blue transition-all outline-none shadow-sm"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                </div>
-            </div>
+    if (!response.ok) {
+      throw new Error("Không thể tải danh sách lớp học phần.");
+    }
 
-            {/* Course List Layout - High Density Rows */}
-            <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm space-y-4">
-                <div className="flex items-center justify-between mb-2">
-                    <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                        <LayoutGrid size={18} className="text-uneti-blue" />
-                        Danh sách quản lý lớp học phần ({filteredCourses.length})
-                    </h2>
-                </div>
+    const payload = await response.json();
+    const data = Array.isArray(payload) ? payload : payload?.data || [];
+    const metadata = Array.isArray(payload) ? null : payload?.metadata;
 
-                <div className="space-y-3">
-                    <AnimatePresence mode="wait">
-                        {paginatedCourses.map((c, i) => {
-                            const progress = Math.min(100, Math.round(((c.currentSlots || 0) / (c.maxSlots || 1)) * 100));
-                            return (
-                                <motion.div
-                                    key={c.id}
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: -10 }}
-                                    transition={{ duration: 0.3, delay: i * 0.05 }}
-                                >
-                                    <div className="flex flex-col lg:flex-row items-center gap-4 p-4 rounded-xl border border-slate-100 hover:border-uneti-blue hover:bg-slate-50/50 transition-all group">
-                                        <div className="flex-1 min-w-0 space-y-1.5">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-[9px] font-black text-uneti-blue uppercase bg-white px-2 py-0.5 rounded-md border border-uneti-blue/10 shadow-sm">{c.code}</span>
-                                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">TC: {c.subject?.credits} • Học kỳ {c.semester?.name?.split(' ').pop()}</span>
-                                            </div>
-                                            <h3 className="font-bold text-slate-800 text-[13px] truncate uppercase group-hover:text-uneti-blue transition-colors tracking-tight">
-                                                {c.name || c.subject?.name}
-                                            </h3>
-                                            <div className="flex items-center gap-4 text-[9px] font-black text-slate-400 uppercase tracking-tight italic">
-                                                <div className="flex items-center gap-1">
-                                                    <Clock size={10} className="text-slate-300" />
-                                                    <span>{c.sessions?.length > 0 ? Array.from(new Set(c.sessions.map((s:any)=> new Date(s.date).getDay() === 0 ? 8 : new Date(s.date).getDay() + 1))).map(d => `T${d}`).join(", ") : "Chưa xếp lịch"}</span>
-                                                </div>
-                                                <div className="flex items-center gap-1">
-                                                    <UserCircle size={10} className="text-slate-300" />
-                                                    <span>Lớp chính quy: {(c.adminClasses || []).map((ac: any) => ac.code).join(", ") || "Đang xếp"}</span>
-                                                </div>
-                                            </div>
-                                        </div>
+    collected.push(...data);
+    lastPage = Math.max(Number(metadata?.lastPage || 1), 1);
+    page += 1;
+  } while (page <= lastPage);
 
-                                        <div className="flex items-center gap-6 w-full lg:w-auto">
-                                            <div className="flex flex-col gap-1 w-24">
-                                                <div className="flex justify-between text-[9px] font-black text-slate-500 uppercase tracking-widest pl-0.5">
-                                                    <span>SV: {c.currentSlots}</span>
-                                                    <span className="text-slate-300">/ {c.maxSlots}</span>
-                                                </div>
-                                                <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                                                    <div className={cn(
-                                                        "h-full rounded-full transition-all duration-1000",
-                                                        progress > 90 ? "bg-red-500" : progress > 70 ? "bg-orange-500" : "bg-uneti-blue"
-                                                    )} style={{ width: `${progress}%` }}></div>
-                                                </div>
-                                            </div>
+  return collected;
+}
 
-                                            <div className="flex items-center gap-2 grow lg:grow-0">
-                                                <Button
-                                                    variant="outline"
-                                                    onClick={() => router.push(`/staff/attendance/${c.id}`)}
-                                                    className="h-9 px-4 rounded-xl border-slate-100 text-[10px] font-black uppercase text-emerald-600 hover:bg-emerald-50 hover:border-emerald-100 transition-all shadow-sm"
-                                                >
-                                                    <UserCheck size={14} className="mr-2" />
-                                                    Điểm danh
-                                                </Button>
-                                                <Button
-                                                    variant="outline"
-                                                    onClick={() => router.push(`/staff/grades/${c.id}`)}
-                                                    className="h-9 px-4 rounded-xl border-slate-100 text-[10px] font-black uppercase text-uneti-blue hover:bg-uneti-blue-light/50 hover:border-uneti-blue/30 transition-all shadow-sm"
-                                                >
-                                                    <Edit3 size={14} className="mr-2" />
-                                                    Nhập điểm
-                                                </Button>
-                                                <Button
-                                                    size="icon"
-                                                    onClick={() => router.push(`/staff/courses/${c.id}`)}
-                                                    className="h-9 w-9 rounded-xl bg-slate-800 text-white hover:bg-slate-900 border-none shadow-sm group-hover:scale-105 transition-transform"
-                                                >
-                                                    <ArrowRight size={16} />
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </motion.div>
-                            );
-                        })}
-                    </AnimatePresence>
-                </div>
+export default function StaffGradeManagementPage() {
+  const router = useRouter();
 
-                {/* Pagination UI */}
-                {totalPages > 1 && (
-                    <div className="flex items-center justify-between pt-6 mt-4 border-t border-slate-50">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                            Trang {currentPage} <span className="text-slate-200 mx-2">|</span> {totalPages} (TỔNG {filteredCourses.length} HỌC PHẦN)
-                        </p>
-                        <div className="flex items-center gap-3">
-                            <Button
-                                variant="outline"
-                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                disabled={currentPage === 1}
-                                className="h-10 w-10 p-0 rounded-2xl border-slate-100 text-slate-400 hover:text-uneti-blue hover:border-uneti-blue shadow-sm"
-                            >
-                                <ChevronLeft size={18} />
-                            </Button>
-                            <Button
-                                variant="outline"
-                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                disabled={currentPage === totalPages}
-                                className="h-10 w-10 p-0 rounded-2xl border-slate-100 text-slate-400 hover:text-uneti-blue hover:border-uneti-blue shadow-sm"
-                            >
-                                <ChevronRight size={18} />
-                            </Button>
-                        </div>
-                    </div>
-                )}
+  const [semesters, setSemesters] = useState<Semester[]>([]);
+  const [faculties, setFaculties] = useState<Faculty[]>([]);
+  const [majors, setMajors] = useState<Major[]>([]);
+  const [cohorts, setCohorts] = useState<Cohort[]>([]);
+  const [courses, setCourses] = useState<CourseClass[]>([]);
+  const [selectedDate, setSelectedDate] = useState(() => toDateInputValue(new Date()));
+  const [selectedFacultyId, setSelectedFacultyId] = useState("");
+  const [selectedCohort, setSelectedCohort] = useState("");
+  const [selectedMajorId, setSelectedMajorId] = useState("");
+  const [advancedSearch, setAdvancedSearch] = useState("");
+  const [bootLoading, setBootLoading] = useState(true);
+  const [courseLoading, setCourseLoading] = useState(false);
+  const [filterError, setFilterError] = useState("");
 
-                {filteredCourses.length === 0 && !loading && (
-                    <div className="py-32 flex flex-col items-center justify-center text-center">
-                        <div className="p-6 rounded-full bg-slate-50 text-slate-200 mb-6 border border-slate-100 border-dashed">
-                            <BookOpen size={64} strokeWidth={1} />
-                        </div>
-                        <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Không có dữ liệu</h3>
-                        <p className="text-[10px] font-bold text-slate-400 mt-2 max-w-xs uppercase tracking-widest leading-relaxed">
-                            Không tìm thấy dữ liệu nào khớp với bộ lọc <br/> trong học kỳ hiện tại.
-                        </p>
-                        <Button
-                            variant="ghost"
-                            onClick={() => { setSearchQuery(""); setSelectedSemesterId(""); }}
-                            className="mt-8 text-[10px] font-black text-uneti-blue uppercase tracking-widest hover:bg-uneti-blue-light/50"
-                        >
-                            Đặt lại bộ lọc
-                        </Button>
-                    </div>
-                )}
-            </div>
-        </div>
+  const token = Cookies.get("staff_accessToken") || Cookies.get("admin_accessToken");
+  const deferredSearch = useDeferredValue(advancedSearch.trim());
+
+  useEffect(() => {
+    if (!token) {
+      setBootLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const bootstrap = async () => {
+      setBootLoading(true);
+      try {
+        const headers = getAuthHeaders(token);
+        const [semesterResponse, facultyResponse, majorResponse, cohortResponse] =
+          await Promise.all([
+            fetch("/api/semesters", { headers }),
+            fetch("/api/faculties", { headers }),
+            fetch("/api/majors", { headers }),
+            fetch("/api/cohorts", { headers }),
+          ]);
+
+        const semesterPayload = semesterResponse.ok ? await semesterResponse.json() : [];
+        const facultyPayload = facultyResponse.ok ? await facultyResponse.json() : [];
+        const majorPayload = majorResponse.ok ? await majorResponse.json() : [];
+        const cohortPayload = cohortResponse.ok ? await cohortResponse.json() : [];
+
+        if (cancelled) return;
+
+        setSemesters(sortSemesters(Array.isArray(semesterPayload) ? semesterPayload : []));
+        setFaculties(Array.isArray(facultyPayload) ? facultyPayload : []);
+        setMajors(Array.isArray(majorPayload) ? majorPayload : []);
+        setCohorts(Array.isArray(cohortPayload) ? cohortPayload : []);
+      } catch (error) {
+        console.error(error);
+        if (!cancelled) {
+          setSemesters([]);
+          setFaculties([]);
+          setMajors([]);
+          setCohorts([]);
+          setCourses([]);
+          setFilterError("Không thể khởi tạo trang quản lý điểm học tập.");
+        }
+      } finally {
+        if (!cancelled) {
+          setBootLoading(false);
+        }
+      }
+    };
+
+    bootstrap();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  const visibleMajors = useMemo(() => {
+    const majorList = selectedFacultyId
+      ? majors.filter(
+        (major) =>
+          (major.facultyId || major.faculty?.id || "") === selectedFacultyId,
+      )
+      : majors;
+
+    return [...majorList].sort((left, right) =>
+      `${left.name || ""}`.localeCompare(`${right.name || ""}`, "vi"),
     );
+  }, [majors, selectedFacultyId]);
+
+  const matchedSemesters = useMemo(
+    () => semesters.filter((semester) => containsDate(semester, selectedDate)),
+    [selectedDate, semesters],
+  );
+
+  const matchedSemesterIds = useMemo(
+    () => matchedSemesters.map((semester) => semester.id),
+    [matchedSemesters],
+  );
+
+  useEffect(() => {
+    if (!selectedMajorId) return;
+
+    const exists = visibleMajors.some((major) => major.id === selectedMajorId);
+    if (!exists) {
+      setSelectedMajorId("");
+    }
+  }, [selectedMajorId, visibleMajors]);
+
+  useEffect(() => {
+    if (!token) return;
+    if (matchedSemesterIds.length === 0) {
+      setCourses([]);
+      setCourseLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadCourses = async () => {
+      setCourseLoading(true);
+      setFilterError("");
+
+      try {
+        const results = await Promise.allSettled(
+          matchedSemesterIds.map((semesterId) =>
+            fetchAllCoursesForSemester(semesterId, token, {
+              facultyId: selectedFacultyId,
+              majorId: selectedMajorId,
+              cohort: selectedCohort,
+              search: deferredSearch,
+            }),
+          ),
+        );
+
+        if (cancelled) return;
+
+        const nextCourses: CourseClass[] = [];
+        let failedSegments = 0;
+
+        results.forEach((result) => {
+          if (result.status === "fulfilled") {
+            nextCourses.push(...result.value);
+            return;
+          }
+
+          failedSegments += 1;
+          console.error(result.reason);
+        });
+
+        const deduped = sortCourses(
+          [...new Map(nextCourses.map((course) => [course.id, course])).values()],
+        );
+
+        setCourses(deduped);
+
+        if (failedSegments > 0) {
+          setFilterError(
+            "Một phần dữ liệu lớp học phần không tải được. Trang đang hiển thị các kết quả còn lại.",
+          );
+        }
+      } catch (error) {
+        console.error(error);
+        if (!cancelled) {
+          setCourses([]);
+          setFilterError("Không thể tải danh sách lớp học phần theo bộ lọc hiện tại.");
+        }
+      } finally {
+        if (!cancelled) {
+          setCourseLoading(false);
+        }
+      }
+    };
+
+    loadCourses();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    deferredSearch,
+    matchedSemesterIds,
+    selectedCohort,
+    selectedFacultyId,
+    selectedMajorId,
+    token,
+  ]);
+
+  const resetFilters = () => {
+    setSelectedDate(toDateInputValue(new Date()));
+    setSelectedFacultyId("");
+    setSelectedCohort("");
+    setSelectedMajorId("");
+    setAdvancedSearch("");
+  };
+
+  const openAttendance = (courseId: string) => {
+    router.push(`/staff/attendance/${courseId}`);
+  };
+
+  const openGradeEntry = (courseId: string) => {
+    router.push(`/staff/grades/${courseId}`);
+  };
+
+  if (bootLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f6f8fb]">
+        <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-uneti-blue/10 border-t-uneti-blue" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-[calc(100vh-2rem)] min-h-0 flex-col bg-[#f6f8fb]">
+      <header className="flex-shrink-0 border-b border-slate-200/80 bg-white px-4 py-3 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <Edit3 size={18} className="flex-shrink-0 text-uneti-blue" />
+              <h1 className="truncate text-[16px] font-black tracking-tight text-slate-900">
+                Quản lý điểm học tập
+              </h1>
+            </div>
+
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[12px] font-black text-slate-700">
+              {formatDateLabel(selectedDate)}
+            </span>
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[12px] font-black text-slate-700">
+              {courses.length} lớp học phần
+            </span>
+            <span className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[12px] font-black text-uneti-blue">
+              {matchedSemesters.length} học kỳ tương ứng
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-3 grid gap-2 lg:grid-cols-[170px_1fr_1fr_1fr_2fr_auto]">
+          <label className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(event) => setSelectedDate(event.target.value)}
+              className="mt-1 w-full border-0 bg-transparent p-0 text-[12px] font-black text-slate-900 outline-none"
+            />
+          </label>
+
+          <label className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+
+            <select
+              value={selectedFacultyId}
+              onChange={(event) => setSelectedFacultyId(event.target.value)}
+              className="mt-1 w-full appearance-none border-0 bg-transparent p-0 text-[12px] font-black text-slate-900 outline-none"
+            >
+              <option value="">Tất cả khoa</option>
+              {faculties.map((faculty) => (
+                <option key={faculty.id} value={faculty.id}>
+                  {faculty.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+
+            <select
+              value={selectedCohort}
+              onChange={(event) => setSelectedCohort(event.target.value)}
+              className="mt-1 w-full appearance-none border-0 bg-transparent p-0 text-[12px] font-black text-slate-900 outline-none"
+            >
+              <option value="">Tất cả khóa</option>
+              {cohorts.map((cohort) => (
+                <option key={cohort.code} value={cohort.code}>
+                  {cohort.code}
+                  {cohort.startYear && cohort.endYear
+                    ? ` (${cohort.startYear}-${cohort.endYear})`
+                    : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+
+            <select
+              value={selectedMajorId}
+              onChange={(event) => {
+                const nextMajorId = event.target.value;
+                setSelectedMajorId(nextMajorId);
+
+                const selectedMajor = majors.find((major) => major.id === nextMajorId);
+                if (selectedMajor?.facultyId) {
+                  setSelectedFacultyId(selectedMajor.facultyId);
+                }
+              }}
+              className="mt-1 w-full appearance-none border-0 bg-transparent p-0 text-[12px] font-black text-slate-900 outline-none"
+            >
+              <option value="">Tất cả ngành</option>
+              {visibleMajors.map((major) => (
+                <option key={major.id} value={major.id}>
+                  {major.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+
+            <div className="mt-1 flex items-center gap-2">
+              <Search size={15} className="text-slate-400" />
+              <input
+                type="text"
+                value={advancedSearch}
+                onChange={(event) => setAdvancedSearch(event.target.value)}
+                placeholder="Mã lớp, mã HP, học phần, giảng viên..."
+                className="w-full border-0 bg-transparent p-0 text-[12px] font-bold text-slate-900 outline-none placeholder:text-slate-400"
+              />
+            </div>
+          </label>
+
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-[12px] font-black text-slate-600 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50"
+          >
+            Đặt lại
+          </button>
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-medium text-slate-500">
+          {matchedSemesters.length > 0 ? (
+            <span>
+              Ngày {formatDateLabel(selectedDate)} thuộc{" "}
+              {matchedSemesters.map((semester) => semester.code || semester.name).join(", ")}.
+            </span>
+          ) : (
+            <span>Ngày {formatDateLabel(selectedDate)} hiện không nằm trong học kỳ nào.</span>
+          )}
+          {filterError ? (
+            <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 font-bold text-amber-700">
+              {filterError}
+            </span>
+          ) : null}
+        </div>
+      </header>
+
+      <main className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        {courseLoading ? (
+          <div className="flex h-full min-h-[360px] flex-col items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-white text-center shadow-sm">
+            <div className="mb-4 h-9 w-9 animate-spin rounded-full border-4 border-slate-100 border-t-uneti-blue" />
+            <p className="text-[13px] font-bold text-slate-500">Đang tải lớp học phần...</p>
+          </div>
+        ) : matchedSemesters.length === 0 ? (
+          <div className="flex h-full min-h-[360px] flex-col items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-white px-6 text-center shadow-sm">
+            <CalendarDays size={36} className="mb-4 text-slate-300" />
+            <h3 className="text-[16px] font-black text-slate-800">
+              Ngày chưa thuộc học kỳ nào
+            </h3>
+            <p className="mt-2 max-w-[520px] text-[13px] font-medium leading-6 text-slate-500">
+              Hãy chọn một ngày khác để hệ thống xác định học kỳ và tải danh sách lớp học phần.
+            </p>
+          </div>
+        ) : courses.length === 0 ? (
+          <div className="flex h-full min-h-[360px] flex-col items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-white px-6 text-center shadow-sm">
+            <Search size={36} className="mb-4 text-slate-300" />
+            <h3 className="text-[16px] font-black text-slate-800">
+              Không có lớp học phần phù hợp
+            </h3>
+            <p className="mt-2 max-w-[520px] text-[13px] font-medium leading-6 text-slate-500">
+              Bộ lọc hiện tại chưa trả về lớp học phần nào. Hãy nới điều kiện lọc hoặc đổi ngày.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-4 py-3">
+              <div>
+                <h2 className="text-[15px] font-black text-slate-900">
+                  Danh sách lớp học phần
+                </h2>
+
+              </div>
+
+            </div>
+
+            <div className="divide-y divide-slate-100">
+              {courses.map((course) => (
+                <div
+                  key={course.id}
+                  className="grid gap-3 px-4 py-3 transition-all hover:bg-blue-50/30 xl:grid-cols-[1fr_auto]"
+                >
+                  <button
+                    type="button"
+                    onClick={() => openGradeEntry(course.id)}
+                    className="min-w-0 text-left"
+                  >
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-uneti-blue text-[12px] font-black text-white shadow-md shadow-uneti-blue/20">
+                        {getStudentCount(course)}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-uneti-blue">
+                            {course.semester?.code || course.semester?.name || "Học kỳ"}
+                          </span>
+                          {course.cohort ? (
+                            <span className="rounded-full border border-slate-200 px-2.5 py-1 text-[10px] font-black text-slate-500">
+                              {course.cohort}
+                            </span>
+                          ) : null}
+                          {course.subject?.credits ? (
+                            <span className="rounded-full border border-slate-200 px-2.5 py-1 text-[10px] font-black text-slate-500">
+                              {course.subject.credits} TC
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <div className="mt-2 line-clamp-1 text-[15px] font-black text-slate-900">
+                          {course.subject?.name || course.name || "Lớp học phần"}
+                        </div>
+                        <div className="mt-1 text-[12px] font-bold text-slate-500">
+                          {course.code || "Chưa có mã lớp"} •{" "}
+                          {course.subject?.code || "Chưa có mã HP"}
+                        </div>
+                        <div className="mt-2 grid gap-1 text-[11px] font-medium text-slate-500 md:grid-cols-2 xl:grid-cols-4">
+                          <span>GV: {getLecturerName(course)}</span>
+                          <span>Khoa: {getFacultyLabel(course)}</span>
+                          <span>Ngành: {getMajorLabel(course)}</span>
+                          <span>Lớp HC: {getAdminClassLabel(course)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+
+                  <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+                    <button
+                      type="button"
+                      onClick={() => openAttendance(course.id)}
+                      className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-[12px] font-black text-slate-600 shadow-sm transition-all hover:border-blue-200 hover:bg-blue-50 hover:text-uneti-blue"
+                    >
+                      <ClipboardList size={15} />
+                      Xem điểm danh
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openGradeEntry(course.id)}
+                      className="inline-flex h-10 items-center gap-2 rounded-xl bg-uneti-blue px-4 text-[12px] font-black text-white shadow-md shadow-uneti-blue/20 transition-all hover:scale-[1.02]"
+                    >
+                      <Edit3 size={15} />
+                      Nhập điểm học tập
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
 }

@@ -1,71 +1,78 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Cookies from "js-cookie";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
     GraduationCap,
     Search,
-    ChevronRight,
     Users,
     BookOpen,
-    ArrowLeft,
-    CheckCircle2,
-    LayoutGrid,
-    SearchX,
     Filter,
     ArrowRight,
     CheckCircle
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { CompactLecturerHeader } from "@/components/dashboard/CompactLecturerHeader";
+
+const normalizeText = (value?: string) =>
+    `${value || ""}`
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+
+const getLecturerProfileId = (user: any) =>
+    user?.profileId || user?.lecturerId || user?.lecturer?.id || "";
 
 export default function LecturerGradeSelectionPage() {
     const router = useRouter();
     const [user, setUser] = useState<any>(null);
     const [courses, setCourses] = useState<any[]>([]);
-    const [filteredCourses, setFilteredCourses] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [selectedSemesterId, setSelectedSemesterId] = useState<string>("");
     const [searchQuery, setSearchQuery] = useState("");
 
-    const TOKEN = Cookies.get("admin_accessToken");
+    const token = Cookies.get("lecturer_accessToken") || Cookies.get("admin_accessToken");
+    const lecturerProfileId = getLecturerProfileId(user);
 
     useEffect(() => {
-        const c = Cookies.get("admin_user");
-        if (c) try { setUser(JSON.parse(c)); } catch { }
+        const raw = Cookies.get("lecturer_user") || Cookies.get("admin_user");
+        if (raw) {
+            try {
+                setUser(JSON.parse(raw));
+            } catch {
+                setUser(null);
+            }
+        }
     }, []);
 
     useEffect(() => {
-        if (!user?.profileId) return;
+        if (!lecturerProfileId || !token) {
+            setCourses([]);
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
-        const headers: any = TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {};
-
-        const query = selectedSemesterId ? `?semesterId=${selectedSemesterId}` : "";
-        fetch(`/api/courses/lecturer/${user.profileId}${query}`, { headers })
-            .then(r => r.ok ? r.json() : [])
-            .then(data => {
-                const fetched = Array.isArray(data) ? data : data?.data || [];
-                setCourses(fetched);
-                setFilteredCourses(fetched);
-            })
-            .catch(() => {
-                setCourses([]);
-                setFilteredCourses([]);
-            })
+        fetch(`/api/courses/lecturer/${lecturerProfileId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+        })
+            .then((response) => (response.ok ? response.json() : []))
+            .then((data) => setCourses(Array.isArray(data) ? data : data?.data || []))
+            .catch(() => setCourses([]))
             .finally(() => setLoading(false));
-    }, [user, TOKEN, selectedSemesterId]);
+    }, [lecturerProfileId, token]);
 
-    useEffect(() => {
-        const query = searchQuery.toLowerCase();
-        const filtered = courses.filter(c =>
-            (c.name?.toLowerCase().includes(query)) ||
-            (c.subject?.name?.toLowerCase().includes(query)) ||
-            (c.code?.toLowerCase().includes(query))
+    const filteredCourses = useMemo(() => {
+        const keyword = normalizeText(searchQuery);
+        if (!keyword) return courses;
+        return courses.filter((course) =>
+            [
+                course.name,
+                course.subject?.name,
+                course.code,
+                course.subject?.code,
+            ].some((value) => normalizeText(value).includes(keyword)),
         );
-        setFilteredCourses(filtered);
-    }, [searchQuery, courses]);
+    }, [courses, searchQuery]);
 
     if (loading && courses.length === 0) {
         return (
@@ -77,15 +84,15 @@ export default function LecturerGradeSelectionPage() {
 
     return (
         <div className="space-y-6 bg-[#fbfcfd] min-h-screen pb-20 px-4 md:px-8 max-w-7xl mx-auto animate-in fade-in duration-700">
-            <CompactLecturerHeader 
-                userName={`${user?.degree || "Giảng viên"} ${user?.fullName || "Cao cấp"}`} 
+            <CompactLecturerHeader
+                userName={`${user?.degree || "Giảng viên"} ${user?.fullName || "Cao cấp"}`}
                 userId={`GV-${user?.username || "UNETI"}`}
                 minimal={true}
                 title="Quản lý bảng điểm"
-                onSemesterChange={setSelectedSemesterId}
+                onSemesterChange={() => {}}
+                hideSemester={true}
             />
 
-            {/* Filter & Search Bar */}
             <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
                 <div className="flex items-center gap-2">
                     <div className="p-2.5 rounded-xl bg-uneti-blue-light text-uneti-blue">
@@ -104,32 +111,31 @@ export default function LecturerGradeSelectionPage() {
                     <input
                         type="text"
                         placeholder="Tìm mã hoặc tên lớp học phần..."
-                        className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-transparent rounded-xl text-[11px] font-bold text-slate-700 outline-none focus:ring-2 focus:ring-uneti-blue/10 focus:bg-white focus:border-uneti-blue transition-all"
+                        className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border-none rounded-xl text-[11px] font-bold text-slate-700 outline-none focus:ring-2 focus:ring-uneti-blue/10 focus:bg-white focus:border-uneti-blue transition-all"
                         value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onChange={(event) => setSearchQuery(event.target.value)}
                     />
                 </div>
             </div>
 
-            {/* Selection Grid - Modern & High Density */}
             {filteredCourses.length === 0 && !loading ? (
                 <div className="bg-white rounded-[2rem] p-32 flex flex-col items-center justify-center text-center border border-slate-100 border-dashed">
                     <div className="p-6 rounded-full bg-slate-50 text-slate-200 mb-6">
                          <BookOpen size={64} strokeWidth={1} />
                     </div>
                     <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Không tìm thấy lớp học</h3>
-                    <p className="text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-widest">Vui lòng kiểm tra lại bộ lọc học kỳ hoặc từ khóa tìm kiếm.</p>
+                    <p className="text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-widest">Vui lòng kiểm tra lại từ khóa tìm kiếm.</p>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                    {filteredCourses.map((c, i) => (
-                        <div key={i} className="bg-white rounded-[2rem] border border-slate-100 p-6 flex flex-col group relative overflow-hidden transition-all hover:border-uneti-blue/30 hover:shadow-xl hover:shadow-uneti-blue/5">
+                    {filteredCourses.map((course, index) => (
+                        <div key={index} className="bg-white rounded-[2rem] border border-slate-100 p-6 flex flex-col group relative overflow-hidden transition-all hover:border-uneti-blue/30 hover:shadow-xl hover:shadow-uneti-blue/5">
                             <div className="absolute top-0 right-0 w-24 h-24 bg-uneti-blue/5 rounded-full blur-2xl -mr-12 -mt-12 group-hover:bg-uneti-blue/10 transition-colors"></div>
 
                             <div className="relative z-10 flex flex-col flex-1">
                                 <div className="flex items-center justify-between mb-4">
                                     <span className="bg-white ring-1 ring-uneti-blue/10 shadow-sm text-uneti-blue font-black text-[9px] px-3 py-1.5 rounded-lg tracking-widest uppercase">
-                                        {c.code}
+                                        {course.code}
                                     </span>
                                     <div className="flex items-center gap-1.5 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
                                         <CheckCircle size={12} strokeWidth={3} />
@@ -138,7 +144,7 @@ export default function LecturerGradeSelectionPage() {
                                 </div>
 
                                 <h3 className="text-[14px] font-black text-slate-800 leading-snug group-hover:text-uneti-blue transition-colors line-clamp-2 min-h-[40px] uppercase tracking-tight mb-4">
-                                    {c.name || c.subject?.name}
+                                    {course.name || course.subject?.name}
                                 </h3>
 
                                 <div className="flex items-center gap-6 mt-auto pb-6 border-b border-slate-50">
@@ -146,20 +152,20 @@ export default function LecturerGradeSelectionPage() {
                                         <p className="text-[8px] font-black text-slate-300 uppercase leading-none mb-1">Sinh viên</p>
                                         <div className="flex items-center gap-1.5">
                                             <Users size={12} className="text-slate-400" />
-                                            <span className="text-xs font-black text-slate-600">{c.currentSlots || 0}</span>
+                                            <span className="text-xs font-black text-slate-600">{course.currentSlots || 0}</span>
                                         </div>
                                     </div>
                                     <div className="flex flex-col">
                                         <p className="text-[8px] font-black text-slate-300 uppercase leading-none mb-1">Tín chỉ</p>
                                         <div className="flex items-center gap-1.5">
                                             <GraduationCap size={12} className="text-slate-400" />
-                                            <span className="text-xs font-black text-slate-600">{c.subject?.credits || 0} TC</span>
+                                            <span className="text-xs font-black text-slate-600">{course.subject?.credits || 0} TC</span>
                                         </div>
                                     </div>
                                 </div>
 
                                 <button
-                                    onClick={() => router.push(`/lecturer/grades/${c.id}`)}
+                                    onClick={() => router.push(`/lecturer/grades/${course.id}`)}
                                     className="mt-6 flex items-center justify-center gap-2 py-3.5 bg-slate-50 text-uneti-blue text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-uneti-blue hover:text-white transition-all shadow-sm active:scale-95 group-hover:bg-uneti-blue group-hover:text-white"
                                 >
                                     Bắt đầu nhập điểm

@@ -111,4 +111,19 @@ export class AppController {
   ) {
     return this.appService.remindAllPendingLecturers(body.semesterId, auth);
   }
+
+  @Post('admin/bootstrap')
+  async bootstrapGrades(
+    @Body() body: { semesterId?: string; classId?: string },
+  ) {
+    return this.appService.bootstrapGrades(body);
+  }
+
+  @Post('admin/sample-scores')
+  async seedSampleGrades(
+    @Body()
+    body: { semesterId?: string; classId?: string; overwrite?: boolean },
+  ) {
+    return this.appService.seedSampleGrades(body);
+  }
 }

@@ -1,36 +1,23 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import { GradeSheetTable, parseScoreArray, type GradeSheetRow } from "@repo/shared-utils";
 import { StudentService } from "@/services/student.service";
 import {
     Search,
     Printer,
     FileText,
-    Info,
-    Calendar,
     GraduationCap,
     Hash,
-    Trophy,
-    BarChart3,
-    BookCheck,
     User,
+    Download,
+    LayoutGrid,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { resolveCurrentStudentContext } from "@/lib/current-student";
 
 // ===== UTILITY FUNCTIONS =====
-
-function parseScores(json: string | null | undefined): (number | null)[] {
-    if (!json || json === "null") return [];
-    try {
-        const parsed = JSON.parse(json);
-        if (Array.isArray(parsed)) return parsed;
-        return [];
-    } catch {
-        return [];
-    }
-}
 
 function toDate(value: any): Date | null {
     const date = new Date(value);
@@ -40,11 +27,6 @@ function toDate(value: any): Date | null {
 function toNumberOrNull(value: any) {
     const num = Number(value);
     return Number.isFinite(num) ? num : null;
-}
-
-function formatScore(value: any, digits = 2) {
-    const num = toNumberOrNull(value);
-    return num === null ? "—" : num.toFixed(digits);
 }
 
 function getRowCredits(row: any) {
@@ -64,6 +46,13 @@ function getRowPriority(row: any) {
     const totalScore4 = toNumberOrNull(row?.totalScore4);
     if (totalScore4 !== null) score += totalScore4;
     return score;
+}
+
+function getMaxScoreLength(rows: any[], field: "coef1Scores" | "coef2Scores" | "practiceScores") {
+    return rows.reduce((max, row) => {
+        if (row?.isPlaceholder) return max;
+        return Math.max(max, parseScoreArray(row?.[field]).length);
+    }, 0);
 }
 
 type StudentCohortMeta = {
@@ -335,7 +324,7 @@ export default function ResultsPage() {
 
         const cohort = cohorts.find(c => c.code === cohortCode);
         if (cohort?.startYear) return cohort.startYear;
-        
+
         const kMatch = cohortCode.match(/K(\d+)/i);
         if (kMatch) {
             const kNum = parseInt(kMatch[1]);
@@ -482,17 +471,6 @@ export default function ResultsPage() {
                 (sum, row) => sum + getRowCredits(row),
                 0,
             );
-            const earnedSemesterCredits = actualRows
-                .filter((row) => row.isPassed)
-                .reduce((sum, row) => sum + getRowCredits(row), 0);
-            const semesterGpa =
-                attemptedCredits > 0
-                    ? actualRows.reduce(
-                        (sum, row) =>
-                            sum + Number(row.totalScore4 || 0) * getRowCredits(row),
-                        0,
-                    ) / attemptedCredits
-                    : null;
 
             actualRows.forEach((row) => {
                 const subjectKey = getRowSubjectKey(row);
@@ -519,11 +497,6 @@ export default function ResultsPage() {
                         0,
                     ) / cumulativeCredits
                     : null;
-            const cumulativeEarnedCredits = cumulativeRows
-                .filter((row) => row.isPassed)
-                .reduce((sum, row) => sum + getRowCredits(row), 0);
-            const failedCount = actualRows.filter((row) => row.isPassed === false).length;
-            const passedCount = actualRows.filter((row) => row.isPassed === true).length;
 
             timeline.push({
                 label: `HK${sequentialNumber}`,
@@ -533,13 +506,7 @@ export default function ResultsPage() {
                 grades: filteredRows,
                 totalRows: mergedRows.length,
                 summary: {
-                    semesterGpa,
                     cpa,
-                    attemptedCredits,
-                    earnedSemesterCredits,
-                    cumulativeEarnedCredits,
-                    passedCount,
-                    failedCount,
                     hasActualGrades: actualRows.length > 0,
                 },
             });
@@ -548,324 +515,85 @@ export default function ResultsPage() {
         return timeline;
     }, [curriculumSemesters, grades, searchTerm, startYear, visibleSemesters]);
 
-    const overallSummary = useMemo(() => {
-        const lastMeasuredSemester = [...fullHistory]
-            .reverse()
-            .find((group) => group.summary?.hasActualGrades);
+    const allSheetRows = useMemo((): GradeSheetRow[] => {
+        return fullHistory.flatMap((group) => {
+            return group.grades.map((g: any) => ({
+                id: `${group.label}-${g.id || g.subjectId || g.subject?.id || g.subject?.code}`,
+                semesterLabel: group.label,
+                primaryText: g.subject?.name || "Học phần",
+                secondaryText: g.subject?.code || "",
+                credits: Number(g.subject?.credits || g.credits || 0),
+                attendanceScore: g.isPlaceholder ? null : g.attendanceScore ?? null,
+                regularScores: g.isPlaceholder ? [] : parseScoreArray(g.regularScores),
+                coef1Scores: g.isPlaceholder ? [] : parseScoreArray(g.coef1Scores),
+                coef2Scores: g.isPlaceholder ? [] : parseScoreArray(g.coef2Scores),
+                practiceScores: g.isPlaceholder ? [] : parseScoreArray(g.practiceScores),
+                tbThuongKy: g.isPlaceholder ? null : g.tbThuongKy ?? null,
+                isEligibleForExam:
+                    g.isPlaceholder || g.attendanceScore === null || g.attendanceScore === undefined
+                        ? null
+                        : g.isEligibleForExam,
+                isAbsentFromExam: Boolean(g.isAbsentFromExam),
+                examScore1: g.isPlaceholder ? null : g.examScore1 ?? null,
+                examScore2: g.isPlaceholder ? null : g.examScore2 ?? null,
+                finalScore1: g.isPlaceholder ? null : g.finalScore1 ?? null,
+                finalScore2: g.isPlaceholder ? null : g.finalScore2 ?? null,
+                totalScore10: g.isPlaceholder ? null : g.totalScore10 ?? null,
+                totalScore4: g.isPlaceholder ? null : g.totalScore4 ?? null,
+                letterGrade: g.isPlaceholder ? null : g.letterGrade ?? null,
+                isPassed: Boolean(g.isPassed),
+                cpa: group.summary?.cpa,
+                notes: g.notes || (g.existingGrade ? "Hoàn thành ở kỳ khác" : ""),
+                isPlaceholder: Boolean(g.isPlaceholder),
+            }));
+        });
+    }, [fullHistory]);
 
-        const stats = curriculumProgress?.stats || {};
-        return {
-            latestGpa: lastMeasuredSemester?.summary?.semesterGpa ?? null,
-            currentCpa: lastMeasuredSemester?.summary?.cpa ?? null,
-            earnedCredits:
-                Number(stats?.passed || 0) ||
-                Number(lastMeasuredSemester?.summary?.cumulativeEarnedCredits || 0),
-            requiredCredits: Number(stats?.totalCredits || 0),
-            mandatoryCredits: Number(stats?.mandatory || 0),
-            passedMandatoryCredits: Number(stats?.passedMandatory || 0),
-        };
-    }, [curriculumProgress?.stats, fullHistory]);
+    const maxCoef = useMemo(() => Math.max(3, getMaxScoreLength(allSheetRows, "coef1Scores"), getMaxScoreLength(allSheetRows, "coef2Scores")), [allSheetRows]);
+    const maxPractice = useMemo(() => Math.max(2, getMaxScoreLength(allSheetRows, "practiceScores")), [allSheetRows]);
 
     if (loading) {
         return (
-            <div className="flex min-h-[80vh] items-center justify-center">
-                <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600"></div>
+            <div className="flex h-screen items-center justify-center bg-white">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-100 border-t-blue-600"></div>
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-400">Đang tải bảng điểm...</p>
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen space-y-6 bg-transparent pb-20 p-2 max-w-full">
-            <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-                <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-indigo-800 px-6 py-6 text-white">
-                    <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-                        <div className="space-y-3">
-                            <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-[10px] font-black uppercase tracking-[0.25em]">
-                                <GraduationCap className="h-3.5 w-3.5" />
-                                Kết quả học tập
-                            </div>
-                            <div>
-                                <h1 className="text-2xl font-black tracking-tight">
-                                    {student?.fullName || curriculumProgress?.fullName || "Sinh viên UNETI"}
-                                </h1>
-                                <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] font-bold text-blue-100">
-                                    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1">
-                                        <Hash className="h-3.5 w-3.5" />
-                                        {student?.studentCode || curriculumProgress?.studentCode || "Chưa có MSSV"}
-                                    </span>
-                                    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1">
-                                        <User className="h-3.5 w-3.5" />
-                                        {student?.adminClass?.code || curriculumProgress?.adminClassCode || "Chưa có lớp"}
-                                    </span>
-                                    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1">
-                                        <GraduationCap className="h-3.5 w-3.5" />
-                                        {student?.major?.name || curriculumProgress?.majorName || "Chưa có ngành"} • {student?.adminClass?.cohort || student?.intake || curriculumProgress?.cohort || "Chưa có khóa"}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex gap-3">
-                            <Button variant="outline" className="h-10 rounded-xl border-white/30 bg-white/10 text-[10px] font-black uppercase tracking-widest text-white hover:bg-white/20 hover:text-white">
-                                <Printer className="mr-2 h-3.5 w-3.5" /> In bảng điểm
-                            </Button>
-                            <Button className="h-10 rounded-xl bg-white text-[10px] font-black uppercase tracking-widest text-blue-700 shadow-lg shadow-indigo-900/20 hover:bg-blue-50">
-                                <FileText className="mr-2 h-3.5 w-3.5" /> Xuất PDF
-                            </Button>
-                        </div>
-                    </div>
-                </div>
+        <div className="flex h-full flex-col bg-white overflow-hidden">
 
-                <div className="grid gap-4 bg-slate-50/70 px-6 py-5 md:grid-cols-2 xl:grid-cols-4">
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <div className="flex items-center gap-3">
-                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-inner">
-                                <BarChart3 className="h-5 w-5" />
-                            </div>
-                            <div>
-                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">GPA kỳ gần nhất</p>
-                                <p className="mt-1 text-2xl font-black text-slate-900">{formatScore(overallSummary.latestGpa)}</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <div className="flex items-center gap-3">
-                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-inner">
-                                <Trophy className="h-5 w-5" />
-                            </div>
-                            <div>
-                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">CPA hiện tại</p>
-                                <p className="mt-1 text-2xl font-black text-slate-900">{formatScore(overallSummary.currentCpa)}</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <div className="flex items-center gap-3">
-                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-inner">
-                                <BookCheck className="h-5 w-5" />
-                            </div>
-                            <div>
-                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Tín chỉ tích lũy</p>
-                                <p className="mt-1 text-2xl font-black text-slate-900">
-                                    {overallSummary.earnedCredits}/{overallSummary.requiredCredits || "—"}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <div className="flex items-center gap-3">
-                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-inner">
-                                <Calendar className="h-5 w-5" />
-                            </div>
-                            <div>
-                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Bắt buộc đã đạt</p>
-                                <p className="mt-1 text-2xl font-black text-slate-900">
-                                    {overallSummary.passedMandatoryCredits}/{overallSummary.mandatoryCredits || "—"}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+
+            {/* Main Sheet Area */}
+            <div className="flex-1 overflow-hidden p-0">
+                <GradeSheetTable
+                    rows={allSheetRows}
+                    showSemester={true}
+                    labelHeader="Tên học phần"
+                    coefColumns={maxCoef}
+                    practiceColumns={maxPractice}
+                    showNotes={true}
+                    emptyMessage="Không tìm thấy môn học nào."
+                />
             </div>
 
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap justify-between items-center gap-4">
-                <div className="relative w-full md:w-96">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
-                    <input
-                        type="text"
-                        placeholder="Tìm kiếm môn học trong chương trình..."
-                        className="w-full pl-11 pr-4 py-2.5 bg-slate-50/50 border border-slate-100 text-[11px] font-bold rounded-2xl outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-400 transition-all font-sans"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
+            {/* Footer / Status Bar Area */}
+            <div className="h-8 shrink-0 border-t border-slate-200 bg-slate-50 px-4 flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                <div className="flex items-center gap-6">
+                    <span className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                        Tổng số: {allSheetRows.length} môn
+                    </span>
+                    <span className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                        TC tích lũy: {curriculumProgress?.stats?.passed || 0}/{curriculumProgress?.stats?.totalCredits || "—"}
+                    </span>
                 </div>
-                <div className="inline-flex items-center gap-2 rounded-2xl border border-blue-100 bg-blue-50/70 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-blue-700">
-                    <Calendar className="h-3.5 w-3.5" />
-                    Đang hiển thị {fullHistory.length}/8 học kỳ đến hiện tại
-                </div>
-            </div>
-
-            {fullHistory.map((group, idx) => (
-                <div key={idx} className="bg-white border border-slate-200 shadow-sm rounded-3xl overflow-hidden">
-                    {/* Semester Header */}
-                    <div className="px-6 py-3 bg-slate-50/50 border-b border-slate-200 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <div className={cn(
-                                "h-2 w-2 rounded-full",
-                                group.grades.some(g => !g.isPlaceholder) ? "bg-blue-500" : "bg-slate-300"
-                            )} />
-                            <h2 className="text-[12px] font-black text-slate-800 uppercase tracking-tight">
-                                {group.label} - {group.yearLabel} 
-                                <span className="ml-2 text-slate-400 font-bold">({group.academicYear})</span>
-                            </h2>
-                        </div>
-                        <div className={cn(
-                            "text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest border shadow-sm",
-                            group.totalRows > 0 ? "bg-white text-slate-600 border-slate-200" : "bg-white text-slate-200 border-slate-100"
-                        )}>
-                            {group.totalRows} Học phần
-                        </div>
-                    </div>
-
-                    <div className="grid gap-3 border-b border-slate-100 bg-white px-6 py-4 md:grid-cols-2 xl:grid-cols-5">
-                        <div className="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-3">
-                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">GPA học kỳ</p>
-                            <p className="mt-1 text-xl font-black text-slate-900">{formatScore(group.summary.semesterGpa)}</p>
-                        </div>
-                        <div className="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-3">
-                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">CPA sau kỳ</p>
-                            <p className="mt-1 text-xl font-black text-slate-900">{formatScore(group.summary.cpa)}</p>
-                        </div>
-                        <div className="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-3">
-                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">TC có điểm</p>
-                            <p className="mt-1 text-xl font-black text-slate-900">{group.summary.attemptedCredits || 0}</p>
-                        </div>
-                        <div className="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-3">
-                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">TC đạt trong kỳ</p>
-                            <p className="mt-1 text-xl font-black text-emerald-700">{group.summary.earnedSemesterCredits || 0}</p>
-                        </div>
-                        <div className="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-3">
-                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Đạt / Trượt</p>
-                            <p className="mt-1 text-xl font-black text-slate-900">
-                                {group.summary.passedCount || 0}
-                                <span className="mx-1 text-slate-300">/</span>
-                                <span className="text-rose-600">{group.summary.failedCount || 0}</span>
-                            </p>
-                        </div>
-                    </div>
-
-                    <div className="overflow-x-auto">
-                        <table className="w-full border-collapse text-[10px]" style={{ minWidth: "1550px" }}>
-                            <thead>
-                                <tr className="bg-slate-50/50 border-b border-slate-100">
-                                    <th rowSpan={3} className="py-2.5 px-4 text-center font-black text-slate-400 uppercase border-r border-slate-50 w-12">STT</th>
-                                    <th rowSpan={3} className="py-2.5 px-4 text-left font-black text-slate-700 uppercase border-r border-slate-50 w-64">Học phần</th>
-                                    <th rowSpan={3} className="py-2.5 px-2 text-center font-black text-slate-500 uppercase border-r border-slate-50 w-12">TC</th>
-                                    <th rowSpan={3} className="py-2.5 px-2 text-center font-black text-slate-500 uppercase border-r border-slate-50 w-14 bg-amber-50/30">CC</th>
-                                    <th colSpan={3} className="py-1.5 px-2 text-center font-black text-slate-400 uppercase border-r border-slate-50 bg-sky-50/30 text-[9px]">Thường Kỳ</th>
-                                    <th colSpan={3} className="py-1.5 px-2 text-center font-black text-slate-400 uppercase border-r border-slate-50 bg-indigo-50/30 text-[9px]">LT Hệ số 1</th>
-                                    <th colSpan={3} className="py-1.5 px-2 text-center font-black text-slate-400 uppercase border-r border-slate-50 bg-violet-50/30 text-[9px]">LT Hệ số 2</th>
-                                    <th colSpan={2} className="py-1.5 px-2 text-center font-black text-slate-400 uppercase border-r border-slate-50 bg-teal-50/30 text-[9px]">Thực Hành</th>
-                                    <th rowSpan={3} className="py-2.5 px-2 text-center font-black text-orange-700 uppercase border-r border-slate-50 w-16 bg-orange-50/40">TB TK</th>
-                                    <th rowSpan={3} className="py-2.5 px-2 text-center font-black text-slate-500 uppercase border-r border-slate-50 w-14 bg-orange-50/30 text-[9px]">Dự thi</th>
-                                    <th colSpan={3} className="py-1.5 px-2 text-center font-black text-rose-500 uppercase border-r border-slate-50 bg-rose-50/30 text-[9px]">Cuối Kỳ</th>
-                                    <th colSpan={2} className="py-1.5 px-2 text-center font-black text-emerald-600 uppercase border-r border-slate-50 bg-emerald-50/30 text-[9px]">Tổng Kết</th>
-                                    <th rowSpan={3} className="py-2.5 px-2 text-center font-black text-slate-600 uppercase border-r border-slate-50 w-14 bg-slate-50/50">Hệ 4</th>
-                                    <th rowSpan={3} className="py-2.5 px-2 text-center font-black text-slate-600 uppercase border-r border-slate-50 w-12 bg-slate-50/50">Chữ</th>
-                                    <th rowSpan={3} className="py-2.5 px-2 text-center font-black text-emerald-700 uppercase w-20 bg-emerald-50/20">Kết quả</th>
-                                </tr>
-                                <tr className="bg-slate-50/30 border-b border-slate-100 text-[8px] text-slate-400">
-                                    <th className="py-1 px-1 border-r border-slate-50 bg-sky-50/20">TX1</th>
-                                    <th className="py-1 px-1 border-r border-slate-50 bg-sky-50/20">TX2</th>
-                                    <th className="py-1 px-1 border-r border-slate-50 bg-sky-50/20">TX3</th>
-                                    <th className="py-1 px-1 border-r border-slate-50 bg-indigo-50/20">1</th>
-                                    <th className="py-1 px-1 border-r border-slate-50 bg-indigo-50/20">2</th>
-                                    <th className="py-1 px-1 border-r border-slate-50 bg-indigo-50/20">3</th>
-                                    <th className="py-1 px-1 border-r border-slate-50 bg-violet-50/20">1</th>
-                                    <th className="py-1 px-1 border-r border-slate-50 bg-violet-50/20">2</th>
-                                    <th className="py-1 px-1 border-r border-slate-50 bg-violet-50/20">3</th>
-                                    <th className="py-1 px-1 border-r border-slate-50 bg-teal-50/20">TH1</th>
-                                    <th className="py-1 px-1 border-r border-slate-50 bg-teal-50/20">TH2</th>
-                                    <th className="py-1 px-1 border-r border-slate-50 bg-rose-50/20">T1</th>
-                                    <th className="py-1 px-1 border-r border-slate-50 bg-rose-50/20">V</th>
-                                    <th className="py-1 px-1 border-r border-slate-50 bg-rose-50/20">T2</th>
-                                    <th className="py-1 px-1 border-r border-slate-50 bg-emerald-50/20">TK1</th>
-                                    <th className="py-1 px-1 border-r border-slate-50 bg-emerald-50/20">TK2</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {group.grades.length > 0 ? (
-                                    group.grades.map((g, idx) => {
-                                        const reg = parseScores(g.regularScores);
-                                        const c1 = parseScores(g.coef1Scores);
-                                        const c2 = parseScores(g.coef2Scores);
-                                        const th = parseScores(g.practiceScores);
-                                        const tb = g.tbThuongKy ?? 0;
-                                        const eligible = g.isEligibleForExam;
-                                        const final1 = g.finalScore1;
-                                        const final2 = g.finalScore2;
-                                        const score4 = g.totalScore4;
-                                        const letter = g.letterGrade;
-                                        const credits = g.subject?.credits || g.subject?.credits;
-
-                                        return (
-                                            <tr key={idx} className={cn(
-                                                "transition-colors border-slate-50 h-9",
-                                                g.isPlaceholder ? "opacity-40 grayscale-[0.5]" : "hover:bg-slate-50/80"
-                                            )}>
-                                                <td className="py-1 px-4 text-center text-slate-300 font-bold border-r border-slate-50">{idx + 1}</td>
-                                                <td className="py-1 px-4 border-r border-slate-50 font-black text-slate-800 uppercase leading-tight min-w-[200px]">
-                                                    {g.subject?.name}
-                                                    <p className="text-uneti-blue font-bold text-[8px] mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis">
-                                                        {g.subject?.code}
-                                                        {g.existingGrade && <span className="ml-2 text-emerald-600 italic">(Đã hoàn thành ở kỳ khác)</span>}
-                                                    </p>
-                                                </td>
-                                                <td className="py-1 px-2 text-center font-black text-slate-500 border-r border-slate-50">{credits}</td>
-                                                
-                                                {/* Score Fields (Hidden if placeholder) */}
-                                                {!g.isPlaceholder ? (
-                                                    <>
-                                                        <td className="py-1 px-2 text-center border-r border-slate-50 bg-amber-50/10 font-bold text-slate-700">{g.attendanceScore ?? ""}</td>
-                                                        {Array.from({ length: 3 }).map((_, i) => <td key={i} className="py-1 px-1 text-center border-r border-slate-50 bg-sky-50/10 font-bold text-slate-600">{reg[i] ?? ""}</td>)}
-                                                        {Array.from({ length: 3 }).map((_, i) => <td key={i} className="py-1 px-1 text-center border-r border-slate-50 bg-indigo-50/10 font-bold text-slate-600">{c1[i] ?? ""}</td>)}
-                                                        {Array.from({ length: 3 }).map((_, i) => <td key={i} className="py-1 px-1 text-center border-r border-slate-50 bg-violet-50/10 font-bold text-slate-600">{c2[i] ?? ""}</td>)}
-                                                        {Array.from({ length: 2 }).map((_, i) => <td key={i} className="py-1 px-1 text-center border-r border-slate-50 bg-teal-50/10 font-bold text-slate-600">{th[i] ?? ""}</td>)}
-                                                        <td className="py-1 px-2 text-center border-r border-slate-100 bg-orange-50/30">
-                                                            <span className={cn("font-black text-[10px]", tb >= 3 ? "text-orange-700" : "text-rose-600")}>{tb > 0 ? tb.toFixed(2) : ""}</span>
-                                                        </td>
-                                                        <td className="py-1 px-2 text-center border-r border-slate-100 bg-orange-50/30 font-bold">
-                                                            {eligible ? <span className="text-emerald-600 bg-emerald-50 px-1 py-0.5 rounded-full border border-emerald-100 text-[8px] font-black uppercase">Đạt</span> : <span className="text-rose-600 bg-rose-50 px-1 py-0.5 rounded-full border border-rose-100 text-[8px] font-black uppercase">Cấm</span>}
-                                                        </td>
-                                                        <td className="py-1 px-2 text-center border-r border-slate-50 bg-rose-50/10 font-bold text-slate-700">{g.examScore1 ?? ""}</td>
-                                                        <td className="py-1 px-2 text-center border-r border-slate-50 bg-rose-50/10"><div className={cn("w-3 h-3 rounded-full mx-auto border-2", g.isAbsentFromExam ? "bg-rose-500 border-rose-200" : "bg-white border-slate-100")} /></td>
-                                                        <td className="py-1 px-2 text-center border-r border-slate-50 bg-rose-50/10 font-bold text-slate-700">{g.examScore2 ?? ""}</td>
-                                                        <td className="py-1 px-2 text-center border-r border-slate-50 bg-emerald-50/10"><span className="font-black text-[10px] text-emerald-700">{final1 !== null ? final1.toFixed(2) : ""}</span></td>
-                                                        <td className="py-1 px-2 text-center border-r border-slate-100 bg-emerald-50/10"><span className="font-black text-[10px] text-emerald-600">{final2 !== null ? final2.toFixed(2) : ""}</span></td>
-                                                        <td className="py-1 px-2 text-center border-r border-slate-100 bg-slate-50/50"><span className="font-black text-[10px] text-slate-700">{score4 !== null ? score4?.toFixed(2) : ""}</span></td>
-                                                        <td className="py-1 px-2 text-center border-r border-slate-100 bg-slate-50/50">
-                                                            <span className={cn("font-black text-[11px] tracking-widest", letter?.startsWith("A") ? "text-blue-600" : letter?.startsWith("B") ? "text-emerald-600" : letter?.startsWith("C") ? "text-orange-500" : letter?.startsWith("D") ? "text-amber-500" : "text-rose-600")}>{letter || ""}</span>
-                                                        </td>
-                                                        <td className="py-1 px-3 text-center pr-4">
-                                                            {g.isPassed ? <span className="inline-flex items-center text-emerald-600 font-bold text-[8px] uppercase gap-1 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">Đạt HP</span> : <span className="inline-flex items-center text-rose-600 font-bold text-[8px] uppercase gap-1 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-100">Trượt</span>}
-                                                        </td>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <td colSpan={14} className="border-r border-slate-50 bg-slate-50/10 text-center italic text-slate-300 tracking-widest">
-                                                            Chưa đăng ký / Chưa có điểm
-                                                        </td>
-                                                        <td className="bg-slate-50/10" />
-                                                        <td className="bg-slate-50/10" />
-                                                        <td className="py-1 px-3 text-center pr-4">
-                                                            {g.existingGrade ? <span className="text-emerald-500 uppercase font-black text-[7px] bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">Đã học</span> : <span className="text-slate-300 uppercase font-black text-[7px]">—</span>}
-                                                        </td>
-                                                    </>
-                                                )}
-                                            </tr>
-                                        );
-                                    })
-                                ) : (
-                                    <tr>
-                                        <td colSpan={30} className="py-8 text-center text-slate-300 italic font-medium uppercase tracking-[0.2em] bg-slate-50/10">
-                                            Không có môn học nào được thiết lập trong chương trình khung cho kỳ này
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            ))}
-
-            {/* Global Legend */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-100 flex flex-wrap items-center gap-x-8 gap-y-2 opacity-80">
-                <div className="flex items-center gap-2">
-                    <Info size={14} className="text-blue-500" />
-                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Ghi chú:</span>
-                </div>
-                <div className="flex flex-wrap gap-6 text-[9px] font-black text-slate-400 items-center uppercase">
-                    <span className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-slate-200" /> Hàng nhạt: Môn trong chương trình chưa có điểm</span>
-                    <span className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-blue-500" /> Chấm xanh: Kỳ học đã hoàn thành / có điểm</span>
+                <div>
+                    Sinh viên: {student?.fullName} ({student?.studentCode})
                 </div>
             </div>
         </div>

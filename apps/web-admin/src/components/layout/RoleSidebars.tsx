@@ -13,7 +13,8 @@ import {
     Building2,
     Calculator,
     ClipboardList,
-    FileSpreadsheet
+    FileSpreadsheet,
+    Award
 } from "lucide-react";
 
 export function AdminSidebar() {
@@ -63,7 +64,8 @@ export function StaffSidebar() {
         { href: "/staff/departments", icon: Building2, label: "Khoa - Ngành" },
         { href: "/staff/lecturers", icon: Users, label: "Hồ sơ Giảng viên" },
         { href: "/staff/tuition", icon: Calculator, label: "Quản lý Học phí" },
-        { href: "/staff/grades", icon: FileSpreadsheet, label: "Quản lý Điểm" },
+        { href: "/staff/grades", icon: FileSpreadsheet, label: "Quản lý Điểm học tập" },
+        { href: "/staff/training-scores", icon: Award, label: "Quản lý Điểm rèn luyện" },
         { href: "/staff/exams", icon: ClipboardList, label: "Quản lý Lịch thi" },
     ];
 

@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Param,
+  Query,
   Put,
   Delete,
   Res,
@@ -41,8 +42,17 @@ export class StudentController {
   }
 
   @Get()
-  findAll() {
-    return this.studentService.findAll();
+  findAll(
+    @Query('adminClassId') adminClassId?: string,
+    @Query('majorId') majorId?: string,
+    @Query('cohort') cohort?: string
+  ) {
+    return this.studentService.findAll({ adminClassId, majorId, cohort });
+  }
+
+  @Get("admin-class/:adminClassId")
+  findByAdminClass(@Param("adminClassId") adminClassId: string) {
+    return this.studentService.findByAdminClass(adminClassId);
   }
 
   @Get(":id")

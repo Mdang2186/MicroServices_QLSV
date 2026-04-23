@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { StudentService } from "@/services/student.service";
 import api from "@/lib/api";
-import { readStudentSessionUser } from "@/lib/student-session";
+import { readStudentSessionUser, updateStudentSessionUser } from "@/lib/student-session";
 import { resolveCurrentStudentContext } from "@/lib/current-student";
 import { cn } from "@/lib/utils";
 
@@ -70,6 +70,7 @@ export default function StudentProfilePage() {
     
     // Editable data
     const [formData, setFormData] = useState({
+        email: "",
         phone: "",
         emailPersonal: "",
         address: "",
@@ -102,6 +103,7 @@ export default function StudentProfilePage() {
             if (data && data.id) {
                 setStudent(data);
                 setFormData({
+                    email: data.user?.email || data.email || "",
                     phone: data.phone || "",
                     emailPersonal: data.emailPersonal || "",
                     address: data.address || "",
@@ -146,7 +148,7 @@ export default function StudentProfilePage() {
 
             try {
                 const loginRes = await api.post("/api/auth/login", {
-                    username: identifier,
+                    email: identifier,
                     password: confirmPassword
                 });
 
@@ -163,6 +165,7 @@ export default function StudentProfilePage() {
 
             setSaving(true);
             const res = await api.put(`/api/students/${student.id}`, {
+                email: formData.email,
                 phone: formData.phone,
                 emailPersonal: formData.emailPersonal,
                 address: formData.address,
@@ -174,6 +177,7 @@ export default function StudentProfilePage() {
             });
 
             if (res.status === 200) {
+                updateStudentSessionUser({ email: formData.email });
                 alert("Cập nhật thông tin thành công!");
                 setIsPasswordModalOpen(false);
                 fetchProfile();
@@ -192,6 +196,7 @@ export default function StudentProfilePage() {
     const handleReset = () => {
         if (student) {
             setFormData({
+                email: student.user?.email || student.email || "",
                 phone: student.phone || "",
                 emailPersonal: student.emailPersonal || "",
                 address: student.address || "",
@@ -302,6 +307,14 @@ export default function StudentProfilePage() {
                     <div className="space-y-6">
                         <ModalSectionHeader title="Thông tin liên hệ & Địa chỉ" color="bg-amber-600" />
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <ModalInputField 
+                                label="Email hệ thống / đăng nhập" 
+                                value={formData.email} 
+                                onChange={(val: string) => setFormData({ ...formData, email: val })}
+                                placeholder="sv@uneti.edu.vn"
+                                type="email"
+                                icon={Mail}
+                            />
                             <ModalInputField 
                                 label="Số điện thoại" 
                                 value={formData.phone} 

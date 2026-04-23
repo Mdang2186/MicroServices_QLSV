@@ -70,105 +70,118 @@ export default function StudentNavbar() {
             <div className="container flex h-16 items-center justify-between">
                 <div className="flex items-center gap-8">
                     {/* Logo */}
-                    <Link href="/portal/dashboard" className="flex items-center space-x-2">
-                        <GraduationCap className="h-5 w-5 text-blue-600" />
-                        <span className="font-extrabold text-gray-900 tracking-tight text-base">Student Portal</span>
+                    <Link href="/portal/dashboard" className="flex items-center gap-3 group overflow-hidden">
+                        <div className="relative w-9 h-9 flex-shrink-0">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                                src="/images/logo_uneti.png"
+                                alt="UNETI"
+                                className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
+                            />
+                        </div>
+                        <div className="flex flex-col min-w-0 animate-in fade-in slide-in-from-left-2 duration-300">
+                            <h1 className="text-base font-black text-slate-900 tracking-tighter leading-none truncate">
+                                UNETI<span className="text-blue-600"></span>
+                            </h1>
+                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mt-1 truncate">
+                                Cổng Sinh Viên
+                            </p>
+                        </div>
                     </Link>
+                                {/* Desktop Nav */}
+                                <div className="hidden md:flex gap-1">
+                                    {navItems.map((item) => {
+                                        const isActive = pathname === item.href || (item.children?.some(child => pathname === child.href));
 
-                    {/* Desktop Nav */}
-                    <div className="hidden md:flex gap-1">
-                        {navItems.map((item) => {
-                            const isActive = pathname === item.href || (item.children?.some(child => pathname === child.href));
-
-                            if (item.children) {
-                                return (
-                                    <div
-                                        key={item.label}
-                                        className="relative"
-                                        onMouseEnter={() => setIsStudyOpen(true)}
-                                        onMouseLeave={() => setIsStudyOpen(false)}
-                                    >
-                                        <button
-                                            className={cn(
-                                                "flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold transition-all rounded-full hover:bg-gray-100",
-                                                isActive ? "text-blue-600 bg-blue-50" : "text-gray-600 hover:text-blue-600"
-                                            )}
-                                        >
-                                            {item.label}
-                                            <ChevronDown className={cn("h-3 w-4 transition-transform", isStudyOpen && "rotate-180")} />
-                                        </button>
-
-                                        <AnimatePresence>
-                                            {isStudyOpen && (
-                                                <motion.div
-                                                    initial={{ opacity: 0, y: 5 }}
-                                                    animate={{ opacity: 1, y: 0 }}
-                                                    exit={{ opacity: 0, y: 5 }}
-                                                    className="absolute left-0 mt-1 w-48 rounded-xl bg-white p-1.5 shadow-xl ring-1 ring-slate-200 border border-slate-100"
+                                        if (item.children) {
+                                            return (
+                                                <div
+                                                    key={item.label}
+                                                    className="relative"
+                                                    onMouseEnter={() => setIsStudyOpen(true)}
+                                                    onMouseLeave={() => setIsStudyOpen(false)}
                                                 >
-                                                    {item.children.map((child) => (
-                                                        <Link
-                                                            key={child.href}
-                                                            href={child.href}
-                                                            className={cn(
-                                                                "flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all",
-                                                                pathname === child.href
-                                                                    ? "bg-blue-50 text-blue-600"
-                                                                    : "text-gray-600 hover:bg-gray-50 hover:text-blue-600"
-                                                            )}
-                                                        >
-                                                            <child.icon className="h-3.5 w-3.5" />
-                                                            {child.label}
-                                                        </Link>
-                                                    ))}
-                                                </motion.div>
-                                            )}
-                                        </AnimatePresence>
-                                    </div>
-                                );
-                            }
+                                                    <button
+                                                        className={cn(
+                                                            "flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold transition-all rounded-full hover:bg-gray-100",
+                                                            isActive ? "text-blue-600 bg-blue-50" : "text-gray-600 hover:text-blue-600"
+                                                        )}
+                                                    >
+                                                        {item.label}
+                                                        <ChevronDown className={cn("h-3 w-4 transition-transform", isStudyOpen && "rotate-180")} />
+                                                    </button>
 
-                            return (
-                                <Link
-                                    key={item.href}
-                                    href={item.href}
-                                    className={cn(
-                                        "flex items-center px-3 py-1.5 text-xs font-bold transition-all rounded-full hover:bg-gray-100",
-                                        isActive ? "text-blue-600 bg-blue-50" : "text-gray-600 hover:text-blue-600"
-                                    )}
+                                                    <AnimatePresence>
+                                                        {isStudyOpen && (
+                                                            <motion.div
+                                                                initial={{ opacity: 0, y: 5 }}
+                                                                animate={{ opacity: 1, y: 0 }}
+                                                                exit={{ opacity: 0, y: 5 }}
+                                                                className="absolute left-0 mt-1 w-48 rounded-xl bg-white p-1.5 shadow-xl ring-1 ring-slate-200 border border-slate-100"
+                                                            >
+                                                                {item.children.map((child) => (
+                                                                    <Link
+                                                                        key={child.href}
+                                                                        href={child.href}
+                                                                        className={cn(
+                                                                            "flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-lg transition-all",
+                                                                            pathname === child.href
+                                                                                ? "bg-blue-50 text-blue-600"
+                                                                                : "text-gray-600 hover:bg-gray-50 hover:text-blue-600"
+                                                                        )}
+                                                                    >
+                                                                        <child.icon className="h-3.5 w-3.5" />
+                                                                        {child.label}
+                                                                    </Link>
+                                                                ))}
+                                                            </motion.div>
+                                                        )}
+                                                    </AnimatePresence>
+                                                </div>
+                                            );
+                                        }
+
+                                        return (
+                                            <Link
+                                                key={item.href}
+                                                href={item.href}
+                                                className={cn(
+                                                    "flex items-center px-3 py-1.5 text-xs font-bold transition-all rounded-full hover:bg-gray-100",
+                                                    isActive ? "text-blue-600 bg-blue-50" : "text-gray-600 hover:text-blue-600"
+                                                )}
+                                            >
+                                                {item.label}
+                                            </Link>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* User Section */}
+                            <div className="flex items-center gap-3">
+                                <div className="hidden md:flex flex-col items-end mr-1">
+                                    <span className="text-xs font-bold text-gray-900 leading-tight">
+                                        {studentProfile?.fullName || "Sinh viên"}
+                                    </span>
+                                    <span className="text-[9px] font-black uppercase text-blue-600 tracking-wider bg-blue-50 px-1.5 py-0.5 rounded-full ring-1 ring-blue-100">
+                                        {studentProfile?.studentCode || "MSSV"}
+                                    </span>
+                                </div>
+
+                                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold shadow-md shadow-blue-200">
+                                    {studentProfile?.fullName?.charAt(0) || "S"}
+                                </div>
+
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={handleLogout}
+                                    className="h-8 w-8 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
                                 >
-                                    {item.label}
-                                </Link>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                {/* User Section */}
-                <div className="flex items-center gap-3">
-                    <div className="hidden md:flex flex-col items-end mr-1">
-                        <span className="text-xs font-bold text-gray-900 leading-tight">
-                            {studentProfile?.fullName || "Sinh viên"}
-                        </span>
-                        <span className="text-[9px] font-black uppercase text-blue-600 tracking-wider bg-blue-50 px-1.5 py-0.5 rounded-full ring-1 ring-blue-100">
-                            {studentProfile?.studentCode || "MSSV"}
-                        </span>
-                    </div>
-
-                    <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold shadow-md shadow-blue-200">
-                        {studentProfile?.fullName?.charAt(0) || "S"}
-                    </div>
-
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={handleLogout}
-                        className="h-8 w-8 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
-                    >
-                        <LogOut className="h-4 w-4" />
-                    </Button>
-                </div>
-            </div>
-        </nav>
-    );
+                                    <LogOut className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        </div>
+                    </nav>
+                    );
 }

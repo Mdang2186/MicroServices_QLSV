@@ -106,12 +106,43 @@ function isPracticeSubject(subject: any, rawTheoryPeriods: number, rawPracticePe
   );
 }
 
+function getSuggestedSessionsPerWeek(
+  totalPeriods: number,
+  configuredSessionsPerWeek: number,
+  availableWeeks: number,
+) {
+  if (totalPeriods <= 0) return 0;
+  if (configuredSessionsPerWeek > 0) return configuredSessionsPerWeek;
+
+  const effectiveWeeks = Math.max(
+    Math.min(availableWeeks, DEFAULT_TEACHING_WEEKS),
+    1,
+  );
+
+  for (const sessions of [1, 2, 3, 4]) {
+    const periodsPerSession = Math.ceil(totalPeriods / effectiveWeeks / sessions);
+    if (periodsPerSession <= 4) {
+      return sessions;
+    }
+  }
+
+  return 1;
+}
+
 function getRecommendedSubjectSchedule(subject: any, availableWeeks = DEFAULT_TEACHING_WEEKS) {
   const credits = Number(subject?.credits || 0);
   const rawTheoryPeriods = Number(subject?.theoryPeriods ?? subject?.theoryHours ?? 0);
   const rawPracticePeriods = Number(subject?.practicePeriods ?? subject?.practiceHours ?? 0);
   const rawTotalPeriods = rawTheoryPeriods + rawPracticePeriods;
-  const targetTotalPeriods = credits > 0 ? credits * 15 : Math.max(rawTotalPeriods, 15);
+  const practiceOriented = isPracticeSubject(subject, rawTheoryPeriods, rawPracticePeriods);
+  const targetTotalPeriods =
+    rawTotalPeriods > 0
+      ? rawTotalPeriods
+      : credits > 0
+        ? practiceOriented
+          ? credits * 30
+          : credits * 15
+        : 15;
   let periodsPerSession = Math.max(
     1,
     Number(subject?.periodsPerSession || DEFAULT_PERIODS_PER_SESSION),
@@ -124,17 +155,27 @@ function getRecommendedSubjectSchedule(subject: any, availableWeeks = DEFAULT_TE
     const theoryRatio = rawTheoryPeriods / rawTotalPeriods;
     theoryPeriods = Math.round(targetTotalPeriods * theoryRatio);
     practicePeriods = Math.max(targetTotalPeriods - theoryPeriods, 0);
-  } else if (isPracticeSubject(subject, rawTheoryPeriods, rawPracticePeriods)) {
+  } else if (practiceOriented) {
     practicePeriods = targetTotalPeriods;
   } else {
     theoryPeriods = targetTotalPeriods;
   }
 
   const theorySessionsPerWeek =
-    theoryPeriods > 0 ? Math.max(Number(subject?.theorySessionsPerWeek || 0) || 1, 1) : 0;
+    theoryPeriods > 0
+      ? getSuggestedSessionsPerWeek(
+          theoryPeriods,
+          Number(subject?.theorySessionsPerWeek || 0),
+          availableWeeks,
+        )
+      : 0;
   const practiceSessionsPerWeek =
     practicePeriods > 0
-      ? Math.max(Number(subject?.practiceSessionsPerWeek || 0) || 1, 1)
+      ? getSuggestedSessionsPerWeek(
+          practicePeriods,
+          Number(subject?.practiceSessionsPerWeek || 0),
+          availableWeeks,
+        )
       : 0;
 
   // FIX: When calculating periods per session, avoid inflating based on long semester duration
@@ -142,17 +183,25 @@ function getRecommendedSubjectSchedule(subject: any, availableWeeks = DEFAULT_TE
   // not 2 periods/session over 22 weeks. 
   const effectiveWeeks = Math.min(availableWeeks, DEFAULT_TEACHING_WEEKS); 
   
-  const derivedPeriodsPerSession = Math.max(
+  const derivedTheoryPeriodsPerSession =
     theoryPeriods > 0
-      ? Math.ceil(theoryPeriods / Math.max(effectiveWeeks, 1) / Math.max(theorySessionsPerWeek, 1))
-      : 0,
+      ? Math.ceil(
+          theoryPeriods /
+            Math.max(effectiveWeeks, 1) /
+            Math.max(theorySessionsPerWeek, 1),
+        )
+      : 0;
+  const derivedPracticePeriodsPerSession =
     practicePeriods > 0
       ? Math.ceil(
           practicePeriods /
             Math.max(effectiveWeeks, 1) /
             Math.max(practiceSessionsPerWeek, 1),
         )
-      : 0,
+      : 0;
+  const derivedPeriodsPerSession = Math.max(
+    derivedTheoryPeriodsPerSession,
+    derivedPracticePeriodsPerSession,
     1,
   );
   periodsPerSession =

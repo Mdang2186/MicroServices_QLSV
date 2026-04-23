@@ -26,7 +26,7 @@ export default function StaffSubjectsPage() {
     
     const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-    const TOKEN = Cookies.get("admin_accessToken");
+    const TOKEN = Cookies.get("staff_accessToken") || Cookies.get("admin_accessToken");
     const headers = useMemo(() => ({
         "Content-Type": "application/json",
         Authorization: `Bearer ${TOKEN}`
@@ -90,9 +90,14 @@ export default function StaffSubjectsPage() {
             cell: (item: any) => departments.find(d => d.id === item.departmentId)?.name || "—"
         },
         { 
-            header: "Thời lượng (LT/TH)", 
+            header: "Khối lượng LT/TH", 
             accessorKey: "theoryHours",
             cell: (item: any) => `${item.theoryHours}/${item.practiceHours}`
+        },
+        {
+            header: "Tiên quyết / Học trước",
+            accessorKey: "prerequisiteCount",
+            cell: (item: any) => `${item.prerequisiteCount || 0} / ${item.precedingCount || 0}`,
         },
     ];
 
@@ -116,7 +121,7 @@ export default function StaffSubjectsPage() {
                         <span className="text-uneti-blue">Danh mục môn học</span>
                     </div>
                     <h1 className="text-3xl font-black text-slate-900 tracking-tight">Quản lý Môn học</h1>
-                    <p className="text-[13px] font-medium text-slate-500">Quản lý chương trình học và định mức tín chỉ</p>
+                    <p className="text-[13px] font-medium text-slate-500">Khối lượng học tập, học phần tiên quyết và học phần học trước</p>
                 </div>
                 <div className="flex items-center gap-3">
                     <button
@@ -176,6 +181,7 @@ export default function StaffSubjectsPage() {
                 editingSubject={editingSubject}
                 majors={majors}
                 departments={departments}
+                subjects={subjects}
                 headers={headers}
                 onSuccess={handleModalSuccess}
             />

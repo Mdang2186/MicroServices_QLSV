@@ -50,6 +50,7 @@ export default function StaffDashboard() {
     }, []);
 
     useEffect(() => {
+        const controller = new AbortController();
         setLoading(true);
         const params = new URLSearchParams();
         if (selectedDate) params.append("date", selectedDate);
@@ -58,7 +59,9 @@ export default function StaffDashboard() {
         if (selectedMajorId && selectedMajorId !== "all") params.append("majorId", selectedMajorId);
         if (selectedIntake && selectedIntake !== "all") params.append("intake", selectedIntake);
 
-        fetch(`/api/students/dashboard/stats?${params.toString()}`)
+        fetch(`/api/students/dashboard/stats?${params.toString()}`, {
+            signal: controller.signal,
+        })
             .then(async (response) => {
                 const payload = await readJsonSafely(response);
                 if (!response.ok || !payload) {
@@ -70,10 +73,17 @@ export default function StaffDashboard() {
                 setStats(payload);
             })
             .catch((error) => {
+                if (error?.name === "AbortError") return;
                 console.error(error);
                 setStats(null);
             })
-            .finally(() => setLoading(false));
+            .finally(() => {
+                if (!controller.signal.aborted) {
+                    setLoading(false);
+                }
+            });
+
+        return () => controller.abort();
     }, [selectedDate, keyword, selectedFacultyId, selectedMajorId, selectedIntake]);
 
     if (loading && !stats) return (

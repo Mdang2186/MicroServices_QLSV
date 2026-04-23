@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { GpaService } from './gpa.service';
 
@@ -143,6 +143,207 @@ export class AppService {
     });
   }
 
+  private buildDefaultScorePayload(subject?: {
+    credits?: number | null;
+    practiceHours?: number | null;
+  } | null) {
+    const credits = Math.max(Number(subject?.credits) || 0, 1);
+    const hasPractice = Number(subject?.practiceHours) > 0;
+
+    return {
+      regularScores: JSON.stringify([null, null, null]),
+      coef1Scores: JSON.stringify(Array.from({ length: credits }, () => null)),
+      coef2Scores: JSON.stringify(Array.from({ length: credits }, () => null)),
+      practiceScores: hasPractice ? JSON.stringify([null, null]) : null,
+    };
+  }
+
+  private hashSeed(value: string) {
+    let hash = 0;
+    for (let index = 0; index < value.length; index += 1) {
+      hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+    }
+    return hash;
+  }
+
+  private pickSeededScore(
+    seed: string,
+    min: number,
+    max: number,
+    step = 0.5,
+  ) {
+    const totalSteps = Math.max(Math.round((max - min) / step), 0);
+    const bucket = this.hashSeed(seed) % (totalSteps + 1);
+    return this.roundOneDecimal(min + bucket * step) ?? min;
+  }
+
+  private buildSeededScoreArray(
+    seedPrefix: string,
+    length: number,
+    min: number,
+    max: number,
+  ) {
+    return JSON.stringify(
+      Array.from({ length }, (_, index) =>
+        this.pickSeededScore(`${seedPrefix}:${index}`, min, max),
+      ),
+    );
+  }
+
+  private isBlankScoreArray(value?: string | null) {
+    const parsed = this.parseNullableScoreArray(value ?? null);
+    return parsed.length === 0 || parsed.every((item) => item === null);
+  }
+
+  private hasMeaningfulGradeData(grade: any) {
+    return Boolean(
+      grade?.attendanceScore !== null ||
+        grade?.tbThuongKy !== null ||
+        grade?.examScore1 !== null ||
+        grade?.examScore2 !== null ||
+        grade?.finalScore1 !== null ||
+        grade?.finalScore2 !== null ||
+        grade?.totalScore10 !== null ||
+        grade?.totalScore4 !== null ||
+        grade?.letterGrade ||
+        grade?.notes ||
+        !this.isBlankScoreArray(grade?.regularScores) ||
+        !this.isBlankScoreArray(grade?.coef1Scores) ||
+        !this.isBlankScoreArray(grade?.coef2Scores) ||
+        !this.isBlankScoreArray(grade?.practiceScores),
+    );
+  }
+
+  private async ensureClassGrades(
+    classId: string,
+    options?: {
+      subjectId?: string;
+      studentIds?: string[];
+      seedScoreHeads?: boolean;
+    },
+  ) {
+    const courseClass = await this.prisma.courseClass.findUnique({
+      where: { id: classId },
+      select: {
+        subjectId: true,
+        subject: {
+          select: {
+            id: true,
+            credits: true,
+            practiceHours: true,
+          },
+        },
+      },
+    });
+
+    const subjectId = options?.subjectId || courseClass?.subjectId;
+    if (!subjectId) {
+      throw new NotFoundException('Lớp học phần hoặc học phần không tồn tại');
+    }
+
+    const subject =
+      courseClass?.subject ||
+      (await this.prisma.subject.findUnique({
+        where: { id: subjectId },
+        select: {
+          id: true,
+          credits: true,
+          practiceHours: true,
+        },
+      }));
+
+    if (!subject) {
+      throw new NotFoundException('Học phần không tồn tại');
+    }
+
+    const enrolledStudentIds = options?.studentIds?.length
+      ? [...new Set(options.studentIds.filter(Boolean))]
+      : (
+          await this.prisma.enrollment.findMany({
+            where: { courseClassId: classId },
+            select: { studentId: true },
+          })
+        ).map((enrollment) => enrollment.studentId);
+
+    const existingGrades = await this.prisma.grade.findMany({
+      where: { courseClassId: classId },
+      select: {
+        id: true,
+        studentId: true,
+        regularScores: true,
+        coef1Scores: true,
+        coef2Scores: true,
+        practiceScores: true,
+      },
+    });
+
+    const defaultScores = this.buildDefaultScorePayload(subject);
+    let backfilledGrades = 0;
+
+    if (options?.seedScoreHeads) {
+      for (const grade of existingGrades) {
+        const needsBackfill =
+          grade.regularScores === null ||
+          grade.coef1Scores === null ||
+          grade.coef2Scores === null ||
+          (Number(subject.practiceHours) > 0 && grade.practiceScores === null);
+
+        if (!needsBackfill) {
+          continue;
+        }
+
+        await this.prisma.grade.update({
+          where: { id: grade.id },
+          data: {
+            ...(grade.regularScores === null
+              ? { regularScores: defaultScores.regularScores }
+              : {}),
+            ...(grade.coef1Scores === null
+              ? { coef1Scores: defaultScores.coef1Scores }
+              : {}),
+            ...(grade.coef2Scores === null
+              ? { coef2Scores: defaultScores.coef2Scores }
+              : {}),
+            ...(grade.practiceScores === null && defaultScores.practiceScores
+              ? { practiceScores: defaultScores.practiceScores }
+              : {}),
+          },
+        });
+        backfilledGrades += 1;
+      }
+    }
+
+    const existingStudentIds = new Set(existingGrades.map((g) => g.studentId));
+    const missingStudentIds = enrolledStudentIds.filter(
+      (studentId) => !existingStudentIds.has(studentId),
+    );
+
+    if (missingStudentIds.length > 0) {
+      await this.prisma.grade.createMany({
+        data: missingStudentIds.map((studentId) => ({
+          studentId,
+          courseClassId: classId,
+          subjectId,
+          isEligibleForExam: true,
+          isAbsentFromExam: false,
+          isPassed: false,
+          isLocked: false,
+          status: 'DRAFT',
+          ...defaultScores,
+        })),
+      });
+    }
+
+    return {
+      classId,
+      subjectId,
+      enrolledCount: enrolledStudentIds.length,
+      existingGrades: existingGrades.length,
+      createdGrades: missingStudentIds.length,
+      backfilledGrades,
+    };
+  }
+
   getHello(): string {
     return 'Hello World!';
   }
@@ -165,6 +366,7 @@ export class AppService {
   }
 
   async getClassGrades(classId: string) {
+    await this.ensureClassGrades(classId);
     return this.prisma.grade.findMany({
       where: { courseClassId: classId },
       include: {
@@ -180,29 +382,11 @@ export class AppService {
     subjectId: string,
     studentIds: string[],
   ) {
-    const existingGrades = await this.prisma.grade.findMany({
-      where: { courseClassId: classId },
-      select: { studentId: true },
+    await this.ensureClassGrades(classId, {
+      subjectId,
+      studentIds,
+      seedScoreHeads: true,
     });
-
-    const existingStudentIds = new Set(existingGrades.map((g) => g.studentId));
-    const missingStudentIds = studentIds.filter(
-      (id) => !existingStudentIds.has(id),
-    );
-
-    if (missingStudentIds.length > 0) {
-      await this.prisma.grade.createMany({
-        data: missingStudentIds.map((sid) => ({
-          studentId: sid,
-          courseClassId: classId,
-          subjectId: subjectId,
-          isEligibleForExam: true,
-          isLocked: false,
-          isPassed: false,
-        })),
-      });
-    }
-
     return this.getClassGrades(classId);
   }
 
@@ -215,24 +399,56 @@ export class AppService {
     ];
     // Normally we should check midtermDeadline here if needed, but we'll accept raw input for flexibility.
 
-    return await this.prisma.$transaction(
+    const result = await this.prisma.$transaction(
       grades.map((g) => {
-        const updateData: any = {
-          regularScores: g.regularScores ?? null,
-          coef1Scores: g.coef1Scores ?? null,
-          coef2Scores: g.coef2Scores ?? null,
-          practiceScores: g.practiceScores ?? null,
-          examScore1: g.examScore1 ?? null,
-          examScore2: g.examScore2 ?? null,
-          isAbsentFromExam: g.isAbsentFromExam ?? false,
-        };
+        const updateData: any = {};
+        const scoreArrayFields = [
+          'regularScores',
+          'coef1Scores',
+          'coef2Scores',
+          'practiceScores',
+        ];
+        for (const field of scoreArrayFields) {
+          if (Object.prototype.hasOwnProperty.call(g, field)) {
+            updateData[field] = this.normalizeStoredScoreArray(g[field]);
+          }
+        }
+
+        if (Object.prototype.hasOwnProperty.call(g, 'notes')) {
+          updateData.notes =
+            typeof g.notes === 'string' ? g.notes.trim() || null : g.notes ?? null;
+        }
+
+        if (isStaff) {
+          if (Object.prototype.hasOwnProperty.call(g, 'examScore1')) {
+            updateData.examScore1 = this.normalizeStoredScore(g.examScore1);
+          }
+          if (Object.prototype.hasOwnProperty.call(g, 'examScore2')) {
+            updateData.examScore2 = this.normalizeStoredScore(g.examScore2);
+          }
+        }
+
+        const booleanFields = isStaff ? ['isAbsentFromExam'] : [];
+        for (const field of booleanFields) {
+          if (Object.prototype.hasOwnProperty.call(g, field)) {
+            updateData[field] = Boolean(g[field]);
+          }
+        }
+        updateData.isLocked = false;
 
         return this.prisma.grade.updateMany({
-          where: { id: g.id, isLocked: false },
+          where: { id: g.id },
           data: updateData,
         });
       }),
     );
+
+    for (const classId of uniqueClassIds) {
+      await this.recalculateClassGradeResults(classId);
+      await this.syncClassStudentPerformance(classId);
+    }
+
+    return result;
   }
 
   /**
@@ -254,23 +470,37 @@ export class AppService {
     });
 
     for (const enr of enrollments) {
-      const subject = enr.courseClass.subject as any;
-      // Quy ước: 1 buổi = 3 tiết. Tổng số buổi = (Lý thuyết + Thực hành) / 3
-      const totalPlannedHours =
-        (subject.theoryHours ?? 30) + (subject.practiceHours ?? 15);
-      const totalEstimatedSessions = Math.ceil(totalPlannedHours / 3);
+      const sessions = enr.courseClass.sessions || [];
+      const totalPeriods = sessions.reduce(
+        (sum, session) =>
+          sum + Math.max(Number(session.endShift) - Number(session.startShift) + 1, 0),
+        0,
+      );
 
-      const totalSessions =
-        totalEstimatedSessions > 0
-          ? totalEstimatedSessions
-          : Math.max(enr.courseClass.sessions.length, 1);
+      const attendanceByDate = new Map(
+        (enr.attendances || []).map((attendance) => [
+          new Date(attendance.date).toISOString().slice(0, 10),
+          attendance.status,
+        ]),
+      );
 
-      const absentCount = enr.attendances.filter(
-        (a) => a.status === 'ABSENT',
-      ).length;
+      const absentPeriods = sessions.reduce((sum, session) => {
+        const key = new Date(session.date).toISOString().slice(0, 10);
+        const status = attendanceByDate.get(key);
+        if (status !== 'ABSENT' && status !== 'ABSENT_UNEXCUSED') {
+          return sum;
+        }
+
+        return (
+          sum +
+          Math.max(Number(session.endShift) - Number(session.startShift) + 1, 0)
+        );
+      }, 0);
+
+      const totalScheduledPeriods = Math.max(totalPeriods, 1);
       const ccScore = this.calculateAttendancePoints(
-        absentCount,
-        totalSessions,
+        absentPeriods,
+        totalScheduledPeriods,
       );
 
       await this.prisma.grade.updateMany({
@@ -304,37 +534,108 @@ export class AppService {
     return { letter: 'F', scale4: 0.0 };
   }
 
+  private roundOneDecimal(value: number | null) {
+    if (!Number.isFinite(Number(value))) return null;
+    return Math.round(Number(value) * 10) / 10;
+  }
+
+  private normalizeStoredScore(value: unknown) {
+    if (value === null || value === undefined) return null;
+
+    if (typeof value === 'string') {
+      const normalized = value.trim().replace(',', '.');
+      if (!normalized) return null;
+      const parsed = Number(normalized);
+      if (!Number.isFinite(parsed)) return null;
+      return this.roundOneDecimal(Math.max(0, Math.min(10, parsed)));
+    }
+
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return null;
+    return this.roundOneDecimal(Math.max(0, Math.min(10, parsed)));
+  }
+
+  private normalizeStoredScoreArray(value: string | null | undefined) {
+    if (value === null || value === undefined) return null;
+    return JSON.stringify(
+      this.parseNullableScoreArray(value).map((item) =>
+        item === null ? null : this.normalizeStoredScore(item),
+      ),
+    );
+  }
+
+  private parseNullableScoreArray(jsonStr: string | null): (number | null)[] {
+    try {
+      const parsed = jsonStr ? JSON.parse(jsonStr) : [];
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map((value) => {
+        if (value === null || value === undefined) return null;
+        if (typeof value === 'string') {
+          const normalized = value.trim().replace(',', '.');
+          if (!normalized) return null;
+          const num = Number(normalized);
+          return Number.isFinite(num)
+            ? this.roundOneDecimal(Math.max(0, Math.min(10, num)))
+            : null;
+        }
+
+        const num = Number(value);
+        return Number.isFinite(num)
+          ? this.roundOneDecimal(Math.max(0, Math.min(10, num)))
+          : null;
+      });
+    } catch {
+      return [];
+    }
+  }
+
+  private calculateWeightedAverage(
+    items: Array<{ value: number | null | undefined; weight: number }>,
+  ) {
+    let weightedSum = 0;
+    let totalWeight = 0;
+
+    for (const item of items) {
+      const score = Number(item.value);
+      if (!Number.isFinite(score)) continue;
+      weightedSum += score * item.weight;
+      totalWeight += item.weight;
+    }
+
+    if (totalWeight <= 0) return null;
+    return this.roundOneDecimal(weightedSum / totalWeight);
+  }
+
   public calculateAttendancePoints(
-    missedSessions: number,
-    totalSessions: number,
+    missedPeriods: number,
+    totalPeriods: number,
   ): number {
-    if (totalSessions === 0) return 10;
-    const pct = (missedSessions / totalSessions) * 100;
+    if (totalPeriods === 0) return 10;
+    const pct = (missedPeriods / totalPeriods) * 100;
 
     // [UNETI RULE] Vắng mặt >= 50% số tiết => Cấm thi (0 điểm CC)
     if (pct >= 50) return 0;
 
-    // Bảng quy đổi điểm chuyên cần UNETI
+    // Bảng quy đổi điểm chuyên cần UNETI:
+    // 0% -> 10; <10% -> 8; [10%,20%) -> 6; [20%,35%) -> 4; [35%,50%) -> 2
     if (pct === 0) return 10;
-    if (pct <= 10) return 9;
-    if (pct <= 20) return 8;
-    if (pct <= 30) return 6;
-    if (pct <= 40) return 4;
+    if (pct < 10) return 8;
+    if (pct < 20) return 6;
+    if (pct < 35) return 4;
     return 2;
   }
 
   async submitGrades(classId: string) {
     return this.prisma.grade.updateMany({
       where: { courseClassId: classId, status: 'DRAFT' },
-      data: { status: 'PENDING_APPROVAL', isLocked: true },
+      data: { status: 'PENDING_APPROVAL', isLocked: false },
     });
   }
 
-  async approveGrades(classId: string) {
-    // 1. Tự động tính chuyên cần
-    await this.syncAttendanceScores(classId);
-
-    // 2. Tải thông tin lớp học và học phần
+  private async recalculateClassGradeResults(
+    classId: string,
+    options?: { approve?: boolean },
+  ) {
     const courseClass = await this.prisma.courseClass.findUnique({
       where: { id: classId },
       include: { subject: true },
@@ -347,77 +648,77 @@ export class AppService {
     const practiceHours = sub.practiceHours ?? 0;
     const isTheory = theoryHours > 0 || practiceHours === 0;
 
-    // 3. Tính toán cho toàn bộ danh sách lớp
     const grades = await this.prisma.grade.findMany({
       where: { courseClassId: classId },
     });
 
     for (const g of grades) {
       const cc = g.attendanceScore ?? 0;
-      const isEligible = cc > 0; // Cấm thi nếu vắng >= 50% dẫn đến CC = 0
+      const regular = this.parseNullableScoreArray(g.regularScores);
+      const coef1 = this.parseNullableScoreArray(g.coef1Scores);
+      const coef2 = this.parseNullableScoreArray(g.coef2Scores);
+      const practice = this.parseNullableScoreArray(g.practiceScores);
 
-      const parseArr = (jsonStr: string | null): number[] => {
-        try {
-          return jsonStr ? JSON.parse(jsonStr) : [];
-        } catch {
-          return [];
-        }
-      };
+      const hasTheoryProcessScore = [...regular, ...coef1, ...coef2].some(
+        (value) => value !== null,
+      );
+      const hasPracticeScore = practice.some((value) => value !== null);
 
-      const regular = parseArr(g.regularScores);
-      const coef1 = parseArr(g.coef1Scores);
-      const coef2 = parseArr(g.coef2Scores);
-      const practice = parseArr(g.practiceScores);
-
-      let processAvg = 0;
-      let total10 = 0;
+      let processAvg = null;
+      let total10 = null;
       let finalScore1 = null;
       let finalScore2 = null;
 
       if (isTheory) {
-        // MÔN LÝ THUYẾT HOẶC KẾT HỢP
-        const sumTX = regular.reduce((a, b) => a + b, 0);
-        const sumHS1 = coef1.reduce((a, b) => a + b, 0);
-        const sumHS2 = coef2.reduce((a, b) => a + b, 0);
-        const weightTotal =
-          credits + regular.length + coef1.length + coef2.length * 2;
-
-        if (weightTotal > 0) {
-          processAvg =
-            (cc * credits + sumTX + sumHS1 + sumHS2 * 2) / weightTotal;
+        if (hasTheoryProcessScore) {
+          processAvg = this.calculateWeightedAverage([
+            { value: cc, weight: credits },
+            ...regular.map((value) => ({ value, weight: 1 })),
+            ...coef1.map((value) => ({ value, weight: 1 })),
+            ...coef2.map((value) => ({ value, weight: 2 })),
+          ]);
         }
-        processAvg = Math.round(processAvg * 10) / 10; // Làm tròn 1 chữ số thập phân
-
-        const effectiveFin1 =
-          isEligible && !g.isAbsentFromExam && g.examScore1 !== null
-            ? g.examScore1
-            : 0;
-        finalScore1 =
-          Math.round((processAvg * 0.4 + effectiveFin1 * 0.6) * 10) / 10;
-
-        if (g.examScore2 !== null && g.examScore2 !== undefined) {
-          const effectiveFin2 =
-            isEligible && !g.isAbsentFromExam ? g.examScore2 : 0;
-          finalScore2 =
-            Math.round((processAvg * 0.4 + effectiveFin2 * 0.6) * 10) / 10;
-        }
-
-        total10 = Math.max(finalScore1, finalScore2 ?? -1);
       } else {
-        // MÔN CHỈ THỰC HÀNH / ĐỒ ÁN / THỰC TẬP
-        const sumTH = practice.reduce((a, b) => a + b, 0);
-        const weightTotal = 1 + practice.length;
-
-        if (weightTotal > 0) {
-          processAvg = (cc * 1 + sumTH) / weightTotal;
+        if (hasPracticeScore) {
+          processAvg = this.calculateWeightedAverage([
+            { value: cc, weight: 1 },
+            ...practice.map((value) => ({ value, weight: 1 })),
+          ]);
         }
-        processAvg = Math.round(processAvg * 10) / 10;
-        total10 = processAvg;
-        finalScore1 = total10; // Chỉ có 1 cột tổng kết
       }
 
-      // 4. Áp dụng bảng chữ và trạng thái đạt
-      const { letter, scale4 } = this.mapGrade10ToLetter(total10);
+      const isEligible =
+        processAvg !== null && cc > 0 && Number(processAvg) >= 3.0;
+
+      if (isTheory) {
+        if (isEligible && !g.isAbsentFromExam && g.examScore1 !== null) {
+          finalScore1 = this.roundOneDecimal(
+            Number(processAvg) * 0.4 + Number(g.examScore1) * 0.6,
+          );
+        }
+
+        if (isEligible && g.examScore2 !== null && g.examScore2 !== undefined) {
+          finalScore2 = this.roundOneDecimal(
+            Number(processAvg) * 0.4 + Number(g.examScore2) * 0.6,
+          );
+        }
+
+        const finalCandidates = [finalScore1, finalScore2].filter((value) =>
+          Number.isFinite(Number(value)),
+        ) as number[];
+        total10 =
+          finalCandidates.length > 0
+            ? this.roundOneDecimal(Math.max(...finalCandidates))
+            : null;
+      } else if (isEligible && processAvg !== null) {
+        total10 = processAvg;
+        finalScore1 = processAvg;
+      }
+
+      const gradeScale =
+        total10 !== null ? this.mapGrade10ToLetter(Number(total10)) : null;
+      const letter = gradeScale?.letter ?? null;
+      const scale4 = gradeScale?.scale4 ?? null;
 
       await this.prisma.grade.update({
         where: { id: g.id },
@@ -428,19 +729,18 @@ export class AppService {
           totalScore10: total10,
           totalScore4: scale4,
           letterGrade: letter,
-          isPassed: total10 >= 4.0 && isEligible,
+          isPassed: total10 !== null && Number(total10) >= 4.0 && isEligible,
           isEligibleForExam: isEligible,
-          isAbsentFromExam: !isEligible || g.isAbsentFromExam,
-          status: 'APPROVED',
-          isLocked: true,
+          isAbsentFromExam: Boolean(g.isAbsentFromExam),
+          ...(options?.approve ? { status: 'APPROVED', isLocked: false } : {}),
         },
       });
     }
 
-    // Lấy lại danh sách đã duyệt để báo cáo hoặc đồng bộ
-    const result = { count: grades.length };
+    return { count: grades.length };
+  }
 
-    // After approval, sync academic performance for all students in this class
+  private async syncClassStudentPerformance(classId: string) {
     const updatedGrades = await this.prisma.grade.findMany({
       where: { courseClassId: classId },
       select: { studentId: true },
@@ -452,6 +752,19 @@ export class AppService {
     for (const studentId of uniqueStudentIds) {
       await this.syncStudentPerformance(studentId);
     }
+  }
+
+  async approveGrades(classId: string) {
+    // 1. Tự động tính chuyên cần
+    await this.syncAttendanceScores(classId);
+
+    // 2. Tính toán và công bố toàn bộ danh sách lớp, vẫn mở để cán bộ đào tạo sửa sai sót trước khi kết thúc đợt.
+    const result = await this.recalculateClassGradeResults(classId, {
+      approve: true,
+    });
+
+    // 3. Đồng bộ GPA/CPA cho sinh viên trong lớp
+    await this.syncClassStudentPerformance(classId);
 
     return result;
   }
@@ -503,7 +816,7 @@ export class AppService {
   async lockClassGrades(classId: string) {
     return this.prisma.grade.updateMany({
       where: { courseClassId: classId },
-      data: { isLocked: true },
+      data: { isLocked: false },
     });
   }
 
@@ -514,16 +827,183 @@ export class AppService {
     });
   }
 
+  async bootstrapGrades(options?: { semesterId?: string; classId?: string }) {
+    const courseClasses = await this.prisma.courseClass.findMany({
+      where: {
+        ...(options?.semesterId ? { semesterId: options.semesterId } : {}),
+        ...(options?.classId ? { id: options.classId } : {}),
+        enrollments: {
+          some: {},
+        },
+      },
+      select: { id: true },
+      orderBy: { code: 'asc' },
+    });
+
+    let createdGrades = 0;
+    let backfilledGrades = 0;
+
+    for (const courseClass of courseClasses) {
+      const result = await this.ensureClassGrades(courseClass.id, {
+        seedScoreHeads: true,
+      });
+      createdGrades += result.createdGrades;
+      backfilledGrades += result.backfilledGrades;
+    }
+
+    return {
+      classCount: courseClasses.length,
+      createdGrades,
+      backfilledGrades,
+    };
+  }
+
+  async seedSampleGrades(options?: {
+    semesterId?: string;
+    classId?: string;
+    overwrite?: boolean;
+  }) {
+    const bootstrap = await this.bootstrapGrades(options);
+    const overwrite = Boolean(options?.overwrite);
+
+    const courseClasses = await this.prisma.courseClass.findMany({
+      where: {
+        ...(options?.semesterId ? { semesterId: options.semesterId } : {}),
+        ...(options?.classId ? { id: options.classId } : {}),
+        enrollments: { some: {} },
+      },
+      include: {
+        subject: true,
+        enrollments: {
+          select: { studentId: true },
+        },
+      },
+      orderBy: { code: 'asc' },
+    });
+
+    let seededClasses = 0;
+    let seededGrades = 0;
+    let skippedClasses = 0;
+
+    for (const courseClass of courseClasses) {
+      const grades = await this.prisma.grade.findMany({
+        where: { courseClassId: courseClass.id },
+      });
+
+      if (!grades.length) {
+        continue;
+      }
+
+      if (!overwrite) {
+        const hasProtectedData = grades.some(
+          (grade) =>
+            grade.isLocked ||
+            `${grade.status || ''}`.toUpperCase() === 'APPROVED' ||
+            this.hasMeaningfulGradeData(grade),
+        );
+        if (hasProtectedData) {
+          skippedClasses += 1;
+          continue;
+        }
+      }
+
+      const credits = Math.max(Number(courseClass.subject?.credits || 0), 1);
+      const hasPractice = Number(courseClass.subject?.practiceHours || 0) > 0;
+      const isPracticeOnly =
+        Number(courseClass.subject?.theoryHours || 0) <= 0 && hasPractice;
+
+      let classChanged = false;
+
+      for (const grade of grades) {
+        if (!overwrite && this.hasMeaningfulGradeData(grade)) {
+          continue;
+        }
+
+        const baseSeed = `${courseClass.id}:${grade.studentId}`;
+        const weakProfile = this.hashSeed(`${baseSeed}:profile`) % 9 === 0;
+        const absentFromExam =
+          !isPracticeOnly && this.hashSeed(`${baseSeed}:absent`) % 17 === 0;
+        const hasRetakeScore =
+          !isPracticeOnly && !absentFromExam && this.hashSeed(`${baseSeed}:retake`) % 6 === 0;
+
+        const processMin = weakProfile ? 2.5 : 6.0;
+        const processMax = weakProfile ? 4.5 : 9.0;
+        const examMin = weakProfile ? 2.0 : 5.0;
+        const examMax = weakProfile ? 5.5 : 9.0;
+
+        await this.prisma.grade.update({
+          where: { id: grade.id },
+          data: {
+            regularScores: this.buildSeededScoreArray(
+              `${baseSeed}:regular`,
+              3,
+              processMin,
+              processMax,
+            ),
+            coef1Scores: this.buildSeededScoreArray(
+              `${baseSeed}:coef1`,
+              credits,
+              processMin,
+              processMax,
+            ),
+            coef2Scores: this.buildSeededScoreArray(
+              `${baseSeed}:coef2`,
+              credits,
+              processMin,
+              processMax,
+            ),
+            practiceScores: hasPractice
+              ? this.buildSeededScoreArray(
+                  `${baseSeed}:practice`,
+                  2,
+                  processMin,
+                  processMax,
+                )
+              : null,
+            examScore1: !isPracticeOnly && !absentFromExam
+              ? this.pickSeededScore(`${baseSeed}:exam1`, examMin, examMax)
+              : null,
+            examScore2: hasRetakeScore
+              ? this.pickSeededScore(`${baseSeed}:exam2`, 4.0, 8.0)
+              : null,
+            isAbsentFromExam: absentFromExam,
+            notes: weakProfile
+              ? 'Dữ liệu mẫu: cần cải thiện kết quả học tập.'
+              : 'Dữ liệu mẫu phục vụ trực quan thống kê.',
+            isLocked: false,
+            status: 'DRAFT',
+          },
+        });
+
+        classChanged = true;
+        seededGrades += 1;
+      }
+
+      if (!classChanged) {
+        continue;
+      }
+
+      await this.approveGrades(courseClass.id);
+      seededClasses += 1;
+    }
+
+    return {
+      ...bootstrap,
+      classCount: courseClasses.length,
+      seededClasses,
+      seededGrades,
+      skippedClasses,
+      overwrite,
+    };
+  }
+
   async remindAllPendingLecturers(semesterId: string, authHeader?: string) {
-    // 1. Find all classes in this semester with PENDING or DRAFT grades
-    const pendingClasses = await this.prisma.courseClass.findMany({
+    const bootstrap = await this.bootstrapGrades({ semesterId });
+
+    const semesterClasses = await this.prisma.courseClass.findMany({
       where: {
         semesterId,
-        grades: {
-          some: {
-            OR: [{ status: 'DRAFT' }, { status: 'PENDING_APPROVAL' }],
-          },
-        },
+        enrollments: { some: {} },
       },
       include: {
         lecturer: { include: { user: true } },
@@ -531,16 +1011,42 @@ export class AppService {
       },
     });
 
+    const pendingClasses: any[] = [];
+    for (const courseClass of semesterClasses) {
+      if (!courseClass.lecturer?.userId) {
+        continue;
+      }
+
+      const grades = await this.prisma.grade.findMany({
+        where: { courseClassId: courseClass.id },
+        select: { status: true },
+      });
+
+      const hasPendingGrades =
+        grades.length === 0 ||
+        grades.some((grade) =>
+          ['DRAFT', 'PENDING_APPROVAL'].includes(
+            `${grade.status || ''}`.toUpperCase(),
+          ),
+        );
+
+      if (hasPendingGrades) {
+        pendingClasses.push(courseClass);
+      }
+    }
+
     const uniqueLecturers = new Map<string, any>();
     for (const cls of pendingClasses) {
       if (cls.lecturer?.userId) {
+        const existing = uniqueLecturers.get(cls.lecturer.userId);
+        const nextCourseNames = [
+          ...(existing?.courseNames || []),
+          `${cls.subject.name} (${cls.code})`,
+        ];
         uniqueLecturers.set(cls.lecturer.userId, {
           userId: cls.lecturer.userId,
           lecturerName: cls.lecturer.fullName,
-          courseNames: [
-            ...(uniqueLecturers.get(cls.lecturer.userId)?.courseNames || []),
-            cls.subject.name,
-          ],
+          courseNames: [...new Set(nextCourseNames)],
         });
       }
     }
@@ -548,7 +1054,7 @@ export class AppService {
     let notifiedCount = 0;
     for (const l of uniqueLecturers.values()) {
       try {
-        await fetch(`http://127.0.0.1:3001/notifications`, {
+        const response = await fetch(`http://127.0.0.1:3001/notifications`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -561,7 +1067,16 @@ export class AppService {
             type: 'URGENT',
           }),
         });
-        notifiedCount++;
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(
+            `Failed to notify lecturer ${l.userId}: ${response.status} ${errorText}`,
+          );
+          continue;
+        }
+
+        notifiedCount += 1;
       } catch (err) {
         console.error(`Failed to notify lecturer ${l.userId}:`, err);
       }
@@ -571,6 +1086,8 @@ export class AppService {
       success: true,
       notifiedLecturers: notifiedCount,
       totalPendingClasses: pendingClasses.length,
+      initializedGrades: bootstrap.createdGrades,
+      backfilledGrades: bootstrap.backfilledGrades,
     };
   }
 }

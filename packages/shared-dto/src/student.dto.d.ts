@@ -1,4 +1,18 @@
 import { StudentStatus } from './enums';
+export interface FamilyMemberDto {
+    id?: string;
+    relationship: string;
+    fullName: string;
+    birthYear?: number;
+    job?: string;
+    phone?: string;
+    ethnicity?: string;
+    religion?: string;
+    nationality?: string;
+    workplace?: string;
+    position?: string;
+    address?: string;
+}
 export interface CreateStudentDto {
     studentCode: string;
     fullName: string;
@@ -7,8 +21,40 @@ export interface CreateStudentDto {
     majorId: string;
     phone?: string;
     address?: string;
+    gender?: string;
+    citizenId?: string;
+    emailPersonal?: string;
+    idIssueDate?: string;
+    idIssuePlace?: string;
+    admissionDate?: string;
+    campus?: string;
+    educationLevel?: string;
+    educationType?: string;
+    intake?: string;
+    region?: string;
     status?: StudentStatus;
     userId?: string;
+    adminClassId?: string;
+    specializationId?: string;
+    policyBeneficiary?: string;
+    youthUnionDate?: string;
+    partyDate?: string;
+    ethnicity?: string;
+    religion?: string;
+    nationality?: string;
+    birthPlace?: string;
+    permanentAddress?: string;
+    bankName?: string;
+    bankBranch?: string;
+    bankAccountName?: string;
+    bankAccountNumber?: string;
+    gpa?: number;
+    cpa?: number;
+    totalEarnedCredits?: number;
+    warningLevel?: number;
+    academicStatus?: string;
+    isActive?: boolean;
+    familyMembers?: FamilyMemberDto[];
 }
 export interface UpdateStudentDto extends Partial<CreateStudentDto> {
 }
@@ -20,7 +66,41 @@ export interface StudentResponse {
     dob: Date;
     status: StudentStatus;
     majorId: string;
-    userId: string;
+    adminClassId?: string;
+    specializationId?: string;
+    specialization?: any;
+    userId?: string;
     createdAt: Date;
     updatedAt: Date;
+    phone?: string;
+    address?: string;
+    gender?: string;
+    citizenId?: string;
+    emailPersonal?: string;
+    admissionDate?: Date;
+    campus?: string;
+    educationLevel?: string;
+    educationType?: string;
+    intake?: string;
+    ethnicity?: string;
+    religion?: string;
+    nationality?: string;
+    region?: string;
+    idIssueDate?: Date;
+    idIssuePlace?: string;
+    policyBeneficiary?: string;
+    youthUnionDate?: Date;
+    partyDate?: Date;
+    birthPlace?: string;
+    permanentAddress?: string;
+    bankName?: string;
+    bankBranch?: string;
+    bankAccountName?: string;
+    bankAccountNumber?: string;
+    gpa: number;
+    cpa: number;
+    totalEarnedCredits: number;
+    warningLevel: number;
+    academicStatus: string;
+    familyMembers?: FamilyMemberDto[];
 }

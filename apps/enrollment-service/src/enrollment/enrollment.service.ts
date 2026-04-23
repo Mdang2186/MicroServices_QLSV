@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { Redis } from 'ioredis';
@@ -6,6 +6,7 @@ import Redlock from 'redlock';
 
 @Injectable()
 export class EnrollmentService {
+    private readonly logger = new Logger(EnrollmentService.name);
     private redlock: Redlock | null = null;
     private redisClient: Redis | null = null;
 
@@ -104,6 +105,195 @@ export class EnrollmentService {
         };
     }
 
+    private getSessionPeriods(session: { startShift?: number; endShift?: number } | null | undefined) {
+        if (!session) return 0;
+        return Math.max(Number(session.endShift) - Number(session.startShift) + 1, 0);
+    }
+
+    private parseAttendanceNote(note?: string | null) {
+        if (!note) {
+            return { manualNote: '', meta: {} as any };
+        }
+
+        try {
+            const parsed = JSON.parse(note);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                return {
+                    manualNote: `${parsed.manualNote || ''}`,
+                    meta: parsed.meta && typeof parsed.meta === 'object' ? parsed.meta : {},
+                };
+            }
+        } catch {
+            // Legacy free-text note
+        }
+
+        return { manualNote: `${note}`, meta: {} as any };
+    }
+
+    private isHardPrerequisite(type?: string | null) {
+        const normalized = `${type || ''}`.trim().toUpperCase();
+        return !normalized || normalized === 'TIEN_QUYET' || normalized === 'PREREQUISITE';
+    }
+
+    private async resolveStudent(idOrCode: string, tx?: any) {
+        const client = tx || this.prisma;
+        let student = await client.student.findUnique({
+            where: { id: idOrCode },
+            include: { major: true, adminClass: true }
+        });
+
+        if (!student) {
+            student = await client.student.findUnique({
+                where: { userId: idOrCode },
+                include: { major: true, adminClass: true }
+            });
+        }
+
+        if (!student) {
+            student = await client.student.findFirst({
+                where: { studentCode: idOrCode },
+                include: { major: true, adminClass: true }
+            });
+        }
+
+        if (!student) throw new NotFoundException('Sinh viên không tồn tại');
+        return student;
+    }
+
+    private buildAttendanceNote(
+        currentNote: string | null | undefined,
+        payload: { manualNote?: string | null; meta?: Record<string, any> | null },
+    ) {
+        const existing = this.parseAttendanceNote(currentNote);
+        const manualNote =
+            payload.manualNote !== undefined ? `${payload.manualNote || ''}` : existing.manualNote;
+        const meta = {
+            ...existing.meta,
+            ...(payload.meta || {}),
+        };
+
+        if (!manualNote && Object.keys(meta).length === 0) {
+            return null;
+        }
+
+        return JSON.stringify({ manualNote, meta });
+    }
+
+    private isUnexcusedAttendanceStatus(status?: string | null) {
+        const normalized = `${status || ''}`.trim().toUpperCase();
+        return normalized === 'ABSENT' || normalized === 'ABSENT_UNEXCUSED';
+    }
+
+    private calculateAttendanceDerivedGrade(totalPeriods: number, absentPeriods: number) {
+        if (totalPeriods <= 0) {
+            return { attendanceScore: 10, isEligibleForExam: true };
+        }
+
+        const missedPct = (absentPeriods / totalPeriods) * 100;
+
+        if (missedPct >= 50) {
+            return { attendanceScore: 0, isEligibleForExam: false };
+        }
+        if (missedPct === 0) {
+            return { attendanceScore: 10, isEligibleForExam: true };
+        }
+        if (missedPct <= 10) {
+            return { attendanceScore: 9, isEligibleForExam: true };
+        }
+        if (missedPct <= 20) {
+            return { attendanceScore: 8, isEligibleForExam: true };
+        }
+        if (missedPct <= 30) {
+            return { attendanceScore: 6, isEligibleForExam: true };
+        }
+        if (missedPct <= 40) {
+            return { attendanceScore: 4, isEligibleForExam: true };
+        }
+
+        return { attendanceScore: 2, isEligibleForExam: true };
+    }
+
+    private async syncAttendanceDerivedGradesForEnrollments(
+        tx: any,
+        enrollmentIds: string[],
+    ) {
+        const uniqueEnrollmentIds = [...new Set(enrollmentIds.filter(Boolean))];
+        if (!uniqueEnrollmentIds.length) {
+            return;
+        }
+
+        const enrollments = await tx.enrollment.findMany({
+            where: { id: { in: uniqueEnrollmentIds } },
+            include: {
+                courseClass: {
+                    include: {
+                        sessions: {
+                            select: {
+                                id: true,
+                                date: true,
+                                startShift: true,
+                                endShift: true,
+                            },
+                        },
+                    },
+                },
+                attendances: {
+                    select: {
+                        date: true,
+                        status: true,
+                    },
+                },
+            },
+        });
+
+        for (const enrollment of enrollments) {
+            const sessions = enrollment.courseClass?.sessions || [];
+            const attendanceByDate = new Map<string, string>(
+                (enrollment.attendances || []).map((attendance) => [
+                    new Date(attendance.date).toISOString().slice(0, 10),
+                    `${attendance.status || ''}`,
+                ]),
+            );
+
+            const totalPeriods = sessions.reduce(
+                (sum, session) => sum + this.getSessionPeriods(session),
+                0,
+            );
+
+            const absentPeriods = sessions.reduce((sum, session) => {
+                const key = new Date(session.date).toISOString().slice(0, 10);
+                const status = attendanceByDate.get(key);
+                if (!this.isUnexcusedAttendanceStatus(status)) {
+                    return sum;
+                }
+                return sum + this.getSessionPeriods(session);
+            }, 0);
+
+            const derived = this.calculateAttendanceDerivedGrade(
+                totalPeriods,
+                absentPeriods,
+            );
+
+            await tx.grade.updateMany({
+                where: {
+                    studentId: enrollment.studentId,
+                    courseClassId: enrollment.courseClassId,
+                },
+                data: {
+                    attendanceScore: derived.attendanceScore,
+                    isEligibleForExam: derived.isEligibleForExam,
+                },
+            });
+        }
+    }
+
+    async syncAttendanceDerivedGrades(enrollmentIds: string[]) {
+        return this.prisma.$transaction(async (tx) => {
+            await this.syncAttendanceDerivedGradesForEnrollments(tx, enrollmentIds);
+            return { updatedEnrollmentIds: [...new Set(enrollmentIds.filter(Boolean))] };
+        });
+    }
+
     private buildTuitionFeeId(studentId: string, semesterId: string) {
         const normalizedStudent = studentId.replace(/[^A-Za-z0-9]/g, '').slice(-16) || 'STUDENT';
         const normalizedSemester = semesterId.replace(/[^A-Za-z0-9]/g, '').slice(-16) || 'SEMESTER';
@@ -128,6 +318,45 @@ export class EnrollmentService {
         }
 
         throw new BadRequestException('Học kỳ hiện không mở cổng đăng ký / đổi lớp.');
+    }
+
+    private async resolveTargetSemester(semesterId?: string) {
+        if (semesterId) {
+            const semester = await this.prisma.semester.findUnique({
+                where: { id: semesterId },
+            });
+
+            if (!semester) {
+                throw new NotFoundException('Học kỳ không tồn tại');
+            }
+
+            return semester;
+        }
+
+        const registeringSemester = await this.prisma.semester.findFirst({
+            where: { isRegistering: true },
+            orderBy: { startDate: 'desc' },
+        });
+        if (registeringSemester) {
+            return registeringSemester;
+        }
+
+        const currentSemester = await this.prisma.semester.findFirst({
+            where: { isCurrent: true },
+            orderBy: { startDate: 'desc' },
+        });
+        if (currentSemester) {
+            return currentSemester;
+        }
+
+        const latestSemester = await this.prisma.semester.findFirst({
+            orderBy: { startDate: 'desc' },
+        });
+        if (!latestSemester) {
+            throw new NotFoundException('Chưa có học kỳ nào trong hệ thống');
+        }
+
+        return latestSemester;
     }
 
     private parseLegacyAdminClass(
@@ -230,18 +459,8 @@ export class EnrollmentService {
         try {
             // Transaction to prevent race conditions (Database isolation)
             return await this.prisma.$transaction(async (tx) => {
-                // Resolve StudentId
-                let student = await tx.student.findUnique({
-                    where: { id: studentIdOrUserId },
-                    include: { major: true }
-                });
-                if (!student) {
-                    student = await tx.student.findUnique({
-                        where: { userId: studentIdOrUserId },
-                        include: { major: true }
-                    });
-                }
-                if (!student) throw new NotFoundException('Sinh viên không tồn tại');
+                // Resolve Student
+                const student = await this.resolveStudent(studentIdOrUserId, tx);
                 const studentId = student.id;
 
                 // 1. Get Class Info
@@ -283,7 +502,9 @@ export class EnrollmentService {
                 if (sameSubjectEnrollment) throw new BadRequestException('Bạn đã đăng ký một lớp khác của môn học này trong học kỳ');
 
                 // 4. Prerequisite Check
-                for (const prereq of courseClass.subject.prerequisites) {
+                for (const prereq of courseClass.subject.prerequisites.filter((item) =>
+                    this.isHardPrerequisite(item.type),
+                )) {
                     const passed = await tx.grade.findFirst({
                         where: {
                             studentId,
@@ -400,11 +621,7 @@ export class EnrollmentService {
     async dropCourse(studentIdOrUserId: string, classId: string) {
         return await this.prisma.$transaction(async (tx) => {
             // Resolve Student
-            let student = await tx.student.findUnique({ where: { id: studentIdOrUserId } });
-            if (!student) {
-                student = await tx.student.findUnique({ where: { userId: studentIdOrUserId } });
-            }
-            if (!student) throw new NotFoundException('Student not found');
+            const student = await this.resolveStudent(studentIdOrUserId, tx);
             const studentId = student.id;
 
             // 1. Get Enrollment
@@ -535,11 +752,7 @@ export class EnrollmentService {
         try {
         return await this.prisma.$transaction(async (tx) => {
             // Resolve Student
-            let student = await tx.student.findUnique({ where: { id: studentIdOrUserId } });
-            if (!student) {
-                student = await tx.student.findUnique({ where: { userId: studentIdOrUserId } });
-            }
-            if (!student) throw new NotFoundException('Student not found');
+            const student = await this.resolveStudent(studentIdOrUserId, tx);
             const studentId = student.id;
 
             // 1. Check if enrolled in old class
@@ -675,57 +888,50 @@ export class EnrollmentService {
         }
     }
 
-    async getRegistrationStatus(studentIdOrUserId: string, semesterId?: string) {
-        let student = await this.prisma.student.findUnique({
-            where: { id: studentIdOrUserId },
-            include: { major: true, adminClass: true }
-        });
+    async getRegistrationOverview(studentIdOrUserId: string) {
+        const student = await this.resolveStudent(studentIdOrUserId);
+        const targetSemester = await this.resolveTargetSemester();
+        let semester = targetSemester;
+        let enrolledCourses = await this.getStudentEnrollments(student.id, targetSemester.id);
 
-        if (!student) {
-            student = await this.prisma.student.findUnique({
-                where: { userId: studentIdOrUserId },
-                include: { major: true, adminClass: true }
+        if (enrolledCourses.length === 0) {
+            const latestEnrollment = await this.prisma.enrollment.findFirst({
+                where: { studentId: student.id },
+                include: {
+                    courseClass: {
+                        include: {
+                            semester: true,
+                        },
+                    },
+                },
+                orderBy: [
+                    { courseClass: { semester: { startDate: 'desc' } } },
+                    { registeredAt: 'desc' },
+                ],
             });
-        }
 
-        if (!student) throw new NotFoundException('Student not found');
-        const studentId = student.id;
-
-        // 0. Get Target Semester (Upcoming for Registration)
-        let targetSemester = await this.prisma.semester.findFirst({ where: { isRegistering: true } });
-        if (!targetSemester) {
-            // Fallback: If no isRegistering is set, look for the first one that starts after the current one
-            const current = await this.prisma.semester.findFirst({ where: { isCurrent: true } });
-            if (current) {
-                targetSemester = await this.prisma.semester.findFirst({
-                    where: { startDate: { gt: current.startDate } },
-                    orderBy: { startDate: 'asc' }
-                });
+            if (latestEnrollment?.courseClass?.semester?.id) {
+                semester = latestEnrollment.courseClass.semester;
+                enrolledCourses = await this.getStudentEnrollments(student.id, semester.id);
             }
         }
-        
-        let targetSemesterId = semesterId || targetSemester?.id;
-        
-        // If still none, fallback to current
-        if (!targetSemesterId) {
-            const current = await this.prisma.semester.findFirst({ where: { isCurrent: true } });
-            targetSemesterId = current?.id;
-        }
+
+        const registrationStatus = await this.getRegistrationStatus(student.id, semester.id);
+
+        return {
+            semester,
+            registrationStatus,
+            enrolledCourses,
+        };
+    }
+
+    async getRegistrationStatus(studentIdOrUserId: string, semesterId?: string) {
+        const student = await this.resolveStudent(studentIdOrUserId);
+        const studentId = student.id;
+        const targetSemester = await this.resolveTargetSemester(semesterId);
+        const targetSemesterId = targetSemester.id;
 
         const cohortCode = this.resolveStudentCohortCode(student);
-        const semesterPlan = cohortCode && targetSemesterId
-            ? await this.prisma.semesterPlan.findFirst({
-                where: {
-                    majorId: student.majorId,
-                    cohort: cohortCode,
-                    semesterId: targetSemesterId,
-                },
-                select: {
-                    conceptualSemester: true,
-                },
-            })
-            : null;
-
         const trainingTemplate = cohortCode
             ? await this.prisma.trainingPlanTemplate.findFirst({
                 where: {
@@ -761,11 +967,7 @@ export class EnrollmentService {
             : [];
 
         const curriculum = templateItems.length > 0
-            ? templateItems.filter((item) =>
-                semesterPlan?.conceptualSemester
-                    ? Number(item.suggestedSemester || 0) === semesterPlan.conceptualSemester
-                    : true,
-            )
+            ? templateItems
             : await this.prisma.curriculum.findMany({
                 where: {
                     majorId: student.majorId,
@@ -830,6 +1032,7 @@ export class EnrollmentService {
 
                 // Check if all prerequisites are passed
                 const missingPrereqs = subject.prerequisites
+                    .filter((p) => this.isHardPrerequisite(p.type))
                     .filter(p => !passedSubjectIds.has(p.prerequisiteId))
                     .map(p => p.prerequisiteId);
 
@@ -837,6 +1040,7 @@ export class EnrollmentService {
                     subjectId: subject.id,
                     subjectCode: subject.code,
                     subjectName: subject.name,
+                    semesterId: targetSemesterId,
                     credits: subject.credits,
                     suggestedSemester: item.suggestedSemester,
                     isRequired: item.isRequired,
@@ -855,19 +1059,7 @@ export class EnrollmentService {
     }
 
     async getSemestersByStudent(studentIdOrUserId: string) {
-        let student = await this.prisma.student.findUnique({
-            where: { id: studentIdOrUserId },
-            include: { adminClass: true }
-        });
-        if (!student) {
-            student = await this.prisma.student.findUnique({
-                where: { userId: studentIdOrUserId },
-                include: { adminClass: true }
-            });
-        }
-        if (!student) {
-            return this.prisma.semester.findMany({ orderBy: { startDate: 'desc' } });
-        }
+        const student = await this.resolveStudent(studentIdOrUserId);
 
         const [plannedSemesters, enrollments, trainingScores, studentFees] = await Promise.all([
             this.getStudentSemestersFromPlan(student),
@@ -915,28 +1107,13 @@ export class EnrollmentService {
     }
 
     async getClassesBySubject(subjectId: string, semesterId?: string) {
-        let targetSemesterId = semesterId;
-        if (!targetSemesterId) {
-            // Priority: isRegistering -> Next Semester -> current
-            const registeringSem = await this.prisma.semester.findFirst({ where: { isRegistering: true } });
-            if (registeringSem) {
-                targetSemesterId = registeringSem.id;
-            } else {
-                const current = await this.prisma.semester.findFirst({ where: { isCurrent: true } });
-                if (current) {
-                    const nextSem = await this.prisma.semester.findFirst({
-                        where: { startDate: { gt: current.startDate } },
-                        orderBy: { startDate: 'asc' }
-                    });
-                    targetSemesterId = nextSem?.id || current.id;
-                }
-            }
-        }
+        const targetSemester = await this.resolveTargetSemester(semesterId);
 
         const classes = await this.prisma.courseClass.findMany({
             where: {
                 subjectId,
-                semesterId: targetSemesterId
+                semesterId: targetSemester.id,
+                status: 'OPEN',
             },
             include: {
                 lecturer: true,
@@ -944,7 +1121,8 @@ export class EnrollmentService {
                 sessions: {
                     include: { room: true }
                 }
-            }
+            },
+            orderBy: { code: 'asc' },
         });
 
         return classes.map((courseClass) => this.normalizeCourseClass(courseClass));
@@ -959,7 +1137,10 @@ export class EnrollmentService {
         return classes.map((courseClass) => this.normalizeCourseClass(courseClass));
     }
 
-    async getStudentEnrollments(studentId: string, semesterId?: string) {
+    async getStudentEnrollments(studentIdOrUserId: string, semesterId?: string) {
+        const student = await this.resolveStudent(studentIdOrUserId);
+        const studentId = student.id;
+
         const enrollments = await this.prisma.enrollment.findMany({
             where: { 
                 studentId,
@@ -977,7 +1158,16 @@ export class EnrollmentService {
                         semester: true,
                     }
                 },
-                attendances: true,
+                attendances: {
+                    include: {
+                        session: {
+                            include: {
+                                room: true,
+                            },
+                        },
+                    },
+                    orderBy: { date: 'desc' },
+                },
                 student: {
                     include: { adminClass: true }
                 }
@@ -1010,25 +1200,139 @@ export class EnrollmentService {
     }
 
     async getClassEnrollments(classId: string) {
-        return this.prisma.enrollment.findMany({
-            where: { courseClassId: classId },
-            include: {
-                student: {
-                    include: { user: true, adminClass: true }
+        try {
+            // First, try the full include
+            return await this.prisma.enrollment.findMany({
+                where: { courseClassId: classId },
+                include: {
+                    student: {
+                        include: { user: true, adminClass: true }
+                    },
+                    attendances: {
+                        include: {
+                            session: {
+                                include: {
+                                    room: true,
+                                },
+                            },
+                        },
+                        orderBy: { date: 'desc' },
+                    }
                 },
-                attendances: true
-            },
-            orderBy: { student: { studentCode: 'asc' } }
-        });
+                orderBy: { student: { studentCode: 'asc' } }
+            });
+        } catch (error) {
+            this.logger.error(`Error fetching class enrollments for ${classId}: ${error.message}`);
+            
+            // Fallback: Fetch without complex attendance includes if it fails
+            return this.prisma.enrollment.findMany({
+                where: { courseClassId: classId },
+                include: {
+                    student: {
+                        include: { user: true, adminClass: true }
+                    }
+                },
+                orderBy: { student: { studentCode: 'asc' } }
+            });
+        }
     }
 
-    async bulkMarkAttendance(date: string, attendances: { enrollmentId: string; status: string; note?: string }[]) {
+    async bulkMarkAttendance(
+        date: string,
+        attendances: { enrollmentId: string; status: string; note?: string }[],
+        options?: { sessionId?: string; classId?: string; method?: string },
+    ) {
         const attendanceDate = new Date(date);
 
         return await this.prisma.$transaction(async (tx) => {
+            const sessionMap = new Map<string, any>();
+            let explicitSession: any = null;
+            const enrollmentMap = new Map<string, { courseClassId: string }>();
+
+            if (options?.sessionId) {
+                explicitSession = await tx.classSession.findUnique({
+                    where: { id: options.sessionId },
+                    select: {
+                        id: true,
+                        courseClassId: true,
+                        date: true,
+                        startShift: true,
+                        endShift: true,
+                    },
+                });
+
+                if (!explicitSession) {
+                    throw new BadRequestException('Buổi học điểm danh không tồn tại.');
+                }
+
+                const explicitDateKey = new Date(explicitSession.date).toISOString().slice(0, 10);
+                const attendanceDateKey = attendanceDate.toISOString().slice(0, 10);
+                if (explicitDateKey !== attendanceDateKey) {
+                    throw new BadRequestException('Ngày điểm danh không khớp với lịch học đã chọn.');
+                }
+            }
+
+            if (!explicitSession) {
+                const enrollmentIds = [...new Set(attendances.map((att) => att.enrollmentId))];
+                const enrollmentRows = await tx.enrollment.findMany({
+                    where: { id: { in: enrollmentIds } },
+                    select: { id: true, courseClassId: true },
+                });
+                for (const row of enrollmentRows) {
+                    enrollmentMap.set(row.id, row);
+                }
+
+                const courseClassIds = [...new Set(enrollmentRows.map((row) => row.courseClassId))];
+                if (courseClassIds.length) {
+                    const sessions = await tx.classSession.findMany({
+                        where: {
+                            courseClassId: { in: courseClassIds },
+                            date: attendanceDate,
+                        },
+                        select: {
+                            id: true,
+                            courseClassId: true,
+                            date: true,
+                            startShift: true,
+                            endShift: true,
+                        },
+                    });
+                    for (const session of sessions) {
+                        sessionMap.set(session.courseClassId, session);
+                    }
+                }
+
+                if (options?.classId && !sessionMap.has(options.classId)) {
+                    throw new BadRequestException(
+                        'Ngày được chọn không có lịch học của lớp học phần này, không thể lưu điểm danh.',
+                    );
+                }
+            }
+
             const results = await Promise.all(
-                attendances.map((att) =>
-                    tx.attendance.upsert({
+                attendances.map(async (att) => {
+                    const enrollment = enrollmentMap.get(att.enrollmentId)
+                        || await tx.enrollment.findUnique({
+                            where: { id: att.enrollmentId },
+                            select: { courseClassId: true },
+                        });
+                    const existingAttendance = await tx.attendance.findUnique({
+                        where: {
+                            enrollmentId_date: {
+                                enrollmentId: att.enrollmentId,
+                                date: attendanceDate,
+                            },
+                        },
+                        select: { note: true },
+                    });
+                    const session =
+                        explicitSession && enrollment?.courseClassId === explicitSession.courseClassId
+                            ? explicitSession
+                            : enrollment?.courseClassId
+                                ? sessionMap.get(enrollment.courseClassId)
+                                : null;
+
+                    return tx.attendance.upsert({
                         where: {
                             enrollmentId_date: {
                                 enrollmentId: att.enrollmentId,
@@ -1037,16 +1341,32 @@ export class EnrollmentService {
                         },
                         update: {
                             status: att.status,
-                            note: att.note,
+                            note: this.buildAttendanceNote(existingAttendance?.note, {
+                                manualNote: att.note,
+                                meta: {
+                                    method: options?.method || 'MANUAL',
+                                    markedAt: new Date().toISOString(),
+                                    isLocationVerified: false,
+                                },
+                            }),
+                            sessionId: session?.id || null,
                         },
                         create: {
                             enrollmentId: att.enrollmentId,
                             date: attendanceDate,
                             status: att.status,
-                            note: att.note,
+                            note: this.buildAttendanceNote(existingAttendance?.note, {
+                                manualNote: att.note,
+                                meta: {
+                                    method: options?.method || 'MANUAL',
+                                    markedAt: new Date().toISOString(),
+                                    isLocationVerified: false,
+                                },
+                            }),
+                            sessionId: session?.id || null,
                         },
-                    }),
-                ),
+                    });
+                }),
             );
 
             const enrollmentIds = [...new Set(attendances.map((att) => att.enrollmentId))];
@@ -1054,70 +1374,7 @@ export class EnrollmentService {
                 return results;
             }
 
-            const enrollments = await tx.enrollment.findMany({
-                where: { id: { in: enrollmentIds } },
-                include: {
-                    courseClass: {
-                        include: {
-                            sessions: {
-                                select: {
-                                    id: true,
-                                    date: true,
-                                    startShift: true,
-                                    endShift: true,
-                                },
-                            },
-                        },
-                    },
-                    attendances: {
-                        select: {
-                            date: true,
-                            status: true,
-                        },
-                    },
-                },
-            });
-
-            for (const enrollment of enrollments) {
-                const sessions = enrollment.courseClass?.sessions || [];
-                const totalPeriods = sessions.reduce(
-                    (sum, session) =>
-                        sum + Math.max(Number(session.endShift) - Number(session.startShift) + 1, 0),
-                    0,
-                );
-
-                const attendanceByDate = new Map(
-                    (enrollment.attendances || []).map((attendance) => [
-                        new Date(attendance.date).toISOString().slice(0, 10),
-                        attendance.status,
-                    ]),
-                );
-
-                const absentPeriods = sessions.reduce((sum, session) => {
-                    const key = new Date(session.date).toISOString().slice(0, 10);
-                    const status = attendanceByDate.get(key);
-                    if (!status || status === 'PRESENT') {
-                        return sum;
-                    }
-                    return (
-                        sum +
-                        Math.max(Number(session.endShift) - Number(session.startShift) + 1, 0)
-                    );
-                }, 0);
-
-                const isEligible =
-                    totalPeriods > 0 ? absentPeriods / totalPeriods <= 0.5 : true;
-
-                await tx.grade.updateMany({
-                    where: {
-                        studentId: enrollment.studentId,
-                        courseClassId: enrollment.courseClassId,
-                    },
-                    data: {
-                        isEligibleForExam: isEligible,
-                    },
-                });
-            }
+            await this.syncAttendanceDerivedGradesForEnrollments(tx, enrollmentIds);
 
             return results;
         });

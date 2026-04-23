@@ -31,6 +31,12 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+const normalizeText = (value?: string) =>
+    `${value || ""}`
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+
 export default function LecturerCourseDetailPage() {
     const { id: classId } = useParams();
     const router = useRouter();
@@ -39,10 +45,9 @@ export default function LecturerCourseDetailPage() {
     const [enrollments, setEnrollments] = useState<any[]>([]);
     const [grades, setGrades] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [isSyncing, setIsSyncing] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
 
-    const TOKEN = Cookies.get("admin_accessToken");
+    const TOKEN = Cookies.get("lecturer_accessToken") || Cookies.get("admin_accessToken");
 
     const fetchData = async () => {
         if (!classId || !TOKEN) return;
@@ -86,33 +91,14 @@ export default function LecturerCourseDetailPage() {
         const total = totalEstimatedSessions > 0 ? totalEstimatedSessions : (courseClass?.sessions?.length || 15);
 
         if (!attendances || attendances.length === 0) return 0;
-        const absent = attendances.filter(a => a.status === "ABSENT").length;
+        const absent = attendances.filter(a => a.status === "ABSENT" || a.status === "ABSENT_UNEXCUSED").length;
         const presentRate = ((total - absent) / total) * 100;
         return Math.max(0, Math.min(100, Math.round(presentRate)));
     };
 
-    const handleSyncAttendance = async () => {
-        if (!classId || !TOKEN) return;
-        setIsSyncing(true);
-        try {
-            const res = await fetch(`/api/grades/class/${classId}/sync-attendance`, {
-                method: "POST",
-                headers: { Authorization: `Bearer ${TOKEN}` }
-            });
-            if (res.ok) {
-                await fetchData();
-                alert("Đã đồng bộ điểm chuyên cần thành công!");
-            }
-        } catch (err) {
-            console.error("Sync failed:", err);
-        } finally {
-            setIsSyncing(false);
-        }
-    };
-
     const filtered = enrollments.filter(e =>
-        e.student?.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        e.student?.studentCode?.toLowerCase().includes(searchQuery.toLowerCase())
+        normalizeText(e.student?.fullName).includes(normalizeText(searchQuery)) ||
+        normalizeText(e.student?.studentCode).includes(normalizeText(searchQuery))
     );
 
     if (loading) {
@@ -146,7 +132,7 @@ export default function LecturerCourseDetailPage() {
     const semesterLabel = courseClass?.semester?.name || "Chưa rõ học kỳ";
 
     return (
-        <div className="min-h-screen space-y-6 pb-20 max-w-7xl mx-auto px-4 md:px-8 py-6 animate-in fade-in duration-700 bg-[#fbfcfd]">
+        <div className="min-h-screen w-full max-w-full animate-in space-y-6 bg-[#fbfcfd] px-4 py-6 pb-20 fade-in duration-700 md:px-6">
             
             {/* Header & Actions */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-100 pb-6">
@@ -171,14 +157,14 @@ export default function LecturerCourseDetailPage() {
 
                 <div className="flex items-center gap-3">
                     <Button
-                        onClick={() => router.push(`/lecturer/courses/${classId}/attendance`)}
+                        onClick={() => router.push(`/lecturer/attendance/${classId}`)}
                         className="h-11 rounded-xl px-8 text-[10px] font-black text-white bg-uneti-blue hover:bg-uneti-blue/90 shadow-lg shadow-uneti-blue/10 transition-all uppercase tracking-widest"
                     >
                         <ClipboardCheck className="mr-2 h-4 w-4" /> Điểm danh
                     </Button>
                     <Button
                         variant="outline"
-                        onClick={() => router.push(`/lecturer/courses/${classId}/grades`)}
+                        onClick={() => router.push(`/lecturer/grades/${classId}`)}
                         className="h-11 rounded-xl px-6 text-[10px] font-black text-slate-600 border-slate-200 hover:bg-slate-50 transition-all uppercase tracking-widest"
                     >
                         <FileText size={16} className="mr-2" /> Nhập điểm
@@ -190,7 +176,7 @@ export default function LecturerCourseDetailPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
                     { label: "Sĩ số lớp", value: `${enrollments.length} SV`, sub: "Hiện tại", icon: Users },
-                    { label: "Chuyên cần", value: `${avgAttendance}%`, sub: "Trung bình", icon: Activity },
+                    { label: "Tỷ lệ có mặt", value: `${avgAttendance}%`, sub: "Theo điểm danh", icon: Activity },
                     { label: "Tín chỉ", value: courseClass?.subject?.credits, sub: "Định mức", icon: BookMarked },
                     { label: "Phòng học", value: primaryRoom, sub: "Cố định", icon: MapPin },
                     { label: "Lớp danh nghĩa", value: adminClassLabel, sub: "Theo quản lý", icon: GraduationCap },
@@ -216,16 +202,9 @@ export default function LecturerCourseDetailPage() {
                             <Users2 size={18} className="text-uneti-blue" />
                             <h2 className="text-xs font-black text-slate-800 uppercase tracking-widest">Danh sách ({enrollments.length})</h2>
                         </div>
-                        <Button 
-                            variant="ghost" 
-                            size="sm"
-                            disabled={isSyncing}
-                            onClick={handleSyncAttendance}
-                            className="h-8 rounded-lg text-[9px] font-black uppercase tracking-widest text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 gap-2 border border-emerald-100"
-                        >
-                            <Zap size={12} className={cn(isSyncing && "animate-pulse")} />
-                            {isSyncing ? "Đang đồng bộ..." : "Đồng bộ chuyên cần"}
-                        </Button>
+                        <div className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500">
+                            Điểm chuyên cần và kết quả cuối kỳ do phòng đào tạo chốt
+                        </div>
                     </div>
                     <div className="relative w-64">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={12} />
@@ -246,7 +225,7 @@ export default function LecturerCourseDetailPage() {
                                 <th className="py-4 px-8 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">#</th>
                                 <th className="py-4 px-4 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">Sinh viên</th>
                                 <th className="py-4 px-4 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">Mã SV</th>
-                                <th className="py-4 px-4 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50 text-center">Chuyên cần</th>
+                                <th className="py-4 px-4 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50 text-center">Tỷ lệ có mặt</th>
                                 <th className="py-4 px-4 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50 text-center">Điểm TK</th>
                                 <th className="py-4 px-8 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50 text-right">Chi tiết</th>
                             </tr>
@@ -283,7 +262,7 @@ export default function LecturerCourseDetailPage() {
                                         </td>
                                         <td className="py-4 px-4 text-center">
                                             <span className="text-[11px] font-black text-slate-700 tabular-nums">
-                                                {studentGrade?.totalScore10 !== null ? studentGrade?.totalScore10 : "---"}
+                                                {studentGrade?.totalScore10 !== null && studentGrade?.totalScore10 !== undefined ? studentGrade?.totalScore10 : ""}
                                             </span>
                                         </td>
                                         <td className="py-4 px-8 text-right">

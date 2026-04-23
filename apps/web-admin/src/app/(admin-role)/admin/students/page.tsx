@@ -20,30 +20,19 @@ import {
 } from "lucide-react";
 import Modal from "@/components/modal";
 import DataTable from "@/components/DataTable";
+import FamilyMembersEditor, {
+    createEmptyFamilyMember,
+    normalizeFamilyMembers,
+    serializeFamilyMembers,
+} from "@/components/students/FamilyMembersEditor";
 
 export default function AdminStudentsPage() {
-    const [students, setStudents] = useState<any[]>([]);
-    const [majors, setMajors] = useState<any[]>([]);
-    const [adminClasses, setAdminClasses] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
-
-    // Modal states
-    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-    const [selectedStudent, setSelectedStudent] = useState<any>(null);
-    const [formLoading, setFormLoading] = useState(false);
-
-    // Create Account toggle
-    const [createAccount, setCreateAccount] = useState(true);
-
-    // Form states
-    const [formData, setFormData] = useState({
+    const buildEmptyFormData = () => ({
         studentCode: "",
         fullName: "",
         email: "",
         intake: "",
-        status: "ACTIVE",
+        status: "STUDYING",
         majorId: "",
         adminClassId: "",
         specializationId: "",
@@ -61,7 +50,7 @@ export default function AdminStudentsPage() {
         educationType: "",
         ethnicity: "",
         religion: "",
-        nationality: "",
+        nationality: "Việt Nam",
         birthPlace: "",
         permanentAddress: "",
         bankName: "",
@@ -76,7 +65,26 @@ export default function AdminStudentsPage() {
         region: "",
         policyBeneficiary: "",
         isActive: true,
+        familyMembers: [createEmptyFamilyMember()],
     });
+
+    const [students, setStudents] = useState<any[]>([]);
+    const [majors, setMajors] = useState<any[]>([]);
+    const [adminClasses, setAdminClasses] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    // Modal states
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [selectedStudent, setSelectedStudent] = useState<any>(null);
+    const [formLoading, setFormLoading] = useState(false);
+
+    // Create Account toggle
+    const [createAccount, setCreateAccount] = useState(true);
+
+    // Form states
+    const [formData, setFormData] = useState(buildEmptyFormData);
 
     const TOKEN = Cookies.get("admin_accessToken");
 
@@ -146,6 +154,7 @@ export default function AdminStudentsPage() {
                 },
                 body: JSON.stringify({
                     ...formData,
+                    familyMembers: serializeFamilyMembers(formData.familyMembers),
                     dob: formData.dob ? new Date(formData.dob).toISOString() : new Date().toISOString(),
                     admissionDate: formData.admissionDate ? new Date(formData.admissionDate).toISOString() : undefined,
                     idIssueDate: formData.idIssueDate ? new Date(formData.idIssueDate).toISOString() : undefined,
@@ -181,6 +190,7 @@ export default function AdminStudentsPage() {
                 },
                 body: JSON.stringify({
                     ...formData,
+                    familyMembers: serializeFamilyMembers(formData.familyMembers),
                     dob: formData.dob ? new Date(formData.dob).toISOString() : undefined,
                     admissionDate: formData.admissionDate ? new Date(formData.admissionDate).toISOString() : undefined,
                     idIssueDate: formData.idIssueDate ? new Date(formData.idIssueDate).toISOString() : undefined,
@@ -252,15 +262,9 @@ export default function AdminStudentsPage() {
 
     const resetForm = () => {
         setFormData({
-            studentCode: "", fullName: "", email: "", intake: "", status: "STUDYING", majorId: "", adminClassId: "", specializationId: "",
-            dob: "", phone: "", gender: "MALE", citizenId: "", address: "",
-            emailPersonal: "", idIssueDate: "", idIssuePlace: "", admissionDate: "", campus: "",
-            educationLevel: "", educationType: "", ethnicity: "", religion: "", nationality: "Việt Nam",
-            birthPlace: "", permanentAddress: "", bankName: "", bankBranch: "",
-            bankAccountName: "", bankAccountNumber: "",
-            gpa: 0, cpa: 0, totalEarnedCredits: 0,
-            youthUnionDate: "", partyDate: "", region: "", policyBeneficiary: "",
-            isActive: true,
+            ...buildEmptyFormData(),
+            status: "STUDYING",
+            nationality: "Việt Nam",
         });
         setCreateAccount(true);
     };
@@ -305,6 +309,7 @@ export default function AdminStudentsPage() {
             region: student.region || "",
             policyBeneficiary: student.policyBeneficiary || "",
             isActive: student.user?.isActive !== false,
+            familyMembers: normalizeFamilyMembers(student.familyMembers),
         });
         setIsEditModalOpen(true);
     };
@@ -712,6 +717,11 @@ export default function AdminStudentsPage() {
                     </div>
                 </div>
             </div>
+
+            <FamilyMembersEditor
+                value={formData.familyMembers}
+                onChange={(familyMembers) => setFormData({ ...formData, familyMembers })}
+            />
         </div>
     );
 
@@ -754,6 +764,26 @@ export default function AdminStudentsPage() {
                     </span>
                 </div>
             )
+        },
+        {
+            header: "Gia đình",
+            accessorKey: "familyMembers",
+            cell: (s: any) => {
+                const familyMembers = Array.isArray(s.familyMembers) ? s.familyMembers : [];
+                const primaryMember = familyMembers[0];
+                return (
+                    <div className="flex flex-col gap-1">
+                        <span className="text-[12px] font-black text-slate-700">
+                            {familyMembers.length > 0 ? `${familyMembers.length} liên hệ` : "Chưa có"}
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                            {primaryMember
+                                ? `${primaryMember.relationship}: ${primaryMember.fullName}${primaryMember.phone ? ` - ${primaryMember.phone}` : ""}`
+                                : "Bổ sung trong lúc sửa hồ sơ"}
+                        </span>
+                    </div>
+                );
+            }
         },
         {
             header: "Trạng thái",

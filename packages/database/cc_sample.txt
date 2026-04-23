@@ -1,0 +1,152 @@
+{
+  "id": "0022368b-eb45-4939-a68a-bde2c1d01ca6",
+  "subjectId": "1e80e5ce-ca41-427a-a3bd-cc2a7ff06f12",
+  "semesterId": "dfb543cc-ab08-4414-879c-f8f687b02609",
+  "lecturerId": "LEC_GV_KT_08",
+  "code": "CCLASS_2023_HK1_PROJECT_1_K19_CNTT1_02",
+  "name": "Đồ án cơ sở ngành - K19-CNTT1-02",
+  "tuitionMultiplier": 1,
+  "maxSlots": 25,
+  "currentSlots": 20,
+  "status": "OPEN",
+  "totalPeriods": 45,
+  "cohort": "K19",
+  "periodsPerSession": 3,
+  "sessionsPerWeek": 1,
+  "semester": {
+    "id": "dfb543cc-ab08-4414-879c-f8f687b02609",
+    "code": "2023_HK1",
+    "name": "HK1 - Năm 1 (2023-2024)",
+    "year": 2023,
+    "startDate": "2023-09-01T00:00:00.000Z",
+    "endDate": "2024-01-20T00:00:00.000Z",
+    "isCurrent": false,
+    "isRegistering": false,
+    "registerStartDate": null,
+    "registerEndDate": null,
+    "midtermGradeDeadline": null,
+    "examEndDate": null,
+    "examStartDate": null,
+    "semesterNumber": 1
+  },
+  "subject": {
+    "id": "1e80e5ce-ca41-427a-a3bd-cc2a7ff06f12",
+    "majorId": "18edde59-8af5-4bb9-915e-e3a38257118e",
+    "code": "PROJECT_1",
+    "name": "Đồ án cơ sở ngành",
+    "credits": 3,
+    "theoryHours": 30,
+    "practiceHours": 15,
+    "selfStudyHours": 0,
+    "description": null,
+    "departmentId": "D01",
+    "examDuration": 60,
+    "examType": "TRAC_NGHIEM",
+    "examForm": "T? lu?n",
+    "theoryPeriods": 30,
+    "practicePeriods": 15,
+    "practiceSessionsPerWeek": 1,
+    "theorySessionsPerWeek": 1
+  },
+  "lecturer": {
+    "id": "LEC_GV_KT_08",
+    "userId": "USR_GV_KT_08",
+    "facultyId": "FAC_KT",
+    "lectureCode": "GV_KT_08",
+    "fullName": "Phùng Minh Châu",
+    "degree": "ThS.",
+    "phone": "0978011018",
+    "departmentId": "DEPT_KETOAN"
+  },
+  "enrollments": [
+    {
+      "id": "02b7217c-3213-43a7-b702-541c254190ec",
+      "studentId": "SEED_ST_K19CNTT102_20",
+      "courseClassId": "0022368b-eb45-4939-a68a-bde2c1d01ca6",
+      "status": "REGISTERED",
+      "registeredAt": "2026-04-21T07:04:41.847Z",
+      "isRetake": false,
+      "tuitionFee": "0"
+    },
+    {
+      "id": "0550629e-423e-4852-b35e-cccecd624014",
+      "studentId": "SEED_ST_K19CNTT102_18",
+      "courseClassId": "0022368b-eb45-4939-a68a-bde2c1d01ca6",
+      "status": "REGISTERED",
+      "registeredAt": "2026-04-21T07:04:41.847Z",
+      "isRetake": false,
+      "tuitionFee": "0"
+    },
+    {
+      "id": "1094b433-4517-4ae8-ac8a-5893da908012",
+      "studentId": "SEED_ST_K19CNTT102_05",
+      "courseClassId": "0022368b-eb45-4939-a68a-bde2c1d01ca6",
+      "status": "REGISTERED",
+      "registeredAt": "2026-04-21T07:04:41.847Z",
+      "isRetake": false,
+      "tuitionFee": "0"
+    }
+  ],
+  "sessions": [
+    {
+      "id": "189e9c4c-2b29-4a2a-a3dc-00716e8ef39e",
+      "courseClassId": "0022368b-eb45-4939-a68a-bde2c1d01ca6",
+      "roomId": "ROOM_P102",
+      "semesterId": "dfb543cc-ab08-4414-879c-f8f687b02609",
+      "date": "2023-11-20T00:00:00.000Z",
+      "startShift": 4,
+      "endShift": 6,
+      "type": "THEORY",
+      "note": "Auto THEORY (T2)",
+      "room": {
+        "id": "ROOM_P102",
+        "name": "P.102",
+        "building": "HA8",
+        "capacity": 60,
+        "examCapacity": 29,
+        "type": "THEORY",
+        "campus": null
+      }
+    },
+    {
+      "id": "1e7991c1-d6d3-4de8-8fef-faf8a59cec92",
+      "courseClassId": "0022368b-eb45-4939-a68a-bde2c1d01ca6",
+      "roomId": "ROOM_P102",
+      "semesterId": "dfb543cc-ab08-4414-879c-f8f687b02609",
+      "date": "2023-09-11T00:00:00.000Z",
+      "startShift": 4,
+      "endShift": 6,
+      "type": "THEORY",
+      "note": "Auto THEORY (T2)",
+      "room": {
+        "id": "ROOM_P102",
+        "name": "P.102",
+        "building": "HA8",
+        "capacity": 60,
+        "examCapacity": 29,
+        "type": "THEORY",
+        "campus": null
+      }
+    },
+    {
+      "id": "299074bb-72ae-43b8-93a4-2842bcb54df7",
+      "courseClassId": "0022368b-eb45-4939-a68a-bde2c1d01ca6",
+      "roomId": "ROOM_P102",
+      "semesterId": "dfb543cc-ab08-4414-879c-f8f687b02609",
+      "date": "2023-12-04T00:00:00.000Z",
+      "startShift": 4,
+      "endShift": 6,
+      "type": "THEORY",
+      "note": "Auto THEORY (T2)",
+      "room": {
+        "id": "ROOM_P102",
+        "name": "P.102",
+        "building": "HA8",
+        "capacity": 60,
+        "examCapacity": 29,
+        "type": "THEORY",
+        "campus": null
+      }
+    }
+  ]
+}

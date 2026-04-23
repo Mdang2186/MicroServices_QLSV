@@ -28,4 +28,33 @@ export class AdminClassService {
       }),
     );
   }
+  async create(data: { code: string; name: string; majorId: string; cohort?: string; advisorId?: string }) {
+    this.cache.delByPattern('adminClasses:*');
+    return this.prisma.adminClass.create({
+      data,
+    });
+  }
+
+  async update(id: string, data: { name?: string; majorId?: string; cohort?: string; advisorId?: string; code?: string }) {
+    this.cache.delByPattern('adminClasses:*');
+    return this.prisma.adminClass.update({
+      where: { id },
+      data,
+    });
+  }
+
+  async remove(id: string) {
+    const classHasStudents = await this.prisma.student.count({
+      where: { adminClassId: id },
+    });
+    
+    if (classHasStudents > 0) {
+      throw new Error("Không thể xoá lớp danh nghĩa đã có sinh viên.");
+    }
+    
+    this.cache.delByPattern('adminClasses:*');
+    return this.prisma.adminClass.delete({
+      where: { id },
+    });
+  }
 }

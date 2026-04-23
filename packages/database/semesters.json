@@ -1,0 +1,498 @@
+[
+  {
+    "id": "dcf8c4b9-3eb9-4bb8-8105-0c595d579991",
+    "name": "HK1 - Năm 1 (2021-2022)",
+    "code": "K15_HK1",
+    "year": 2021,
+    "semesterNumber": 1,
+    "startDate": "2021-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "b9090f38-75ec-4c81-8a37-9d3996fedc13",
+    "name": "HK1 - Năm 1 (2022-2023)",
+    "code": "K16_HK1",
+    "year": 2022,
+    "semesterNumber": 1,
+    "startDate": "2022-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "ce6a3a35-32c5-4593-aacd-0fc450619b1e",
+    "name": "HK2 - Năm 1 (2022-2023)",
+    "code": "K16_HK2",
+    "year": 2023,
+    "semesterNumber": 2,
+    "startDate": "2023-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "dfb543cc-ab08-4414-879c-f8f687b02609",
+    "name": "HK1 - Năm 1 (2023-2024)",
+    "code": "2023_HK1",
+    "year": 2023,
+    "semesterNumber": 1,
+    "startDate": "2023-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "4b61c2ff-472f-495f-b3ff-487cbb2374d7",
+    "name": "HK3 - Năm 2 (2023-2024)",
+    "code": "K16_HK3",
+    "year": 2023,
+    "semesterNumber": 3,
+    "startDate": "2023-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "d96b7c50-84dd-4e9f-8daf-a670856d08b4",
+    "name": "HK2 - Năm 1 (2023-2024)",
+    "code": "2024_HK2",
+    "year": 2024,
+    "semesterNumber": 1,
+    "startDate": "2024-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "961d8579-cfbd-4d31-b2f1-3d7f47f0dbeb",
+    "name": "HK4 - Năm 2 (2023-2024)",
+    "code": "K16_HK4",
+    "year": 2024,
+    "semesterNumber": 4,
+    "startDate": "2024-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "db121bad-85ec-43d5-bcd6-af043d9a781b",
+    "name": "HK1 - Năm 1 (2024-2025)",
+    "code": "2024_HK1",
+    "year": 2024,
+    "semesterNumber": 1,
+    "startDate": "2024-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "d7a1694e-0016-4c1c-a9e3-f1ce061accb0",
+    "name": "Học kỳ 1 - Năm học 2024-2025",
+    "code": "HK1-2024-2025",
+    "year": 2024,
+    "semesterNumber": 1,
+    "startDate": "2024-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "4b72b309-4844-4783-9722-19616af5570f",
+    "name": "HK3 - Năm 2 (2024-2025)",
+    "code": "2024_HK3",
+    "year": 2024,
+    "semesterNumber": 1,
+    "startDate": "2024-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "91a8be0c-99ac-42c2-acfb-b0cb6f98d6c2",
+    "name": "HK5 - Năm 3 (2024-2025)",
+    "code": "K16_HK5",
+    "year": 2024,
+    "semesterNumber": 5,
+    "startDate": "2024-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "7b85f7a1-d6c2-454d-a059-2983910a3e75",
+    "name": "HK6 - Năm 3 (2024-2025)",
+    "code": "K16_HK6",
+    "year": 2025,
+    "semesterNumber": 6,
+    "startDate": "2025-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "4e241849-ede8-4264-a045-804efd495d23",
+    "name": "HK2 - Năm 1 (2024-2025)",
+    "code": "2025_HK2",
+    "year": 2025,
+    "semesterNumber": 1,
+    "startDate": "2025-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "15e29c22-751b-428d-9527-d5b3733e90fe",
+    "name": "HK4 - Năm 2 (2024-2025)",
+    "code": "2025_HK4",
+    "year": 2025,
+    "semesterNumber": 1,
+    "startDate": "2025-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "24ff4394-0612-43bc-b6da-83f28681f511",
+    "name": "HK5 - Năm 3 (2025-2026)",
+    "code": "2025_HK5",
+    "year": 2025,
+    "semesterNumber": 1,
+    "startDate": "2025-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "0296e65b-e3ec-4b70-8cce-86df82ed4e05",
+    "name": "HK1 - Năm 1 (2025-2026)",
+    "code": "2025_HK1",
+    "year": 2025,
+    "semesterNumber": 1,
+    "startDate": "2025-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "04750e64-067b-457c-825e-d69ee86aa89d",
+    "name": "HK7 - Năm 4 (2025-2026)",
+    "code": "K16_HK7",
+    "year": 2025,
+    "semesterNumber": 7,
+    "startDate": "2025-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "575a045e-60a4-4a4f-ae62-3557127fc774",
+    "name": "HK3 - Năm 2 (2025-2026)",
+    "code": "2025_HK3",
+    "year": 2025,
+    "semesterNumber": 1,
+    "startDate": "2025-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "dd09c54f-b69f-40d1-ba62-b0da9e33da5f",
+    "name": "HK8 - Năm 4 (2025-2026)",
+    "code": "K16_HK8",
+    "year": 2026,
+    "semesterNumber": 8,
+    "startDate": "2026-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "eadd7c65-321f-4d93-b638-31b489d54742",
+    "name": "HK2 - Năm 1 (2025-2026)",
+    "code": "2026_HK2",
+    "year": 2026,
+    "semesterNumber": 1,
+    "startDate": "2026-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "f2fde148-4bda-4081-9615-c720732bb57f",
+    "name": "HK4 - Năm 2 (2025-2026)",
+    "code": "2026_HK4",
+    "year": 2026,
+    "semesterNumber": 1,
+    "startDate": "2026-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "SEM_HK1_2627",
+    "name": "Học kỳ 1 Năm học 2026-2027",
+    "code": "HK1_2026_2027",
+    "year": 2026,
+    "semesterNumber": 1,
+    "startDate": "2026-03-01T00:00:00.000Z"
+  },
+  {
+    "id": "7238616f-a48f-4580-8252-fafbdbb2bfd6",
+    "name": "HK6 - Năm 3 (2025-2026)",
+    "code": "2026_HK6",
+    "year": 2026,
+    "semesterNumber": 1,
+    "startDate": "2026-03-02T00:00:00.000Z"
+  },
+  {
+    "id": "SEM_HKH_2526",
+    "name": "Học kỳ Hè Năm học 2025-2026",
+    "code": "HKH_2025_2026",
+    "year": 2026,
+    "semesterNumber": 1,
+    "startDate": "2026-06-01T00:00:00.000Z"
+  },
+  {
+    "id": "7b5cd8cb-6131-4a77-98e7-6e78d1a75123",
+    "name": "HK3 - Năm 2 (2026-2027)",
+    "code": "2026_HK3",
+    "year": 2026,
+    "semesterNumber": 1,
+    "startDate": "2026-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "4676f59c-573a-46d4-9be2-3e57ffe1f349",
+    "name": "HK1 - Năm 1 (2026-2027)",
+    "code": "2026_HK1",
+    "year": 2026,
+    "semesterNumber": 1,
+    "startDate": "2026-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "33424013-0d46-4111-89de-7e541f22cb37",
+    "name": "HK5 - Năm 3 (2026-2027)",
+    "code": "2026_HK5",
+    "year": 2026,
+    "semesterNumber": 1,
+    "startDate": "2026-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "34562b69-84df-4085-8c2b-a6fbe0510bb0",
+    "name": "HK7 - Năm 4 (2026-2027)",
+    "code": "2026_HK7",
+    "year": 2026,
+    "semesterNumber": 1,
+    "startDate": "2026-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "082da45d-ffc1-4d2b-9eb3-5fddf426caf4",
+    "name": "HK6 - Năm 3 (2026-2027)",
+    "code": "2027_HK6",
+    "year": 2027,
+    "semesterNumber": 1,
+    "startDate": "2027-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "0c5f23ea-0052-4d6f-93f4-cc8e077a2dd5",
+    "name": "HK8 - Năm 4 (2026-2027)",
+    "code": "2027_HK8",
+    "year": 2027,
+    "semesterNumber": 1,
+    "startDate": "2027-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "539092b3-d600-49c4-8f6e-aaf6afa1cfc5",
+    "name": "HK2 - Năm 1 (2026-2027)",
+    "code": "2027_HK2",
+    "year": 2027,
+    "semesterNumber": 1,
+    "startDate": "2027-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "92164383-585d-4a6c-bf89-80181911050f",
+    "name": "HK4 - Năm 2 (2026-2027)",
+    "code": "2027_HK4",
+    "year": 2027,
+    "semesterNumber": 1,
+    "startDate": "2027-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "SEM_HK2_2627",
+    "name": "Học kỳ 2 Năm học 2026-2027",
+    "code": "HK2_2026_2027",
+    "year": 2027,
+    "semesterNumber": 1,
+    "startDate": "2027-02-15T00:00:00.000Z"
+  },
+  {
+    "id": "8ece6a79-8e25-4daa-be81-d93382864145",
+    "name": "HK1 - Năm 1 (2027-2028)",
+    "code": "2027_HK1",
+    "year": 2027,
+    "semesterNumber": 1,
+    "startDate": "2027-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "30ac8a02-5662-4cf1-a1f1-820f72430f87",
+    "name": "HK7 - Năm 4 (2027-2028)",
+    "code": "2027_HK7",
+    "year": 2027,
+    "semesterNumber": 1,
+    "startDate": "2027-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "6a94c317-c827-47d5-867d-5717c9a0decb",
+    "name": "HK3 - Năm 2 (2027-2028)",
+    "code": "2027_HK3",
+    "year": 2027,
+    "semesterNumber": 1,
+    "startDate": "2027-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "26816390-392f-4147-8ef8-7115b27c70d3",
+    "name": "HK5 - Năm 3 (2027-2028)",
+    "code": "2027_HK5",
+    "year": 2027,
+    "semesterNumber": 1,
+    "startDate": "2027-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "6b4f5c00-04b6-4ddc-a65b-09532be2377a",
+    "name": "HK2 - Năm 1 (2027-2028)",
+    "code": "2028_HK2",
+    "year": 2028,
+    "semesterNumber": 1,
+    "startDate": "2028-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "66ce79c2-7558-4569-9552-231cafdf54d1",
+    "name": "HK8 - Năm 4 (2027-2028)",
+    "code": "2028_HK8",
+    "year": 2028,
+    "semesterNumber": 1,
+    "startDate": "2028-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "fc31be1d-93f0-48eb-9c04-cb4ac867e1db",
+    "name": "HK6 - Năm 3 (2027-2028)",
+    "code": "2028_HK6",
+    "year": 2028,
+    "semesterNumber": 1,
+    "startDate": "2028-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "ca178d95-bd48-41a9-bc2d-d26377079200",
+    "name": "HK4 - Năm 2 (2027-2028)",
+    "code": "2028_HK4",
+    "year": 2028,
+    "semesterNumber": 1,
+    "startDate": "2028-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "b727d7ce-21a6-4d58-88b2-18560c68daa8",
+    "name": "HK3 - Năm 2 (2028-2029)",
+    "code": "2028_HK3",
+    "year": 2028,
+    "semesterNumber": 1,
+    "startDate": "2028-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "a014fde1-521d-4a1d-84ab-cd5250e88110",
+    "name": "HK7 - Năm 4 (2028-2029)",
+    "code": "2028_HK7",
+    "year": 2028,
+    "semesterNumber": 1,
+    "startDate": "2028-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "49660f63-cb34-4803-82ac-09e449c32a96",
+    "name": "HK5 - Năm 3 (2028-2029)",
+    "code": "2028_HK5",
+    "year": 2028,
+    "semesterNumber": 1,
+    "startDate": "2028-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "4109edbd-5ca7-452b-82c4-9bd21358f8bb",
+    "name": "HK1 - Năm 1 (2028-2029)",
+    "code": "2028_HK1",
+    "year": 2028,
+    "semesterNumber": 1,
+    "startDate": "2028-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "30277612-d009-4679-84a9-83c9cf8de75e",
+    "name": "HK6 - Năm 3 (2028-2029)",
+    "code": "2029_HK6",
+    "year": 2029,
+    "semesterNumber": 1,
+    "startDate": "2029-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "6ca24ab0-8c97-44fe-9c04-d16deaecdd56",
+    "name": "HK2 - Năm 1 (2028-2029)",
+    "code": "2029_HK2",
+    "year": 2029,
+    "semesterNumber": 1,
+    "startDate": "2029-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "aa8b49fc-9b67-4f32-a45c-463080ee3032",
+    "name": "HK8 - Năm 4 (2028-2029)",
+    "code": "2029_HK8",
+    "year": 2029,
+    "semesterNumber": 1,
+    "startDate": "2029-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "f5b87ded-c053-4c20-945c-537e3e428004",
+    "name": "HK4 - Năm 2 (2028-2029)",
+    "code": "2029_HK4",
+    "year": 2029,
+    "semesterNumber": 1,
+    "startDate": "2029-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "d31ab9b2-1db3-41be-ad54-35e428fb510a",
+    "name": "HK Phụ - Năm 1 (2028-2029)",
+    "code": "K22_HKP1",
+    "year": 2029,
+    "semesterNumber": 1,
+    "startDate": "2029-07-01T00:00:00.000Z"
+  },
+  {
+    "id": "dff34e6c-a258-4136-ade4-b3e9a5e0d137",
+    "name": "HK3 - Năm 2 (2029-2030)",
+    "code": "2029_HK3",
+    "year": 2029,
+    "semesterNumber": 1,
+    "startDate": "2029-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "f7055e6f-8fa6-46e9-af53-c4f6f2f852dc",
+    "name": "HK7 - Năm 4 (2029-2030)",
+    "code": "2029_HK7",
+    "year": 2029,
+    "semesterNumber": 1,
+    "startDate": "2029-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "5e936812-6ab1-4acd-b044-176a1a4f53bc",
+    "name": "HK5 - Năm 3 (2029-2030)",
+    "code": "2029_HK5",
+    "year": 2029,
+    "semesterNumber": 1,
+    "startDate": "2029-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "62b731a5-75e0-4f2e-a7ac-8612d9d1004b",
+    "name": "HK4 - Năm 2 (2029-2030)",
+    "code": "2030_HK4",
+    "year": 2030,
+    "semesterNumber": 1,
+    "startDate": "2030-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "730115d2-b0fa-412a-89a1-1a0ab95381f6",
+    "name": "HK8 - Năm 4 (2029-2030)",
+    "code": "2030_HK8",
+    "year": 2030,
+    "semesterNumber": 1,
+    "startDate": "2030-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "bb2e0100-0998-4f23-a658-d92bb2dd9e13",
+    "name": "HK6 - Năm 3 (2029-2030)",
+    "code": "2030_HK6",
+    "year": 2030,
+    "semesterNumber": 1,
+    "startDate": "2030-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "d8343232-b24f-4a53-8582-278df27642cb",
+    "name": "HK7 - Năm 4 (2030-2031)",
+    "code": "2030_HK7",
+    "year": 2030,
+    "semesterNumber": 1,
+    "startDate": "2030-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "438779cb-acb2-4c0b-9c44-9d4aad215729",
+    "name": "HK5 - Năm 3 (2030-2031)",
+    "code": "2030_HK5",
+    "year": 2030,
+    "semesterNumber": 1,
+    "startDate": "2030-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "40095d28-841e-41a4-918b-8fe3aa674cbb",
+    "name": "HK6 - Năm 3 (2030-2031)",
+    "code": "2031_HK6",
+    "year": 2031,
+    "semesterNumber": 1,
+    "startDate": "2031-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "73913439-3afc-4ae0-887e-6708928ec456",
+    "name": "HK8 - Năm 4 (2030-2031)",
+    "code": "2031_HK8",
+    "year": 2031,
+    "semesterNumber": 1,
+    "startDate": "2031-02-01T00:00:00.000Z"
+  },
+  {
+    "id": "f03e142e-f3f3-465a-9276-6b45b959bd07",
+    "name": "HK7 - Năm 4 (2031-2032)",
+    "code": "2031_HK7",
+    "year": 2031,
+    "semesterNumber": 1,
+    "startDate": "2031-09-01T00:00:00.000Z"
+  },
+  {
+    "id": "50790632-cc55-4565-9e5d-0143b75dc28b",
+    "name": "HK8 - Năm 4 (2031-2032)",
+    "code": "2032_HK8",
+    "year": 2032,
+    "semesterNumber": 1,
+    "startDate": "2032-02-01T00:00:00.000Z"
+  }
+]

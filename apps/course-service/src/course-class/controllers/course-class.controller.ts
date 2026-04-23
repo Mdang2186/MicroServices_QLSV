@@ -228,18 +228,24 @@ export class CourseClassController {
   async findAll(
     @Query('subjectId') subjectId?: string,
     @Query('semesterId') semesterId?: string,
+    @Query('status') status?: string,
     @Query('facultyId') facultyId?: string,
     @Query('majorId') majorId?: string,
+    @Query('departmentId') departmentId?: string,
     @Query('cohort') cohort?: string,
+    @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
     return this.courseClassService.findAll({
       subjectId,
       semesterId,
+      status,
       facultyId,
       majorId,
+      departmentId,
       cohort,
+      search,
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 50,
     });

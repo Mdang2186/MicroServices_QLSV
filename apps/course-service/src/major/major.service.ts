@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -12,14 +12,21 @@ export class MajorService {
   }
 
   async create(data: any) {
-    return this.prisma.major.create({ data });
+    try {
+      return await this.prisma.major.create({ data });
+    } catch (error: any) {
+      if (error.code === 'P2002') throw new BadRequestException('Mã Ngành đã tồn tại.');
+      throw new BadRequestException('Lỗi hệ thống: ' + (error.message || 'Không thể tạo Ngành'));
+    }
   }
 
   async update(id: string, data: any) {
-    return this.prisma.major.update({
-      where: { id },
-      data,
-    });
+    try {
+      return await this.prisma.major.update({ where: { id }, data });
+    } catch (error: any) {
+      if (error.code === 'P2002') throw new BadRequestException('Mã Ngành đã tồn tại.');
+      throw new BadRequestException('Lỗi hệ thống: ' + (error.message || 'Không thể cập nhật Ngành'));
+    }
   }
 
   async delete(id: string) {
@@ -37,7 +44,7 @@ export class MajorService {
       },
     });
 
-    if (!major) throw new BadRequestException('Ngành không tồn tại');
+    if (!major) throw new NotFoundException('Ngành không tồn tại');
 
     if (
       major._count.specializations > 0 ||
@@ -50,8 +57,13 @@ export class MajorService {
       );
     }
 
-    return this.prisma.major.delete({
-      where: { id },
-    });
+    try {
+      return await this.prisma.major.delete({ where: { id } });
+    } catch (error: any) {
+      if (error.code === 'P2003' || error.code === 'P2014') {
+        throw new BadRequestException('Không thể xóa Ngành vì vẫn còn dữ liệu liên kết trong hệ thống.');
+      }
+      throw new BadRequestException('Lỗi hệ thống: ' + (error.message || 'Không thể xóa Ngành'));
+    }
   }
 }

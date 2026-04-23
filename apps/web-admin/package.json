@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@repo/shared-utils": "0.0.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.0.0",

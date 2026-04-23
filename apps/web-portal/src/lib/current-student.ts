@@ -22,7 +22,14 @@ export async function resolveCurrentStudentContext(): Promise<CurrentStudentCont
 
     if (userId) {
         try {
-            const profile = await StudentService.getProfile(userId);
+            // First try fetching as a Student
+            let profile = await StudentService.getProfile(userId);
+            
+            // If not found, try fetching as a Lecturer
+            if (!profile) {
+                profile = await StudentService.getLecturerProfile(userId);
+            }
+
             return {
                 sessionUser,
                 userId,

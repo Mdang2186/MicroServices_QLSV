@@ -1,7 +1,7 @@
 "use client";
 
 import { ShieldCheck, ChevronRight, Activity, Zap, Building2, GraduationCap, Compass, CalendarDays, Search, Users, BookOpen } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
 
 interface Semester {
     id: string;
@@ -25,6 +25,13 @@ interface DashboardHeaderProps {
     onMajorChange?: (id: string) => void;
     onIntakeChange?: (id: string) => void;
     onQuickAction?: (action: string) => void;
+}
+
+interface DashboardFiltersPayload {
+    faculties?: FilterItem[];
+    majors?: FilterItem[];
+    intakes?: FilterItem[];
+    semesters?: Semester[];
 }
 
 async function readJsonSafely(response: Response) {
@@ -60,44 +67,46 @@ export function DashboardHeader({
     const [selectedFacultyId, setSelectedFacultyId] = useState<string>("all");
     const [selectedMajorId, setSelectedMajorId] = useState<string>("all");
     const [selectedIntake, setSelectedIntake] = useState<string>("all");
+    const deferredKeyword = useDeferredValue(keyword);
 
     useEffect(() => {
-        // Fetch Faculties
-        if (onFacultyChange) {
-            fetch("/api/students/dashboard/faculties")
-                .then(async (response) => {
-                    const payload = await readJsonSafely(response);
-                    setFaculties(response.ok && Array.isArray(payload) ? payload : []);
-                })
-                .catch(() => setFaculties([]));
+        if (!onFacultyChange && !onMajorChange && !onIntakeChange && !onSemesterChange) {
+            return;
         }
 
-        // Fetch Intakes
-        if (onIntakeChange) {
-            fetch("/api/students/dashboard/intakes")
-                .then(async (response) => {
-                    const payload = await readJsonSafely(response);
-                    setIntakes(response.ok && Array.isArray(payload) ? payload : []);
-                })
-                .catch(() => setIntakes([]));
+        const controller = new AbortController();
+        const params = new URLSearchParams();
+        if (selectedFacultyId && selectedFacultyId !== "all") {
+            params.append("facultyId", selectedFacultyId);
         }
 
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+        fetch(`/api/students/dashboard/filters?${params.toString()}`, {
+            signal: controller.signal,
+        })
+            .then(async (response) => {
+                const payload = await readJsonSafely(response);
+                const normalized =
+                    payload && typeof payload === "object" ? (payload as DashboardFiltersPayload) : {};
 
-    // Dependent fetch for Majors based on Faculty
+                setFaculties(Array.isArray(normalized.faculties) ? normalized.faculties : []);
+                setMajors(Array.isArray(normalized.majors) ? normalized.majors : []);
+                setIntakes(Array.isArray(normalized.intakes) ? normalized.intakes : []);
+                setSemesters(Array.isArray(normalized.semesters) ? normalized.semesters : []);
+            })
+            .catch((error) => {
+                if (error?.name === "AbortError") return;
+                setFaculties([]);
+                setMajors([]);
+                setIntakes([]);
+                setSemesters([]);
+            });
+
+        return () => controller.abort();
+    }, [selectedFacultyId, onFacultyChange, onIntakeChange, onMajorChange, onSemesterChange]);
+
     useEffect(() => {
-        if (onMajorChange) {
-            const url = selectedFacultyId && selectedFacultyId !== "all" 
-                ? `/api/students/dashboard/majors?facultyId=${selectedFacultyId}` 
-                : `/api/students/dashboard/majors`;
-            fetch(url)
-                .then(async (response) => {
-                    const payload = await readJsonSafely(response);
-                    setMajors(response.ok && Array.isArray(payload) ? payload : []);
-                })
-                .catch(() => setMajors([]));
-        }
-    }, [selectedFacultyId, onMajorChange]);
+        onKeywordChange?.(deferredKeyword.trim());
+    }, [deferredKeyword, onKeywordChange]);
 
     const handleDateChange = (date: string) => {
         setSelectedDate(date);
@@ -106,7 +115,6 @@ export function DashboardHeader({
 
     const handleKeywordChange = (val: string) => {
         setKeyword(val);
-        onKeywordChange?.(val);
     };
 
     const handleSemesterChange = (semesterId: string) => {

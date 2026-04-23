@@ -3,6 +3,7 @@ import * as xlsx from "xlsx";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   CreateStudentDto,
+  FamilyMemberDto,
   UpdateStudentDto,
   StudentResponse,
 } from "@repo/shared-dto";
@@ -16,6 +17,7 @@ export class StudentService {
     user: true,
     major: true,
     specialization: true,
+    familyMembers: true,
     enrollments: {
       include: {
         courseClass: {
@@ -320,6 +322,40 @@ export class StudentService {
     return Number.isFinite(num) && num > 0 ? num : fallback;
   }
 
+  private normalizeFamilyMembers(
+    members?: FamilyMemberDto[] | null,
+  ): FamilyMemberDto[] {
+    if (!Array.isArray(members)) {
+      return [];
+    }
+
+    return members
+      .map((member) => ({
+        relationship: `${member?.relationship || ""}`.trim(),
+        fullName: `${member?.fullName || ""}`.trim(),
+        birthYear:
+          member?.birthYear === undefined || member?.birthYear === null
+            ? undefined
+            : Number(member.birthYear),
+        job: `${member?.job || ""}`.trim() || undefined,
+        phone: `${member?.phone || ""}`.trim() || undefined,
+        ethnicity: `${member?.ethnicity || ""}`.trim() || undefined,
+        religion: `${member?.religion || ""}`.trim() || undefined,
+        nationality: `${member?.nationality || ""}`.trim() || undefined,
+        workplace: `${member?.workplace || ""}`.trim() || undefined,
+        position: `${member?.position || ""}`.trim() || undefined,
+        address: `${member?.address || ""}`.trim() || undefined,
+      }))
+      .filter((member) => member.relationship && member.fullName)
+      .map((member) => ({
+        ...member,
+        birthYear:
+          member.birthYear && Number.isFinite(member.birthYear)
+            ? Math.trunc(member.birthYear)
+            : undefined,
+      }));
+  }
+
   private numericOrNull(value: any) {
     const num = Number(value);
     return Number.isFinite(num) ? num : null;
@@ -480,6 +516,34 @@ export class StudentService {
     return legacyMeta?.cohort || null;
   }
 
+  private async resolveStudent(idOrCode: string) {
+    if (!idOrCode) return null;
+
+    // 1. Try find by UUID (standard Prisma id)
+    let student = await this.prisma.student.findUnique({
+      where: { id: idOrCode },
+      include: this.portalStudentInclude,
+    });
+
+    // 2. Try find by userId
+    if (!student) {
+      student = await this.prisma.student.findUnique({
+        where: { userId: idOrCode },
+        include: this.portalStudentInclude,
+      });
+    }
+
+    // 3. Try find by studentCode
+    if (!student) {
+      student = await this.prisma.student.findFirst({
+        where: { studentCode: idOrCode },
+        include: this.portalStudentInclude,
+      });
+    }
+
+    return student;
+  }
+
   private async mergeMirrorEnrollmentsForLegacyStudent(student: any) {
     const linkedStudentIds = student?.id ? [student.id] : [];
     if (!student?.adminClass?.code) {
@@ -617,8 +681,10 @@ export class StudentService {
       partyDate,
       adminClassId,
       specializationId,
+      familyMembers,
       ...studentData
     } = dto;
+    const normalizedFamilyMembers = this.normalizeFamilyMembers(familyMembers);
 
     return this.prisma.student.create({
       data: {
@@ -642,63 +708,100 @@ export class StudentService {
         idIssueDate: idIssueDate ? new Date(idIssueDate) : undefined,
         youthUnionDate: youthUnionDate ? new Date(youthUnionDate) : undefined,
         partyDate: partyDate ? new Date(partyDate) : undefined,
+        ...(normalizedFamilyMembers.length > 0
+          ? {
+              familyMembers: {
+                create: normalizedFamilyMembers,
+              },
+            }
+          : {}),
       },
       include: {
         user: true,
         specialization: true,
         adminClass: true,
         major: true,
+        familyMembers: true,
       },
     }) as unknown as StudentResponse;
   }
 
-  async findAll(): Promise<StudentResponse[]> {
+  async findAll(filters?: { adminClassId?: string; majorId?: string; cohort?: string }): Promise<StudentResponse[]> {
     return this.prisma.student.findMany({
+      where: {
+        ...(filters?.adminClassId ? { adminClassId: filters.adminClassId } : {}),
+        ...(filters?.majorId ? { majorId: filters.majorId } : {}),
+        ...(filters?.cohort ? { adminClass: { cohort: filters.cohort } } : {}),
+      },
       include: {
         user: true,
         major: true,
         specialization: true,
         adminClass: true,
+        familyMembers: true,
       },
+      orderBy: { studentCode: 'asc' },
     }) as unknown as StudentResponse[];
   }
 
-  async findOne(id: string): Promise<StudentResponse | null> {
-    const student = await this.prisma.student.findUnique({
-      where: { id },
-      include: this.portalStudentInclude,
-    });
+  async findByAdminClass(adminClassId: string): Promise<StudentResponse[]> {
+    return this.findAll({ adminClassId });
+  }
 
-    const { student: mergedStudent, linkedStudentIds } =
-      await this.mergeMirrorEnrollmentsForLegacyStudent(student);
-    const examSchedulesByCourseClass =
-      await this.buildExamSchedulesByCourseClass(
+  async findOne(id: string): Promise<StudentResponse | null> {
+    try {
+      const student = await this.resolveStudent(id);
+
+      if (!student) return null;
+
+      const { student: mergedStudent, linkedStudentIds } =
+        await this.mergeMirrorEnrollmentsForLegacyStudent(student);
+      const examSchedulesByCourseClass =
+        await this.buildExamSchedulesByCourseClass(
+          mergedStudent,
+          linkedStudentIds,
+        );
+      return this.normalizeStudentPayload(
         mergedStudent,
-        linkedStudentIds,
-      );
-    return this.normalizeStudentPayload(
-      mergedStudent,
-      examSchedulesByCourseClass,
-    ) as unknown as StudentResponse | null;
+        examSchedulesByCourseClass,
+      ) as unknown as StudentResponse | null;
+    } catch (error) {
+      this.logger.error(`Error in findOne for student ${id}: ${error.message}`);
+      // Return basic student info if complex include fails
+      const basicStudent = await this.prisma.student.findFirst({
+        where: { OR: [{ id }, { studentCode: id }] },
+        include: { user: true, major: true, adminClass: true }
+      });
+      return basicStudent as unknown as StudentResponse | null;
+    }
   }
 
   async findByUserId(userId: string): Promise<StudentResponse | null> {
-    const student = await this.prisma.student.findUnique({
-      where: { userId },
-      include: this.portalStudentInclude,
-    });
+    try {
+      const student = await this.resolveStudent(userId);
 
-    const { student: mergedStudent, linkedStudentIds } =
-      await this.mergeMirrorEnrollmentsForLegacyStudent(student);
-    const examSchedulesByCourseClass =
-      await this.buildExamSchedulesByCourseClass(
+      if (!student) return null;
+
+      const { student: mergedStudent, linkedStudentIds } =
+        await this.mergeMirrorEnrollmentsForLegacyStudent(student);
+      const examSchedulesByCourseClass =
+        await this.buildExamSchedulesByCourseClass(
+          mergedStudent,
+          linkedStudentIds,
+        );
+      return this.normalizeStudentPayload(
         mergedStudent,
-        linkedStudentIds,
-      );
-    return this.normalizeStudentPayload(
-      mergedStudent,
-      examSchedulesByCourseClass,
-    ) as unknown as StudentResponse | null;
+        examSchedulesByCourseClass,
+      ) as unknown as StudentResponse | null;
+    } catch (error) {
+      this.logger.error(`Error in findByUserId for user ${userId}: ${error.message}`);
+      // Fallback to basic student info
+      const basicStudent = await this.prisma.student.findUnique({
+        where: { userId },
+        include: { user: true, major: true, adminClass: true }
+      });
+      return basicStudent as unknown as StudentResponse | null;
+    }
   }
 
   async getCurriculumProgress(studentId: string) {
@@ -1008,8 +1111,13 @@ export class StudentService {
       partyDate,
       adminClassId,
       specializationId,
+      familyMembers,
       ...rest
     } = dto;
+    const normalizedFamilyMembers =
+      familyMembers === undefined
+        ? undefined
+        : this.normalizeFamilyMembers(familyMembers);
 
     // Update linked user if email changed or status changed and user exists
     if (student.userId && (email !== undefined || dto.isActive !== undefined)) {
@@ -1079,12 +1187,25 @@ export class StudentService {
           partyDate && !isNaN(Date.parse(partyDate))
             ? new Date(partyDate)
             : undefined,
+        ...(normalizedFamilyMembers !== undefined
+          ? {
+              familyMembers: {
+                deleteMany: {},
+                ...(normalizedFamilyMembers.length > 0
+                  ? {
+                      create: normalizedFamilyMembers,
+                    }
+                  : {}),
+              },
+            }
+          : {}),
       },
       include: {
         user: true,
         specialization: true,
         adminClass: true,
         major: true,
+        familyMembers: true,
       },
     }) as unknown as StudentResponse;
   }

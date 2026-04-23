@@ -3,8 +3,9 @@
 import { useEffect, useState, useMemo } from "react";
 import Cookies from "js-cookie";
 import {
-    Building2, Plus, Edit2, Trash2, Layers, X, AlertCircle, CheckCircle2, Search, Loader2
+    BookOpen, Building2, Plus, Edit2, Trash2, Layers, X, AlertCircle, CheckCircle2, Search, Loader2, Users
 } from "lucide-react";
+import { SubjectFormModal } from "@/components/SubjectFormModal";
 
 const STAFF_TOKEN_KEY = "staff_accessToken";
 const ADMIN_TOKEN_KEY = "admin_accessToken";
@@ -28,6 +29,18 @@ function SelectField({ label, options, ...props }: any) {
             </select>
         </div>
     );
+}
+
+function normalizeSearchText(value: any) {
+    return `${value ?? ""}`
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/đ/g, "d")
+        .replace(/Đ/g, "D")
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
 }
 
 // Inline slide-in drawer for add/edit
@@ -71,26 +84,34 @@ function Drawer({ open, onClose, title, children, onSubmit, loading, error }: an
 }
 
 export default function StaffDepartmentsPage() {
-    const [activeTab, setActiveTab] = useState<"faculties" | "majors" | "departments">("faculties");
+    const [activeTab, setActiveTab] = useState<"faculties" | "majors" | "departments" | "subjects" | "adminClasses">("faculties");
     const [faculties, setFaculties] = useState<any[]>([]);
     const [majors, setMajors] = useState<any[]>([]);
     const [departments, setDepartments] = useState<any[]>([]);
+    const [subjects, setSubjects] = useState<any[]>([]);
+    const [adminClasses, setAdminClasses] = useState<any[]>([]);
+    const [cohorts, setCohorts] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
 
     // Filter state for majors/depts tabs
     const [filterFacultyId, setFilterFacultyId] = useState("");
+    const [filterDepartmentId, setFilterDepartmentId] = useState("");
+    const [filterCohortCode, setFilterCohortCode] = useState("");
 
     // Drawer states
-    const [drawer, setDrawer] = useState<"faculty" | "major" | "dept" | null>(null);
+    const [drawer, setDrawer] = useState<"faculty" | "major" | "dept" | "adminClass" | null>(null);
     const [editTarget, setEditTarget] = useState<any>(null);
     const [actionLoading, setActionLoading] = useState(false);
     const [drawerError, setDrawerError] = useState<string | null>(null);
+    const [isSubjectModalOpen, setIsSubjectModalOpen] = useState(false);
+    const [editingSubject, setEditingSubject] = useState<any>(null);
 
     // Form states
     const [facultyForm, setFacultyForm] = useState({ name: "", code: "", deanName: "" });
     const [majorForm, setMajorForm] = useState({ name: "", code: "", facultyId: "", totalCreditsRequired: 120 });
     const [deptForm, setDeptForm] = useState({ name: "", code: "", facultyId: "", headName: "" });
+    const [adminClassForm, setAdminClassForm] = useState({ name: "", code: "", majorId: "", cohort: "" });
 
     const [toast, setToast] = useState<string | null>(null);
 
@@ -111,14 +132,20 @@ export default function StaffDepartmentsPage() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [facRes, majRes, deptRes] = await Promise.all([
+            const [facRes, majRes, deptRes, subRes, classesRes, cohortsRes] = await Promise.all([
                 fetch("/api/faculties", { headers }),
                 fetch("/api/majors", { headers }),
-                fetch("/api/departments", { headers })
+                fetch("/api/departments", { headers }),
+                fetch("/api/subjects", { headers }),
+                fetch("/api/admin-classes", { headers }),
+                fetch("/api/cohorts", { headers })
             ]);
             if (facRes.ok) setFaculties(await facRes.json());
             if (majRes.ok) setMajors(await majRes.json());
             if (deptRes.ok) setDepartments(await deptRes.json());
+            if (subRes.ok) setSubjects(await subRes.json());
+            if (classesRes.ok) setAdminClasses(await classesRes.json());
+            if (cohortsRes.ok) setCohorts(await cohortsRes.json());
         } catch { } finally { setLoading(false); }
     };
 
@@ -156,7 +183,18 @@ export default function StaffDepartmentsPage() {
         finally { setActionLoading(false); }
     };
 
-    const deleteItem = async (type: "faculties" | "majors" | "departments", id: string) => {
+    const submitAdminClass = async () => {
+        setActionLoading(true); setDrawerError(null);
+        try {
+            const url = editTarget ? `/api/admin-classes/${editTarget.id}` : "/api/admin-classes";
+            const res = await fetch(url, { method: editTarget ? "PUT" : "POST", headers, body: JSON.stringify(adminClassForm) });
+            if (res.ok) { showToast(editTarget ? "Cập nhật Lớp thành công!" : "Thêm Lớp mới thành công!"); setDrawer(null); fetchData(); }
+            else { const d = await res.json(); setDrawerError(d.message || "Lỗi."); }
+        } catch { setDrawerError("Lỗi kết nối."); }
+        finally { setActionLoading(false); }
+    };
+
+    const deleteItem = async (type: "faculties" | "majors" | "departments" | "admin-classes", id: string) => {
         if (!confirm("Xác nhận xóa?")) return;
         try {
             const res = await fetch(`/api/${type}/${id}`, { method: "DELETE", headers });
@@ -165,7 +203,7 @@ export default function StaffDepartmentsPage() {
         } catch { alert("Lỗi kết nối."); }
     };
 
-    const openDrawer = (type: "faculty" | "major" | "dept", item?: any) => {
+    const openDrawer = (type: "faculty" | "major" | "dept" | "adminClass", item?: any) => {
         setEditTarget(item || null);
         setDrawerError(null);
         if (type === "faculty") {
@@ -174,36 +212,147 @@ export default function StaffDepartmentsPage() {
             setMajorForm(item
                 ? { name: item.name, code: item.code, facultyId: item.facultyId, totalCreditsRequired: item.totalCreditsRequired }
                 : { name: "", code: "", facultyId: faculties[0]?.id || "", totalCreditsRequired: 120 });
-        } else {
+        } else if (type === "dept") {
             setDeptForm(item
                 ? { name: item.name, code: item.code, facultyId: item.facultyId, headName: item.headName || "" }
                 : { name: "", code: "", facultyId: faculties[0]?.id || "", headName: "" });
+        } else {
+            setAdminClassForm(item 
+                ? { name: item.name || "", code: item.code, majorId: item.majorId, cohort: item.cohort || "" }
+                : { name: "", code: "", majorId: majors[0]?.id || "", cohort: cohorts[0]?.code || "" });
         }
         setDrawer(type);
     };
 
+    const deleteSubject = async (id: string) => {
+        if (!confirm("Xác nhận xóa môn học?")) return;
+        try {
+            const res = await fetch(`/api/subjects/${id}`, { method: "DELETE", headers });
+            if (res.ok) {
+                showToast("Đã xóa môn học thành công!");
+                fetchData();
+            } else {
+                const data = await res.json();
+                alert(data.message || "Không thể xóa môn học.");
+            }
+        } catch {
+            alert("Lỗi kết nối.");
+        }
+    };
+
     // ── Filtered data ─────────────────────────────────────────
     const filteredFaculties = useMemo(() => {
-        if (!search) return faculties;
-        const q = search.toLowerCase();
-        return faculties.filter(f => f.name?.toLowerCase().includes(q) || f.code?.toLowerCase().includes(q));
+        const tokens = normalizeSearchText(search).split(" ").filter(Boolean);
+        if (!tokens.length) return faculties;
+        return faculties.filter(f => {
+            const haystack = normalizeSearchText([f.name, f.code, f.deanName].join(" "));
+            return tokens.every(token => haystack.includes(token));
+        });
     }, [faculties, search]);
 
     const filteredMajors = useMemo(() => {
         let list = majors;
         if (filterFacultyId) list = list.filter(m => m.facultyId === filterFacultyId);
-        if (search) { const q = search.toLowerCase(); list = list.filter(m => m.name?.toLowerCase().includes(q) || m.code?.toLowerCase().includes(q)); }
+        const tokens = normalizeSearchText(search).split(" ").filter(Boolean);
+        if (tokens.length) {
+            list = list.filter(m => {
+                const facultyName = faculties.find(f => f.id === m.facultyId)?.name || "";
+                const haystack = normalizeSearchText([m.name, m.code, facultyName].join(" "));
+                return tokens.every(token => haystack.includes(token));
+            });
+        }
         return list;
-    }, [majors, filterFacultyId, search]);
+    }, [majors, faculties, filterFacultyId, search]);
 
     const filteredDepts = useMemo(() => {
         let list = departments;
         if (filterFacultyId) list = list.filter(d => d.facultyId === filterFacultyId || d.faculty?.id === filterFacultyId);
-        if (search) { const q = search.toLowerCase(); list = list.filter(d => d.name?.toLowerCase().includes(q) || d.code?.toLowerCase().includes(q)); }
+        const tokens = normalizeSearchText(search).split(" ").filter(Boolean);
+        if (tokens.length) {
+            list = list.filter(d => {
+                const facultyName = faculties.find(f => f.id === d.facultyId || f.id === d.faculty?.id)?.name || "";
+                const haystack = normalizeSearchText([d.name, d.code, d.headName, facultyName].join(" "));
+                return tokens.every(token => haystack.includes(token));
+            });
+        }
         return list;
-    }, [departments, filterFacultyId, search]);
+    }, [departments, faculties, filterFacultyId, search]);
+
+    const filteredDepartmentsByFaculty = useMemo(() => {
+        if (!filterFacultyId) return departments;
+        return departments.filter(d => d.facultyId === filterFacultyId || d.faculty?.id === filterFacultyId);
+    }, [departments, filterFacultyId]);
+
+    const filteredSubjects = useMemo(() => {
+        let list = subjects;
+        if (filterFacultyId) {
+            list = list.filter(subject => {
+                const major = subject.major || majors.find(m => m.id === subject.majorId);
+                const department = subject.department || departments.find(d => d.id === subject.departmentId);
+                return (
+                    major?.facultyId === filterFacultyId ||
+                    department?.facultyId === filterFacultyId ||
+                    department?.faculty?.id === filterFacultyId
+                );
+            });
+        }
+        if (filterDepartmentId) {
+            list = list.filter(subject => subject.departmentId === filterDepartmentId || subject.department?.id === filterDepartmentId);
+        }
+
+        const tokens = normalizeSearchText(search).split(" ").filter(Boolean);
+        if (tokens.length) {
+            list = list.filter(subject => {
+                const major = subject.major || majors.find(m => m.id === subject.majorId);
+                const department = subject.department || departments.find(d => d.id === subject.departmentId);
+                const faculty = faculties.find(f => f.id === major?.facultyId || f.id === department?.facultyId || f.id === department?.faculty?.id);
+                const haystack = normalizeSearchText([
+                    subject.code,
+                    subject.name,
+                    subject.description,
+                    major?.code,
+                    major?.name,
+                    department?.code,
+                    department?.name,
+                    faculty?.code,
+                    faculty?.name,
+                ].join(" "));
+                return tokens.every(token => haystack.includes(token));
+            });
+        }
+        return list;
+    }, [subjects, majors, departments, faculties, filterFacultyId, filterDepartmentId, search]);
+
+    const filteredClasses = useMemo(() => {
+        let list = adminClasses;
+        if (filterCohortCode) list = list.filter(c => c.cohort === filterCohortCode);
+        if (filterFacultyId) {
+            list = list.filter(c => {
+                const major = majors.find(m => m.id === c.majorId);
+                return major?.facultyId === filterFacultyId;
+            });
+        }
+        const tokens = normalizeSearchText(search).split(" ").filter(Boolean);
+        if (tokens.length) {
+            list = list.filter(c => {
+                const majorName = majors.find(m => m.id === c.majorId)?.name || "";
+                const haystack = normalizeSearchText([c.code, c.name, c.cohort, majorName].join(" "));
+                return tokens.every(token => haystack.includes(token));
+            });
+        }
+        return list;
+    }, [adminClasses, majors, filterFacultyId, filterCohortCode, search]);
 
     const facultyOptions = faculties.map(f => ({ value: f.id, label: f.name }));
+    const majorOptions = majors.map(m => ({ value: m.id, label: m.name }));
+    const visibleCount =
+        activeTab === "faculties"
+            ? filteredFaculties.length
+            : activeTab === "majors"
+                ? filteredMajors.length
+                : activeTab === "departments"
+                    ? filteredDepts.length
+                    : filteredSubjects.length;
 
     if (loading) return (
         <div className="flex h-full items-center justify-center">
@@ -230,23 +379,28 @@ export default function StaffDepartmentsPage() {
                     onClick={() => {
                         if (activeTab === "faculties") openDrawer("faculty");
                         else if (activeTab === "majors") openDrawer("major");
-                        else openDrawer("dept");
+                        else if (activeTab === "departments") openDrawer("dept");
+                        else if (activeTab === "adminClasses") openDrawer("adminClass");
+                        else {
+                            setEditingSubject(null);
+                            setIsSubjectModalOpen(true);
+                        }
                     }}
                     className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-black hover:bg-indigo-700 transition-all shadow-md shadow-indigo-200">
                     <Plus size={15} />
-                    Thêm {activeTab === "faculties" ? "Khoa" : activeTab === "majors" ? "Ngành" : "Bộ môn"}
+                    Thêm {activeTab === "faculties" ? "Khoa" : activeTab === "majors" ? "Ngành" : activeTab === "departments" ? "Bộ môn" : activeTab === "adminClasses" ? "Lớp" : "Môn học"}
                 </button>
             </div>
 
             {/* ── TOOLBAR ───────────────────────────────────────── */}
             <div className="flex items-center gap-3 px-6 py-3 border-b border-slate-100 shrink-0 flex-wrap">
                 <div className="flex items-center bg-slate-100 rounded-xl p-1">
-                    {(["faculties", "majors", "departments"] as const).map(tab => {
-                        const label = tab === "faculties" ? "Khoa" : tab === "majors" ? "Ngành" : "Bộ môn";
-                        const Icon = tab === "faculties" ? Building2 : Layers;
-                        const cnt = tab === "faculties" ? faculties.length : tab === "majors" ? majors.length : departments.length;
+                    {(["faculties", "majors", "departments", "subjects", "adminClasses"] as const).map(tab => {
+                        const label = tab === "faculties" ? "Khoa" : tab === "majors" ? "Ngành" : tab === "departments" ? "Bộ môn" : tab === "adminClasses" ? "Lớp danh nghĩa" : "Môn học";
+                        const Icon = tab === "faculties" ? Building2 : tab === "subjects" ? BookOpen : tab === "adminClasses" ? Users : Layers;
+                        const cnt = tab === "faculties" ? faculties.length : tab === "majors" ? majors.length : tab === "departments" ? departments.length : tab === "adminClasses" ? adminClasses.length : subjects.length;
                         return (
-                            <button key={tab} onClick={() => { setActiveTab(tab); setSearch(""); setFilterFacultyId(""); }}
+                            <button key={tab} onClick={() => { setActiveTab(tab); setSearch(""); setFilterFacultyId(""); setFilterDepartmentId(""); setFilterCohortCode(""); }}
                                 className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-wide transition-all ${activeTab === tab ? "bg-white text-indigo-600 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}>
                                 <Icon size={13} />{label}
                                 <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black ${activeTab === tab ? "bg-indigo-100 text-indigo-600" : "bg-slate-200 text-slate-400"}`}>{cnt}</span>
@@ -260,12 +414,24 @@ export default function StaffDepartmentsPage() {
                     <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Tìm kiếm..." className="pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none focus:ring-2 ring-indigo-200 w-52" />
                 </div>
                 {activeTab !== "faculties" && (
-                    <select value={filterFacultyId} onChange={e => setFilterFacultyId(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none focus:ring-2 ring-indigo-200">
+                    <select value={filterFacultyId} onChange={e => { setFilterFacultyId(e.target.value); setFilterDepartmentId(""); }} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none focus:ring-2 ring-indigo-200">
                         <option value="">Tất cả Khoa</option>
                         {faculties.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                     </select>
                 )}
-                <span className="ml-auto text-[10px] text-slate-400 font-bold">{activeTab === "faculties" ? filteredFaculties.length : activeTab === "majors" ? filteredMajors.length : filteredDepts.length} bản ghi</span>
+                {activeTab === "subjects" && (
+                    <select value={filterDepartmentId} onChange={e => setFilterDepartmentId(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none focus:ring-2 ring-indigo-200">
+                        <option value="">Tất cả Bộ môn</option>
+                        {filteredDepartmentsByFaculty.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </select>
+                )}
+                {activeTab === "adminClasses" && (
+                    <select value={filterCohortCode} onChange={e => setFilterCohortCode(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none focus:ring-2 ring-indigo-200">
+                        <option value="">Tất cả Khóa</option>
+                        {cohorts.map(c => <option key={c.id} value={c.code}>{c.name}</option>)}
+                    </select>
+                )}
+                <span className="ml-auto text-[10px] text-slate-400 font-bold">{visibleCount} bản ghi</span>
             </div>
 
             {/* ── TABLE CONTAINER ── */}
@@ -358,6 +524,108 @@ export default function StaffDepartmentsPage() {
                             </tbody>
                         </table>
                     )}
+                    {activeTab === "subjects" && (
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="border-b border-slate-100 bg-slate-50 sticky top-0">
+                                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Mã môn</th>
+                                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tên môn học</th>
+                                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Ngành</th>
+                                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Bộ môn</th>
+                                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Thuộc Khoa</th>
+                                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Tín chỉ</th>
+                                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {filteredSubjects.length === 0 ? <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-400 text-sm">Chưa có dữ liệu</td></tr> : filteredSubjects.map(subject => {
+                                    const major = subject.major || majors.find(m => m.id === subject.majorId);
+                                    const department = subject.department || departments.find(d => d.id === subject.departmentId);
+                                    const faculty = faculties.find(f => f.id === major?.facultyId || f.id === department?.facultyId || f.id === department?.faculty?.id);
+                                    return (
+                                        <tr key={subject.id} className="group hover:bg-slate-50/70 transition-colors">
+                                            <td className="px-6 py-3.5"><span className="font-mono font-black text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg">{subject.code}</span></td>
+                                            <td className="px-6 py-3.5 text-sm font-bold text-slate-700">{subject.name}</td>
+                                            <td className="px-6 py-3.5 text-sm text-slate-500">{major?.name || "—"}</td>
+                                            <td className="px-6 py-3.5 text-sm text-slate-500">{department?.name || "—"}</td>
+                                            <td className="px-6 py-3.5 whitespace-nowrap">{faculty ? <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-lg whitespace-nowrap">{faculty.name}</span> : <span className="text-slate-300 text-xs">—</span>}</td>
+                                            <td className="px-6 py-3.5 text-center"><span className="text-xs font-black text-slate-600">{subject.credits}</span></td>
+                                            <td className="px-6 py-3.5">
+                                                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                                    <button onClick={() => { setEditingSubject(subject); setIsSubjectModalOpen(true); }} className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"><Edit2 size={14} /></button>
+                                                    <button onClick={() => deleteSubject(subject.id)} className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"><Trash2 size={14} /></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    )}
+                    {activeTab === "adminClasses" && (
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="border-b border-slate-100 bg-slate-50 sticky top-0">
+                                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Mã lớp</th>
+                                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Khóa</th>
+                                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Ngành</th>
+                                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Sĩ số</th>
+                                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {filteredClasses.length === 0 ? <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 text-sm">Chưa có dữ liệu</td></tr> : filteredClasses.map(cls => (
+                                    <tr key={cls.id} className="group hover:bg-slate-50/70 transition-colors">
+                                        <td className="px-6 py-3.5"><span className="font-mono font-black text-[13px] text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg">{cls.code}</span>
+                                            {cls.name && <span className="block mt-1 text-[11px] text-slate-400 font-medium">{cls.name}</span>}
+                                        </td>
+                                        <td className="px-6 py-3.5 text-sm font-bold text-slate-700">{cls.cohort || "—"}</td>
+                                        <td className="px-6 py-3.5"><span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">{majors.find(m => m.id === cls.majorId)?.name || "—"}</span></td>
+                                        <td className="px-6 py-3.5 text-center"><span className="text-xs font-black text-slate-600">{cls._count?.students || 0}</span></td>
+                                        <td className="px-6 py-3.5">
+                                            <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                                <button onClick={() => window.location.href = `/staff/training-scores?classId=${cls.id}`} className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all" title="Nhập điểm rèn luyện"><BookOpen size={14} /></button>
+                                                <button onClick={() => openDrawer("adminClass", cls)} className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"><Edit2 size={14} /></button>
+                                                <button onClick={() => deleteItem("admin-classes", cls.id)} className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"><Trash2 size={14} /></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
+                    {activeTab === "adminClasses" && (
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="border-b border-slate-100 bg-slate-50 sticky top-0">
+                                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Mã lớp</th>
+                                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Khóa</th>
+                                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Ngành</th>
+                                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Sĩ số</th>
+                                    <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {filteredClasses.length === 0 ? <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-400 text-sm">Chưa có dữ liệu</td></tr> : filteredClasses.map(cls => (
+                                    <tr key={cls.id} className="group hover:bg-slate-50/70 transition-colors">
+                                        <td className="px-6 py-3.5"><span className="font-mono font-black text-[13px] text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg">{cls.code}</span>
+                                            {cls.name && <span className="block mt-1 text-[11px] text-slate-400 font-medium">{cls.name}</span>}
+                                        </td>
+                                        <td className="px-6 py-3.5 text-sm font-bold text-slate-700">{cls.cohort || "—"}</td>
+                                        <td className="px-6 py-3.5"><span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-lg">{majors.find(m => m.id === cls.majorId)?.name || "—"}</span></td>
+                                        <td className="px-6 py-3.5 text-center"><span className="text-xs font-black text-slate-600">{cls._count?.students || 0}</span></td>
+                                        <td className="px-6 py-3.5">
+                                            <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                                <button onClick={() => window.location.href = `/staff/training-scores?classId=${cls.id}`} className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all" title="Nhập điểm rèn luyện"><BookOpen size={14} /></button>
+                                                <button onClick={() => openDrawer("adminClass", cls)} className="p-1.5 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"><Edit2 size={14} /></button>
+                                                <button onClick={() => deleteItem("admin-classes", cls.id)} className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"><Trash2 size={14} /></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
                 </div>
             </div>
 
@@ -382,6 +650,27 @@ export default function StaffDepartmentsPage() {
                 <InputField label="Tên Bộ môn" placeholder="VD: Kỹ thuật phần mềm" value={deptForm.name} onChange={(e: any) => setDeptForm(f => ({ ...f, name: e.target.value }))} />
                 <SelectField label="Thuộc Khoa" options={facultyOptions} value={deptForm.facultyId} onChange={(e: any) => setDeptForm(f => ({ ...f, facultyId: e.target.value }))} />
             </Drawer>
+            <Drawer open={drawer === "adminClass"} onClose={() => setDrawer(null)} title={editTarget ? "Chỉnh sửa Lớp" : "Thêm Lớp mới"} onSubmit={submitAdminClass} loading={actionLoading} error={drawerError}>
+                <div className="grid grid-cols-2 gap-3">
+                    <InputField label="Mã Lớp" placeholder="VD: K14DCNTT1" value={adminClassForm.code} onChange={(e: any) => setAdminClassForm(f => ({ ...f, code: e.target.value }))} />
+                    <SelectField label="Khóa học" options={cohorts.map(c => ({ value: c.code, label: c.name }))} value={adminClassForm.cohort} onChange={(e: any) => setAdminClassForm(f => ({ ...f, cohort: e.target.value }))} />
+                </div>
+                <InputField label="Tên lớp tham khảo (Không bắt buộc)" placeholder="VD: Cử nhân CNTT 1" value={adminClassForm.name} onChange={(e: any) => setAdminClassForm(f => ({ ...f, name: e.target.value }))} />
+                <SelectField label="Ngành học" options={majorOptions} value={adminClassForm.majorId} onChange={(e: any) => setAdminClassForm(f => ({ ...f, majorId: e.target.value }))} />
+            </Drawer>
+            <SubjectFormModal
+                isOpen={isSubjectModalOpen}
+                onClose={() => setIsSubjectModalOpen(false)}
+                editingSubject={editingSubject}
+                majors={majors}
+                departments={departments}
+                subjects={subjects}
+                headers={headers}
+                onSuccess={(message) => {
+                    showToast(message);
+                    fetchData();
+                }}
+            />
         </div>
     );
 }

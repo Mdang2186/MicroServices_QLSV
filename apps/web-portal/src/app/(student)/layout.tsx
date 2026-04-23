@@ -4,10 +4,9 @@ import StudentNavbar from "@/components/student/Navbar";
 export default function StudentLayout({ children }: { children: React.ReactNode }) {
     return (
         <StudentGuard>
-            {/* Force rebuild: ChunkLoadError fix */}
-            <div className="min-h-screen bg-gray-50">
+            <div className="min-h-screen bg-slate-50 flex flex-col">
                 <StudentNavbar />
-                <main className="container mx-auto px-4 py-8">
+                <main className="flex-1 flex flex-col overflow-hidden">
                     {children}
                 </main>
             </div>

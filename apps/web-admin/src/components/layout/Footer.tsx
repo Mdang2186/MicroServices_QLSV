@@ -14,7 +14,7 @@ export default function Footer() {
                         © {currentYear} <span className="text-uneti-blue font-black tracking-tighter">UNETI<span className="text-uneti-blue">.</span></span> Hệ thống quản lý sinh viên.
                     </p>
                     <p className="text-[11px] font-medium text-slate-400">
-                        Phát triển bởi <span className="text-slate-600 font-bold">Khoa Công nghệ Thông tin</span>
+                        Phát triển bởi <span className="text-slate-600 font-bold">Nhóm khóa luận: Đỗ Công Minh - Trịnh Thu Trang </span>
                     </p>
                 </div>
 

@@ -1,0 +1,266 @@
+[
+  {
+    "id": "003c62ca-35ba-4485-82dd-a37873f8a4a7",
+    "subjectId": "101000173",
+    "semesterId": "0c5f23ea-0052-4d6f-93f4-cc8e077a2dd5",
+    "lecturerId": "LEC_GV_KT_07",
+    "code": "CCLASS_2027_HK8_IT_NET1_K15_CNTT2_02",
+    "name": "Mạng máy tính - K15-CNTT2-02",
+    "tuitionMultiplier": 1,
+    "maxSlots": 25,
+    "currentSlots": 20,
+    "status": "OPEN",
+    "totalPeriods": 45,
+    "cohort": "K15",
+    "periodsPerSession": 3,
+    "sessionsPerWeek": 1,
+    "subject": {
+      "name": "Mạng máy tính",
+      "credits": 3
+    },
+    "semester": {
+      "code": "2027_HK8"
+    },
+    "enrollments": [
+      {
+        "id": "0f2ea4be-84da-4f96-9645-c894e202e479"
+      },
+      {
+        "id": "4e806d4b-0310-428e-88a7-70e5d1b5ffdd"
+      },
+      {
+        "id": "0733accc-b198-4b79-9ca5-b4687dac5143"
+      },
+      {
+        "id": "caf7e0c6-f2ef-4ec3-bdc5-77bf6332b49a"
+      },
+      {
+        "id": "c7877ddd-b1b3-4779-b1bc-f30a72c6512f"
+      },
+      {
+        "id": "70afcc55-bea2-484a-a0fc-d464cd4c811f"
+      },
+      {
+        "id": "13822758-804c-4303-8161-94f89bf1d16e"
+      },
+      {
+        "id": "c7bb1c78-3776-468e-a246-5cf79fd5b665"
+      },
+      {
+        "id": "726a05ac-a130-47a2-92fa-6f36cedb053b"
+      },
+      {
+        "id": "0f514080-68f7-441b-9af0-b84c7213faab"
+      },
+      {
+        "id": "8121b376-3ba4-49c3-9741-65eb5afbe0ba"
+      },
+      {
+        "id": "e48171fe-cecd-4f67-977c-9b3e1479971f"
+      },
+      {
+        "id": "48d346bc-ce80-426b-92cd-e425917b683f"
+      },
+      {
+        "id": "1797575d-03a8-40a0-a00d-47e7f4069f95"
+      },
+      {
+        "id": "57771b1d-ecfd-43f8-8921-77a921d77b6e"
+      },
+      {
+        "id": "6c78bd94-6de2-4aef-9f30-b1a1efebef25"
+      },
+      {
+        "id": "b1ebc834-d5fb-489d-b891-b2d3d5e74b71"
+      },
+      {
+        "id": "e1ab731a-d785-4fa5-9fa0-31ac3ed34aad"
+      },
+      {
+        "id": "c190c431-0aef-4ab9-9026-81a72c770923"
+      },
+      {
+        "id": "e845891a-d3dc-4462-a0b4-7fbf608dbed5"
+      }
+    ],
+    "_count": {
+      "enrollments": 20
+    }
+  },
+  {
+    "id": "00bc57ec-16c5-4a87-805b-0b5d873a74b6",
+    "subjectId": "101001078",
+    "semesterId": "66ce79c2-7558-4569-9552-231cafdf54d1",
+    "lecturerId": "SEED_LEC_BMNNT_02",
+    "code": "CCLASS_2028_HK8_IT_OOP_K15_CNTT1_03",
+    "name": "Lập trình hướng đối tượng - K15-CNTT1-03",
+    "tuitionMultiplier": 1,
+    "maxSlots": 25,
+    "currentSlots": 20,
+    "status": "OPEN",
+    "totalPeriods": 45,
+    "cohort": "K15",
+    "periodsPerSession": 3,
+    "sessionsPerWeek": 1,
+    "subject": {
+      "name": "Lập trình hướng đối tượng",
+      "credits": 3
+    },
+    "semester": {
+      "code": "2028_HK8"
+    },
+    "enrollments": [
+      {
+        "id": "7f97c3df-06a9-415a-9529-2ed55685be24"
+      },
+      {
+        "id": "07265ae7-13c9-4e5d-9d40-0302bb5b07bf"
+      },
+      {
+        "id": "95a41eb3-b321-46e9-b9cb-4578b865872f"
+      },
+      {
+        "id": "f6c5a892-22ec-4f8c-9546-89e6df0c36b3"
+      },
+      {
+        "id": "6071dbb6-093c-45fa-bf50-3e8885a8944e"
+      },
+      {
+        "id": "7ce75682-a392-4b48-a920-f1d5e8b72923"
+      },
+      {
+        "id": "ef0ca082-507e-4e66-ad0e-8416d1bb1d95"
+      },
+      {
+        "id": "a3d4356f-e65f-4304-a631-52fca58ed930"
+      },
+      {
+        "id": "a0b2cd4d-e5a6-4c43-9482-f8fa0829fdda"
+      },
+      {
+        "id": "2598420c-f06d-49ad-9c7c-b1802f4d7c31"
+      },
+      {
+        "id": "4be35b75-000b-4733-b93a-29f42d51cc17"
+      },
+      {
+        "id": "08005fe4-a94f-4fca-9b1c-085131de7b0b"
+      },
+      {
+        "id": "20f2af33-2a96-4e24-a428-fa1b3c0d6f3e"
+      },
+      {
+        "id": "790bb2e0-9896-4712-8bcd-e02d4f94958d"
+      },
+      {
+        "id": "1ad3e894-a760-4526-9cbc-b520c952e6e9"
+      },
+      {
+        "id": "a7f4dedd-4f84-41bf-a8a7-29f38be46f56"
+      },
+      {
+        "id": "fa7a1d74-0b3b-4439-9015-e30d7374e3a3"
+      },
+      {
+        "id": "b3cdd298-9db4-4cb4-9cb8-3d610d4df9c0"
+      },
+      {
+        "id": "f44060ed-037b-4581-a491-7a9f0312b46f"
+      },
+      {
+        "id": "5ea61c05-91e3-466b-a10f-04a6b1ec30b1"
+      }
+    ],
+    "_count": {
+      "enrollments": 20
+    }
+  },
+  {
+    "id": "010f74aa-3ce9-4c7e-b376-eec095adcd6e",
+    "subjectId": "101000173",
+    "semesterId": "0c5f23ea-0052-4d6f-93f4-cc8e077a2dd5",
+    "lecturerId": "LEC_GV_NNA_04",
+    "code": "CCLASS_2027_HK8_IT_NET1_K15_CNTT2_01",
+    "name": "Mạng máy tính - K15-CNTT2-01",
+    "tuitionMultiplier": 1,
+    "maxSlots": 25,
+    "currentSlots": 20,
+    "status": "OPEN",
+    "totalPeriods": 45,
+    "cohort": "K15",
+    "periodsPerSession": 3,
+    "sessionsPerWeek": 1,
+    "subject": {
+      "name": "Mạng máy tính",
+      "credits": 3
+    },
+    "semester": {
+      "code": "2027_HK8"
+    },
+    "enrollments": [
+      {
+        "id": "544db9f6-aef4-42bf-ac5b-6b74bb7517a9"
+      },
+      {
+        "id": "f498d6ed-d036-4bcb-ac8e-9547b0931c5a"
+      },
+      {
+        "id": "636bc2f6-e1ad-4051-a1f2-9ba23dd4df8c"
+      },
+      {
+        "id": "073d82e5-a1b1-4466-ba44-54bcf68f45c7"
+      },
+      {
+        "id": "c7ef9aa5-efa4-4aa8-b98e-3ae8b67eb553"
+      },
+      {
+        "id": "53696a5b-3e8f-44a0-92a7-831c822fb5cb"
+      },
+      {
+        "id": "227b9855-dfde-4ce0-8b10-7bd39299872e"
+      },
+      {
+        "id": "31902d8b-845d-4753-af0f-3b428b684854"
+      },
+      {
+        "id": "fd66d349-7a12-42f5-8d71-e852c18da59c"
+      },
+      {
+        "id": "4e59ff43-5323-4b37-af6a-7857ba852ea7"
+      },
+      {
+        "id": "b92855ce-393c-4c85-a2a7-fde8a1942214"
+      },
+      {
+        "id": "c07c352f-f253-4064-92d6-c5575c316a35"
+      },
+      {
+        "id": "30f41c60-9441-4ad2-a251-fd316dce9bea"
+      },
+      {
+        "id": "912d93ca-53c2-4b80-a539-0e56c40c948f"
+      },
+      {
+        "id": "e81e42f5-fe8a-4fc0-b480-98acfbeba46c"
+      },
+      {
+        "id": "c7109b57-70b6-493a-bf5f-084317479a34"
+      },
+      {
+        "id": "7a3e8456-422d-418f-a3fc-3ad11e57e84b"
+      },
+      {
+        "id": "fc63fd8f-4f84-4b26-b6b1-a934903067ee"
+      },
+      {
+        "id": "493a3de2-49da-4fce-ab4e-b2384207a273"
+      },
+      {
+        "id": "dba1df21-363e-446b-a0dd-bed5a018e5ef"
+      }
+    ],
+    "_count": {
+      "enrollments": 20
+    }
+  }
+]

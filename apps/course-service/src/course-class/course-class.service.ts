@@ -329,18 +329,24 @@ export class CourseClassService {
   async findAll(filters: {
     subjectId?: string;
     semesterId?: string;
+    status?: string;
     facultyId?: string;
     majorId?: string;
+    departmentId?: string;
     cohort?: string;
+    search?: string;
     page?: number;
     limit?: number;
   }) {
     const {
       subjectId,
       semesterId,
+      status,
       facultyId,
       majorId,
+      departmentId,
       cohort,
+      search,
       page = 1,
       limit = 50,
     } = filters;
@@ -348,7 +354,13 @@ export class CourseClassService {
 
     if (subjectId) whereArgs.subjectId = subjectId;
     if (semesterId) whereArgs.semesterId = semesterId;
+    if (status) whereArgs.status = status;
     if (majorId) whereArgs.subject = { ...whereArgs.subject, majorId };
+    if (departmentId)
+      whereArgs.subject = {
+        ...whereArgs.subject,
+        departmentId,
+      };
     if (facultyId)
       whereArgs.subject = {
         ...whereArgs.subject,
@@ -356,40 +368,216 @@ export class CourseClassService {
       };
     if (cohort) whereArgs.cohort = cohort;
 
-    const skip = (page - 1) * limit;
-
-    const [total, data] = await Promise.all([
-      this.prisma.courseClass.count({ where: whereArgs }),
-      this.prisma.courseClass.findMany({
-        where: whereArgs,
-        skip,
-        take: limit,
-        orderBy: { code: 'asc' },
+    const normalizedKeyword = this.normalizeSearchableText(search);
+    const tokens = normalizedKeyword.split(' ').filter(Boolean);
+    const safePage = Math.max(Number(page) || 1, 1);
+    const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
+    const skip = (safePage - 1) * safeLimit;
+    const detailInclude: any = {
+      lecturer: true,
+      subject: {
         include: {
-          lecturer: true,
-          subject: {
+          major: {
             include: {
-              major: true,
-              department: true,
+              faculty: true,
             },
           },
-          semester: true,
-          _count: {
-            select: { enrollments: true },
-          },
+          department: true,
         },
-      }),
-    ]);
-
-    return {
-      data,
-      metadata: {
-        total,
-        page,
-        limit,
-        lastPage: Math.ceil(total / limit),
+      },
+      semester: true,
+      adminClasses: {
+        select: {
+          code: true,
+          name: true,
+        },
+      },
+      _count: {
+        select: { enrollments: true },
       },
     };
+
+    if (tokens.length === 0) {
+      const [total, data] = await Promise.all([
+        this.prisma.courseClass.count({ where: whereArgs }),
+        this.prisma.courseClass.findMany({
+          where: whereArgs,
+          skip,
+          take: safeLimit,
+          orderBy: { code: 'asc' },
+          include: detailInclude,
+        }),
+      ]);
+
+      return {
+        data,
+        metadata: {
+          total,
+          page: safePage,
+          limit: safeLimit,
+          lastPage: Math.max(1, Math.ceil(total / safeLimit)),
+        },
+      };
+    }
+
+    const searchableRows = await this.prisma.courseClass.findMany({
+      where: whereArgs,
+      orderBy: { code: 'asc' },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        cohort: true,
+        status: true,
+        lecturer: {
+          select: {
+            fullName: true,
+          },
+        },
+        subject: {
+          select: {
+            code: true,
+            name: true,
+            department: {
+              select: {
+                code: true,
+                name: true,
+              },
+            },
+            major: {
+              select: {
+                code: true,
+                name: true,
+                faculty: {
+                  select: {
+                    code: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        semester: {
+          select: {
+            code: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    const adminClassMap = await this.getCourseClassAdminClassMap(
+      searchableRows.map((courseClass) => courseClass.id),
+    );
+
+    const matchedIds = searchableRows
+      .filter((courseClass) =>
+        this.matchesCourseClassSearch(
+          {
+            ...courseClass,
+            adminClasses: adminClassMap.get(courseClass.id) || [],
+          },
+          tokens,
+        ),
+      )
+      .map((courseClass) => courseClass.id);
+
+    const total = matchedIds.length;
+    const pageIds = matchedIds.slice(skip, skip + safeLimit);
+    const data =
+      pageIds.length === 0
+        ? []
+        : await this.prisma.courseClass.findMany({
+            where: {
+              id: { in: pageIds },
+            },
+            include: detailInclude,
+          });
+    const dataMap = new Map(data.map((courseClass) => [courseClass.id, courseClass]));
+    const orderedData = pageIds
+      .map((courseClassId) => dataMap.get(courseClassId))
+      .filter(Boolean);
+
+    return {
+      data: orderedData,
+      metadata: {
+        total,
+        page: safePage,
+        limit: safeLimit,
+        lastPage: Math.max(1, Math.ceil(total / safeLimit)),
+      },
+    };
+  }
+
+  private normalizeSearchableText(value?: string | null) {
+    return `${value || ''}`
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private matchesCourseClassSearch(courseClass: any, tokens: string[]) {
+    const searchIndex = this.normalizeSearchableText(
+      [
+        courseClass?.code,
+        courseClass?.name,
+        courseClass?.cohort,
+        courseClass?.status,
+        courseClass?.subject?.code,
+        courseClass?.subject?.name,
+        courseClass?.subject?.department?.code,
+        courseClass?.subject?.department?.name,
+        courseClass?.subject?.major?.code,
+        courseClass?.subject?.major?.name,
+        courseClass?.subject?.major?.faculty?.code,
+        courseClass?.subject?.major?.faculty?.name,
+        courseClass?.lecturer?.fullName,
+        courseClass?.semester?.code,
+        courseClass?.semester?.name,
+        ...(courseClass?.adminClasses || []).flatMap((adminClass: any) => [
+          adminClass?.code,
+          adminClass?.name,
+        ]),
+      ].join(' '),
+    );
+
+    return tokens.every((token) => searchIndex.includes(token));
+  }
+
+  private async getCourseClassAdminClassMap(courseClassIds: string[]) {
+    const adminClassMap = new Map<string, Array<{ code: string; name: string }>>();
+    const validIds = courseClassIds.filter(Boolean);
+    const chunkSize = 400;
+
+    for (let index = 0; index < validIds.length; index += chunkSize) {
+      const chunkIds = validIds.slice(index, index + chunkSize);
+      const rows = await this.prisma.courseClass.findMany({
+        where: {
+          id: { in: chunkIds },
+        },
+        select: {
+          id: true,
+          adminClasses: {
+            select: {
+              code: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      for (const row of rows) {
+        adminClassMap.set(row.id, row.adminClasses || []);
+      }
+    }
+
+    return adminClassMap;
   }
 
   async findOne(id: string) {

@@ -30,6 +30,32 @@ export default function AttendancePage() {
     const [expandedClass, setExpandedClass] = useState<string | null>(null);
     const [expandedSemesters, setExpandedSemesters] = useState<Record<string, boolean>>({});
 
+    const parseAttendanceNote = (note?: string | null) => {
+        if (!note) return { manualNote: "", meta: {} as any };
+        try {
+            const parsed = JSON.parse(note);
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+                return {
+                    manualNote: `${parsed.manualNote || ""}`,
+                    meta: parsed.meta && typeof parsed.meta === "object" ? parsed.meta : {},
+                };
+            }
+        } catch {
+            // Legacy note
+        }
+        return { manualNote: `${note}`, meta: {} as any };
+    };
+
+    const normalizeAttendance = (attendance: any) => {
+        if (!attendance) return attendance;
+        const parsed = parseAttendanceNote(attendance.note);
+        return {
+            ...attendance,
+            note: parsed.manualNote,
+            ...parsed.meta,
+        };
+    };
+
     useEffect(() => {
         const fetchData = async () => {
             try {
@@ -43,7 +69,12 @@ export default function AttendancePage() {
 
                 setStudent(studentData);
                 const enrollmentData = await StudentService.getEnrollments(context.studentId);
-                setEnrollments(enrollmentData || []);
+                setEnrollments(
+                    (enrollmentData || []).map((enrollment: any) => ({
+                        ...enrollment,
+                        attendances: (enrollment.attendances || []).map(normalizeAttendance),
+                    })),
+                );
             } catch (error) {
                 console.error("Failed to fetch attendance data:", error);
             } finally {
@@ -63,20 +94,31 @@ export default function AttendancePage() {
         return matchingSchedules.reduce((acc, s) => acc + (s.endShift - s.startShift + 1), 0);
     };
 
+    const getAttendancePeriods = (attendance: any, enrollment: any) => {
+        if (attendance?.session) {
+            return Math.max(Number(attendance.session.endShift) - Number(attendance.session.startShift) + 1, 0);
+        }
+        return getPeriodsForAttendance(attendance?.date, enrollment.courseClass?.schedules || []);
+    };
+
+    const formatAttendanceMethod = (attendance: any) => {
+        if (attendance?.method === "QR_GEO") return "QR + GPS";
+        if (attendance?.method === "QR") return "QR";
+        return "Thủ công";
+    };
+
     const calculateAttendanceRate = (enrollment: any) => {
         const attendances = enrollment.attendances;
         if (!attendances || attendances.length === 0) return 100;
         
-        // Count total periods scheduled for matching attendance dates
         const totalPeriods = attendances.reduce((acc: number, a: any) => 
-            acc + getPeriodsForAttendance(a.date, enrollment.courseClass?.schedules || []), 0);
+            acc + getAttendancePeriods(a, enrollment), 0);
             
         if (totalPeriods === 0) return 100;
 
-        // Count attended periods (PRESENT or EXCUSED)
         const attendedPeriods = attendances
             .filter((a: any) => a.status === "PRESENT" || a.status === "EXCUSED" || a.status === "ABSENT_EXCUSED")
-            .reduce((acc: number, a: any) => acc + getPeriodsForAttendance(a.date, enrollment.courseClass?.schedules || []), 0);
+            .reduce((acc: number, a: any) => acc + getAttendancePeriods(a, enrollment), 0);
 
         return Math.round((attendedPeriods / totalPeriods) * 100);
     };
@@ -88,7 +130,7 @@ export default function AttendancePage() {
     const groupedEnrollments = enrollments.reduce((acc: any, enr: any) => {
         const sem = enr.courseClass?.semester;
         const key = sem ? `${sem.name} (${sem.year} - ${sem.year + 1})` : "Khác";
-        if (!acc[key]) acc = { [key]: [], ...acc }; // Prepend new semester to keep order
+        if (!acc[key]) acc = { [key]: [], ...acc };
         acc[key].push(enr);
         return acc;
     }, {});
@@ -115,7 +157,7 @@ export default function AttendancePage() {
             : ["ABSENT", "ABSENT_UNEXCUSED"];
             
         return enr.attendances?.filter((a: any) => statuses.includes(a.status))
-            .reduce((acc: number, a: any) => acc + getPeriodsForAttendance(a.date, enr.courseClass?.schedules || []), 0) || 0;
+            .reduce((acc: number, a: any) => acc + getAttendancePeriods(a, enr), 0) || 0;
     };
 
     const totalExcused = enrollments.reduce((acc, enr) => acc + calculateTermAbsences(enr, 'EXCUSED'), 0);
@@ -162,10 +204,12 @@ export default function AttendancePage() {
                             <TableRow className="hover:bg-transparent border-slate-200 h-10 text-center">
                                 <TableHead className="w-12 text-center font-bold text-slate-500 text-[10px] uppercase">STT</TableHead>
                                 <TableHead className="w-32 text-left font-bold text-slate-500 text-[10px] uppercase">Mã lớp HP</TableHead>
-                                <TableHead className="text-left font-bold text-slate-500 text-[10px] uppercase">Tên môn học/học phần</TableHead>
-                                <TableHead className="w-16 text-center font-bold text-slate-500 text-[10px] uppercase">TC</TableHead>
-                                <TableHead className="w-32 text-center font-bold text-blue-600 text-[10px] uppercase bg-blue-50/30">Số tiết nghỉ có phép</TableHead>
-                                <TableHead className="w-32 text-center font-bold text-rose-600 text-[10px] uppercase bg-rose-50/30">Số tiết nghỉ không phép</TableHead>
+                                <TableHead className="text-left font-bold text-slate-500 text-[10px] uppercase">Tên môn học</TableHead>
+                                <TableHead className="w-14 text-center font-bold text-slate-500 text-[10px] uppercase">TC</TableHead>
+                                <TableHead className="w-28 text-center font-bold text-slate-500 text-[10px] uppercase bg-indigo-50/40">Tỷ lệ CC</TableHead>
+                                <TableHead className="w-24 text-center font-bold text-indigo-600 text-[10px] uppercase bg-indigo-50/40">Điểm CC</TableHead>
+                                <TableHead className="w-28 text-center font-bold text-blue-600 text-[10px] uppercase bg-blue-50/30">Nghỉ CP</TableHead>
+                                <TableHead className="w-28 text-center font-bold text-rose-600 text-[10px] uppercase bg-rose-50/30">Nghỉ KP</TableHead>
                                 <TableHead className="w-20 text-center font-bold text-slate-500 text-[10px] uppercase pr-6">Chi tiết</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -179,7 +223,7 @@ export default function AttendancePage() {
                                                 className="bg-slate-50/80 hover:bg-slate-100 cursor-pointer border-slate-200"
                                                 onClick={() => toggleSemester(semesterKey)}
                                             >
-                                                <TableCell colSpan={7} className="py-2.5 px-6">
+                                                <TableCell colSpan={9} className="py-2.5 px-6">
                                                     <div className="flex items-center gap-2">
                                                         <div className={cn("transition-transform", isOpen && "rotate-90")}>
                                                             <ChevronDown size={14} className="text-slate-400" />
@@ -196,7 +240,12 @@ export default function AttendancePage() {
                                                 {isOpen && groupedEnrollments[semesterKey].map((enr: any, index: number) => {
                                                     const excused = calculateTermAbsences(enr, 'EXCUSED');
                                                     const unexcused = calculateTermAbsences(enr, 'UNEXCUSED');
+                                                    const attendanceRate = calculateAttendanceRate(enr);
                                                     const isExpanded = expandedClass === enr.id;
+                                                    // attendanceScore comes from the grade record via enrollment
+                                                    const grade = enr.grade;
+                                                    const attendanceScore = grade?.attendanceScore ?? enr.attendanceScore ?? null;
+                                                    const isEligibleForExam = grade?.isEligibleForExam ?? enr.isEligibleForExam ?? null;
 
                                                     return (
                                                         <React.Fragment key={enr.id}>
@@ -210,6 +259,31 @@ export default function AttendancePage() {
                                                                 <TableCell className="font-bold text-indigo-600 text-[10px] border-b border-slate-50">{enr.courseClass?.code}</TableCell>
                                                                 <TableCell className="font-bold text-slate-700 text-[11px] border-b border-slate-50">{enr.courseClass?.subject?.name}</TableCell>
                                                                 <TableCell className="text-center font-bold text-slate-600 text-[10px] border-b border-slate-50">{enr.courseClass?.subject?.credits || 0}</TableCell>
+                                                                {/* Attendance Rate + Eligibility */}
+                                                                <TableCell className="text-center border-b border-slate-50 bg-indigo-50/10">
+                                                                    <div className="flex flex-col items-center gap-0.5">
+                                                                        <span className="font-black text-indigo-600 text-[12px]">{attendanceRate}%</span>
+                                                                        {isEligibleForExam !== null ? (
+                                                                            <span className={cn(
+                                                                                "text-[9px] font-black px-1.5 py-0.5 rounded-full",
+                                                                                isEligibleForExam === false ? "bg-rose-100 text-rose-600" : "bg-emerald-100 text-emerald-700"
+                                                                            )}>
+                                                                                {isEligibleForExam === false ? "Cấm thi" : "Đủ ĐK"}
+                                                                            </span>
+                                                                        ) : null}
+                                                                    </div>
+                                                                </TableCell>
+                                                                {/* Attendance Score */}
+                                                                <TableCell className="text-center border-b border-slate-50 bg-indigo-50/10">
+                                                                    <span className={cn(
+                                                                        "font-black text-[15px]",
+                                                                        attendanceScore !== null
+                                                                            ? (attendanceScore >= 8 ? "text-emerald-600" : attendanceScore >= 5 ? "text-amber-500" : "text-rose-600")
+                                                                            : "text-slate-300"
+                                                                    )}>
+                                                                        {attendanceScore !== null ? attendanceScore : "—"}
+                                                                    </span>
+                                                                </TableCell>
                                                                 <TableCell className="text-center font-black text-blue-600 text-[12px] border-b border-slate-50 bg-blue-50/10">{excused}</TableCell>
                                                                 <TableCell className="text-center font-black text-rose-500 text-[12px] border-b border-slate-50 bg-rose-50/10">{unexcused}</TableCell>
                                                                 <TableCell className="text-center pr-6 border-b border-slate-50">
@@ -222,11 +296,11 @@ export default function AttendancePage() {
                                                                 </TableCell>
                                                             </motion.tr>
 
-                                                            {/* Expanded Logs */}
+                                                            {/* Expanded Attendance Logs */}
                                                             <AnimatePresence>
                                                                 {isExpanded && (
                                                                     <TableRow className="bg-slate-50/50 border-none">
-                                                                        <TableCell colSpan={7} className="p-0">
+                                                                        <TableCell colSpan={9} className="p-0">
                                                                             <motion.div
                                                                                 initial={{ height: 0, opacity: 0 }}
                                                                                 animate={{ height: "auto", opacity: 1 }}
@@ -236,7 +310,7 @@ export default function AttendancePage() {
                                                                                 <div className="p-4 flex flex-wrap gap-2">
                                                                                     {enr.attendances?.length > 0 ? (
                                                                                         enr.attendances.map((att: any, i: number) => {
-                                                                                            const periods = getPeriodsForAttendance(att.date, enr.courseClass?.schedules || []);
+                                                                                            const periods = getAttendancePeriods(att, enr);
                                                                                             return (
                                                                                                 <div key={i} className={cn(
                                                                                                     "flex items-center gap-2.5 px-3 py-1.5 rounded-md border text-[10px] font-bold",
@@ -252,6 +326,20 @@ export default function AttendancePage() {
                                                                                                     </span>
                                                                                                     <div className="h-3 w-px bg-current opacity-20"></div>
                                                                                                     <span className="text-slate-400">{periods} Tiết</span>
+                                                                                                    <div className="h-3 w-px bg-current opacity-20"></div>
+                                                                                                    <span className="text-slate-500">{formatAttendanceMethod(att)}</span>
+                                                                                                    {att.markedAt && (
+                                                                                                        <>
+                                                                                                            <div className="h-3 w-px bg-current opacity-20"></div>
+                                                                                                            <span className="text-slate-500">{new Date(att.markedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</span>
+                                                                                                        </>
+                                                                                                    )}
+                                                                                                    {att.isLocationVerified && (
+                                                                                                        <>
+                                                                                                            <div className="h-3 w-px bg-current opacity-20"></div>
+                                                                                                            <span className="text-emerald-600">GPS OK{typeof att.distanceMeters === "number" ? ` ${Math.round(att.distanceMeters)}m` : ""}</span>
+                                                                                                        </>
+                                                                                                    )}
                                                                                                 </div>
                                                                                             );
                                                                                         })
@@ -275,7 +363,7 @@ export default function AttendancePage() {
                                 })
                             ) : (
                                 <TableRow>
-                                    <TableCell colSpan={7} className="h-32 text-center">
+                                    <TableCell colSpan={9} className="h-32 text-center">
                                         <div className="flex flex-col items-center justify-center opacity-40">
                                             <ClipboardCheck className="h-8 w-8 text-slate-300 mb-2" />
                                             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Không tìm thấy dữ liệu điểm danh</p>
@@ -287,7 +375,7 @@ export default function AttendancePage() {
                         {enrollments.length > 0 && (
                             <tfoot className="bg-slate-50/80 border-t-2 border-slate-200 relative z-10">
                                 <TableRow className="h-14">
-                                    <TableCell colSpan={4} className="text-right py-3 pr-6 font-black text-slate-700 text-[11px] uppercase tracking-widest">Tổng cộng tiết nghỉ:</TableCell>
+                                    <TableCell colSpan={6} className="text-right py-3 pr-6 font-black text-slate-700 text-[11px] uppercase tracking-widest">Tổng cộng tiết nghỉ:</TableCell>
                                     <TableCell className="text-center font-black text-blue-700 text-sm bg-blue-50/20">{totalExcused}</TableCell>
                                     <TableCell className="text-center font-black text-rose-600 text-sm bg-rose-50/20">{totalUnexcused}</TableCell>
                                     <TableCell></TableCell>

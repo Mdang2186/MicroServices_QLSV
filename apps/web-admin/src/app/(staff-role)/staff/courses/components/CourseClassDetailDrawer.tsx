@@ -47,6 +47,11 @@ const SHIFT_OPTIONS = [
   { value: 10, label: "Ca 4 (Tiết 10-12)" },
 ];
 
+const PERIOD_OPTIONS = Array.from({ length: 6 }, (_, index) => ({
+  value: index + 1,
+  label: `${index + 1} tiết`,
+}));
+
 function getStatusBadge(status: string) {
   if (status === "PAID" || status === "ENROLLED") {
     return "bg-emerald-50 text-emerald-600 border-emerald-100";
@@ -234,7 +239,14 @@ export default function CourseClassDetailDrawer({
         body: JSON.stringify({
           date: movingSession.nextDate || format(new Date(movingSession.date), "yyyy-MM-dd"),
           startShift: Number(movingSession.nextShift || movingSession.startShift),
-          endShift: Number(movingSession.nextShift || movingSession.startShift) + 2,
+          endShift:
+            Number(movingSession.nextShift || movingSession.startShift) +
+            Number(
+              movingSession.nextPeriodCount ||
+                movingSession.periodCount ||
+                movingSession.endShift - movingSession.startShift + 1,
+            ) -
+            1,
           roomId:
             movingSession.nextRoomId === "keep"
               ? movingSession.roomId || null
@@ -275,7 +287,10 @@ export default function CourseClassDetailDrawer({
         body: JSON.stringify({
           date: addingSession.date,
           startShift: Number(addingSession.startShift || 1),
-          endShift: Number(addingSession.startShift || 1) + 2,
+          endShift:
+            Number(addingSession.startShift || 1) +
+            Number(addingSession.periodCount || 3) -
+            1,
           roomId:
             addingSession.roomId && addingSession.roomId !== "none"
               ? addingSession.roomId
@@ -498,6 +513,7 @@ export default function CourseClassDetailDrawer({
                       setAddingSession({
                         date: format(new Date(), "yyyy-MM-dd"),
                         startShift: 1,
+                        periodCount: 3,
                         roomId: "none",
                         type: "EXTRA",
                         note: "Học bù",
@@ -577,6 +593,8 @@ export default function CourseClassDetailDrawer({
                               ...session,
                               nextDate: format(new Date(session.date), "yyyy-MM-dd"),
                               nextShift: session.startShift,
+                              nextPeriodCount: session.endShift - session.startShift + 1,
+                              periodCount: session.endShift - session.startShift + 1,
                               nextRoomId: session.roomId || "keep",
                             })
                           }
@@ -876,7 +894,7 @@ export default function CourseClassDetailDrawer({
                           <div className="flex items-start justify-between gap-6">
                             <div>
                               <p className="text-[10px] font-black uppercase tracking-[0.22em] text-rose-600">
-                                {issue.type === "ROOM"
+                                {issue.type === "SELF"
                                   ? "Tự trùng ca"
                                   : issue.type === "ROOM"
                                     ? "Trùng phòng"
@@ -1005,6 +1023,28 @@ export default function CourseClassDetailDrawer({
 
                 <div>
                   <label className="mb-2 block pl-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Số tiết
+                  </label>
+                  <select
+                    value={movingSession.nextPeriodCount || movingSession.periodCount || 3}
+                    onChange={(event) =>
+                      setMovingSession((current: any) => ({
+                        ...current,
+                        nextPeriodCount: Number(event.target.value),
+                      }))
+                    }
+                    className="w-full appearance-none rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-[11px] font-black text-slate-800 outline-none transition-all focus:ring-4 focus:ring-uneti-blue/5"
+                  >
+                    {PERIOD_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block pl-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
                     Phòng học
                   </label>
                   <select
@@ -1098,6 +1138,28 @@ export default function CourseClassDetailDrawer({
                     className="w-full appearance-none rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-[11px] font-black text-slate-800 outline-none transition-all focus:ring-4 focus:ring-uneti-blue/5"
                   >
                     {SHIFT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block pl-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Số tiết
+                  </label>
+                  <select
+                    value={addingSession.periodCount || 3}
+                    onChange={(event) =>
+                      setAddingSession((current: any) => ({
+                        ...current,
+                        periodCount: Number(event.target.value),
+                      }))
+                    }
+                    className="w-full appearance-none rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 text-[11px] font-black text-slate-800 outline-none transition-all focus:ring-4 focus:ring-uneti-blue/5"
+                  >
+                    {PERIOD_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
                       </option>

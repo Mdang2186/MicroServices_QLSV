@@ -119,6 +119,13 @@ export class CacheService implements OnModuleInit {
 
   /** Invalidate by prefix (caution: L2 uses SCAN/KEYS which can be slow) */
   async invalidatePrefix(prefix: string): Promise<void> {
+    await this.delByPattern(`${prefix}*`);
+  }
+
+  /** Invalidate by glob pattern (e.g., "prefix:*") */
+  async delByPattern(pattern: string): Promise<void> {
+    const prefix = pattern.replace('*', '');
+
     // Clear L1
     for (const key of this.localStore.keys()) {
       if (key.startsWith(prefix)) {
@@ -129,12 +136,12 @@ export class CacheService implements OnModuleInit {
     // Clear L2
     if (this.isRedisReady && this.redisClient) {
       try {
-        const keys = await this.redisClient.keys(`${prefix}*`);
+        const keys = await this.redisClient.keys(pattern);
         if (keys.length > 0) {
           await this.redisClient.del(...keys);
         }
       } catch (err) {
-        console.warn('[Redis] InvalidatePrefix Error:', err.message);
+        console.warn('[Redis] delByPattern Error:', err.message);
       }
     }
   }

@@ -13,11 +13,13 @@
         "@nestjs/core": "^10.0.0",
         "@nestjs/passport": "^10.0.0",
         "passport-jwt": "^4.0.0",
-        "@repo/shared-dto": "*"
+        "@repo/shared-dto": "*",
+        "react": "^18.2.0"
     },
     "devDependencies": {
         "typescript": "^5.3.3",
         "@types/node": "^20.3.1",
+        "@types/react": "^18.2.48",
         "@repo/typescript-config": "*"
     }
 }
