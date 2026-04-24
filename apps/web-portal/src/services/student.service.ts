@@ -1,13 +1,18 @@
 import api from "@/lib/api";
 
 export const StudentService = {
+    getProfileSummary: async (idOrCode: string) => {
+        const response = await api.get(`/api/students/resolve/${encodeURIComponent(idOrCode)}`);
+        return response.data;
+    },
+
     getProfile: async (userId: string) => {
-        const response = await api.get(`/api/students/user/${userId}`);
+        const response = await api.get(`/api/students/user/${encodeURIComponent(userId)}`);
         return response.data;
     },
 
     getProfileByStudentId: async (studentId: string) => {
-        const response = await api.get(`/api/students/${studentId}`);
+        const response = await api.get(`/api/students/${encodeURIComponent(studentId)}`);
         return response.data;
     },
 
@@ -72,6 +77,27 @@ export const StudentService = {
 
     getCohorts: async () => {
         const response = await api.get("/api/cohorts");
+        return response.data;
+    },
+
+    getCohortSemesters: async (cohortCode: string) => {
+        const response = await api.get(`/api/cohorts/${encodeURIComponent(cohortCode)}/semesters`);
+        return response.data;
+    },
+
+    getAdminClasses: async (majorId?: string, cohort?: string) => {
+        const query = new URLSearchParams();
+        if (majorId) query.set("majorId", majorId);
+        if (cohort) query.set("cohort", cohort);
+
+        const response = await api.get(
+            `/api/admin-classes${query.toString() ? `?${query.toString()}` : ""}`,
+        );
+        return response.data;
+    },
+
+    getAdminClassTrainingResults: async (adminClassId: string) => {
+        const response = await api.get(`/api/training-results/admin-class/${adminClassId}`);
         return response.data;
     },
 };

@@ -23,6 +23,11 @@ export class AcademicCohortController {
     return this.academicCohortService.create(data);
   }
 
+  @Get(':code/semesters')
+  async getSemesters(@Param('code') code: string) {
+    return this.academicCohortService.getSemesters(code);
+  }
+
   @Patch(':code')
   async update(@Param('code') code: string, @Body() data: any) {
     return this.academicCohortService.update(code, data);

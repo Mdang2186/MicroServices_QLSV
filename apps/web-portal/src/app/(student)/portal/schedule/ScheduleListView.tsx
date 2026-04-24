@@ -12,6 +12,8 @@ type SemesterOption = {
   name: string;
   startDate?: Date | null;
   endDate?: Date | null;
+  isCurrent?: boolean;
+  isRegistering?: boolean;
   sessionDates: Date[];
 };
 
@@ -211,7 +213,37 @@ const inferCohortMeta = (cohortCode?: string | null): StudentCohortMeta | null =
 };
 
 const expectedYearForSemester = (startYear: number, conceptualSemester: number) =>
-  startYear + Math.floor(conceptualSemester / 2);
+  startYear + Math.floor((conceptualSemester - 1) / 2);
+
+const normalizeSemesterForCohort = (
+  semester: Partial<SemesterOption> & { year?: number },
+  cohortMeta: StudentCohortMeta,
+  conceptualSemester: number,
+): SemesterOption & { year?: number } => {
+  const studyYear = Math.ceil(conceptualSemester / 2);
+  const academicStartYear = cohortMeta.startYear + studyYear - 1;
+  const academicYearLabel = `${academicStartYear}-${academicStartYear + 1}`;
+  const isOddSemester = conceptualSemester % 2 === 1;
+  const startDate = isOddSemester
+    ? new Date(academicStartYear, 8, 1)
+    : new Date(academicStartYear + 1, 1, 1);
+  const endDate = isOddSemester
+    ? new Date(academicStartYear + 1, 0, 20)
+    : new Date(academicStartYear + 1, 5, 30);
+
+  return {
+    id: semester.id || `${cohortMeta.code}_HK${conceptualSemester}`,
+    selectionKey: semester.selectionKey || `${cohortMeta.code}_HK${conceptualSemester}`,
+    code: `${cohortMeta.code}_HK${conceptualSemester}`,
+    name: `HK${conceptualSemester} - Năm ${studyYear} (${academicYearLabel})`,
+    startDate,
+    endDate,
+    isCurrent: Boolean(semester.isCurrent),
+    isRegistering: Boolean(semester.isRegistering),
+    sessionDates: semester.sessionDates || [],
+    year: isOddSemester ? academicStartYear : academicStartYear + 1,
+  };
+};
 
 const getSemesterStartYear = (semester: Partial<SemesterOption> & { year?: number }) => {
   const startDate = semester.startDate ? new Date(semester.startDate) : null;
@@ -288,7 +320,7 @@ const getVisibleSemestersForCohort = (
     .map((conceptualSemester) => {
       const expectedYear = expectedYearForSemester(cohortMeta.startYear, conceptualSemester);
 
-      return semesters
+      const matchedSemester = semesters
         .filter((semester) => parseConceptualSemester(semester) === conceptualSemester)
         .sort((left, right) => {
           const leftYearDiff = Math.abs(getSemesterStartYear(left) - expectedYear);
@@ -311,6 +343,8 @@ const getVisibleSemestersForCohort = (
 
           return new Date(left.startDate || 0).getTime() - new Date(right.startDate || 0).getTime();
         })[0];
+
+      return normalizeSemesterForCohort(matchedSemester || {}, cohortMeta, conceptualSemester);
     })
     .filter((semester): semester is SemesterOption & { year?: number } => Boolean(semester));
 
@@ -668,7 +702,7 @@ export default function ScheduleListView() {
 
         const profile =
           context.profile ||
-          (await StudentService.getProfileByStudentId(context.studentId).catch(() => null));
+          (await StudentService.getProfileSummary(context.studentId).catch(() => null));
         const [semesterData, curriculumData] = await Promise.all([
           StudentService.getSemesters().catch(() => []),
           StudentService.getCurriculumProgress(context.studentId).catch(() => null),

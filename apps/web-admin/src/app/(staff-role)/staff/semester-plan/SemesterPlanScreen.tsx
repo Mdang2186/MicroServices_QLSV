@@ -287,6 +287,37 @@ function getVisibleExecutionItems(execution: any, cohort?: string | null) {
   return splitPreferred.length > 0 ? splitPreferred : filtered;
 }
 
+function isNoScheduleExecutionItem(item: any) {
+  const subjectName = `${item?.subject?.name || ""}`;
+  return (
+    item?.subject?.examType === "BAO_VE" ||
+    /khóa luận|khoá luận|đồ án|thực tập|kltn/i.test(subjectName)
+  );
+}
+
+function getScheduledPeriods(courseClass: any) {
+  return (courseClass?.sessions || []).reduce((total: number, session: any) => {
+    const startShift = Number(session?.startShift || 0);
+    const endShift = Number(session?.endShift || 0);
+    return total + Math.max(0, endShift - startShift + 1);
+  }, 0);
+}
+
+function executionItemHasCompleteSchedule(item: any) {
+  if (!item?.generatedCourseClass) return false;
+  if (isNoScheduleExecutionItem(item)) return item.status === "EXECUTED";
+
+  const requiredPeriods =
+    Number(item.generatedCourseClass?.totalPeriods || 0) ||
+    getRequiredTotalPeriods(item);
+
+  return requiredPeriods > 0 && getScheduledPeriods(item.generatedCourseClass) >= requiredPeriods;
+}
+
+function executionItemIsOperational(item: any) {
+  return item?.status === "EXECUTED" && executionItemHasCompleteSchedule(item);
+}
+
 async function requestApi<T = any>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(API(path), init);
   const rawText = await response.text();
@@ -427,6 +458,16 @@ export default function SemesterPlanScreen() {
     () => getVisibleExecutionItems(execution, selectedCohort),
     [execution, selectedCohort],
   );
+  const coordinationLocked = useMemo(
+    () =>
+      coordinationItems.length > 0 &&
+      coordinationItems.every((item: any) => executionItemIsOperational(item)),
+    [coordinationItems],
+  );
+  const editableCoordinationItems = useMemo(
+    () => (coordinationLocked ? [] : coordinationItems),
+    [coordinationItems, coordinationLocked],
+  );
   const runningClasses = useMemo(
     () => coordinationItems.filter((item: any) => item.generatedCourseClass),
     [coordinationItems],
@@ -435,6 +476,12 @@ export default function SemesterPlanScreen() {
     () => majors.find((item) => item.id === selectedMajorId) || null,
     [majors, selectedMajorId],
   );
+
+  useEffect(() => {
+    if (coordinationLocked && activeStep === "DIEU_PHOI") {
+      setActiveStep("VAN_HANH");
+    }
+  }, [activeStep, coordinationLocked]);
 
   const bootstrap = async () => {
     setLoading(true);
@@ -674,18 +721,25 @@ export default function SemesterPlanScreen() {
       });
       const nextExecution = normalizeExecutionPayload(data);
       const visibleItems = getVisibleExecutionItems(nextExecution, selectedCohort);
+      const nextCoordinationLocked =
+        visibleItems.length > 0 &&
+        visibleItems.every((item: any) => executionItemIsOperational(item));
       setExecution(nextExecution);
-      setActiveStep("DIEU_PHOI");
+      setActiveStep(nextCoordinationLocked ? "VAN_HANH" : "DIEU_PHOI");
       toast.success(
         `Đã tách ${visibleItems.length || 0} lớp học phần cho ${formatSemesterLabel(activeSemester)}.`,
       );
       const alreadyScheduledCount =
         visibleItems.filter(
-          (item: any) => (item?.generatedCourseClass?.sessions?.length || 0) > 0,
+          (item: any) => executionItemHasCompleteSchedule(item),
         )?.length || 0;
-      if (alreadyScheduledCount > 0) {
-        toast.error(
-          `${alreadyScheduledCount} lớp học phần đã có lịch sẵn. Hệ thống sẽ giữ nguyên, không tạo chồng lịch mới.`,
+      if (nextCoordinationLocked) {
+        toast.success(
+          "Các lớp đã có lịch vận hành. Hệ thống đã chuyển sang Theo dõi vận hành.",
+        );
+      } else if (alreadyScheduledCount > 0) {
+        toast(
+          `${alreadyScheduledCount} lớp học phần đã có lịch sẵn; chỉ các lớp còn thiếu mới cần điều phối.`,
         );
       }
     } catch (error: any) {
@@ -1018,8 +1072,8 @@ export default function SemesterPlanScreen() {
             label="2. Điều phối & Tách lớp"
             icon={LayoutGrid}
             isActive={activeStep === "DIEU_PHOI"}
-            onClick={() => setActiveStep("DIEU_PHOI")}
-            count={coordinationItems.length}
+            onClick={() => setActiveStep(coordinationLocked ? "VAN_HANH" : "DIEU_PHOI")}
+            count={coordinationLocked ? undefined : editableCoordinationItems.length}
           />
           <StepTab
             label="3. Theo dõi vận hành"
@@ -1200,22 +1254,34 @@ export default function SemesterPlanScreen() {
                   <div className="flex items-center gap-2 rounded-xl border border-amber-100 bg-amber-50 px-4 py-2 text-xs font-bold text-amber-700">
                     <ShieldCheck size={16} /> Cơ chế: Tách độc lập
                   </div>
-                  <button
-                    onClick={handleResetExecutionClasses}
-                    disabled={!execution?.id || resettingClasses || processing}
-                    className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-5 py-2.5 text-xs font-black uppercase tracking-widest text-rose-700 transition-all hover:bg-rose-100 disabled:opacity-50"
-                  >
-                    {resettingClasses ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                    Xóa lớp đã tách
-                  </button>
-                  <button
-                    onClick={handleExecuteZap}
-                    disabled={!execution?.id || processing}
-                    className="flex items-center gap-2 rounded-xl bg-[#004ea1] px-5 py-2.5 text-xs font-black uppercase tracking-widest text-white shadow-md transition-all hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    {processing ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
-                    Kích hoạt hệ thống
-                  </button>
+                  {coordinationLocked ? (
+                    <button
+                      onClick={() => setActiveStep("VAN_HANH")}
+                      className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-5 py-2.5 text-xs font-black uppercase tracking-widest text-emerald-700 transition-all hover:bg-emerald-100"
+                    >
+                      <ListChecks size={14} />
+                      Đã có lịch - Theo dõi vận hành
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={handleResetExecutionClasses}
+                        disabled={!execution?.id || resettingClasses || processing}
+                        className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-5 py-2.5 text-xs font-black uppercase tracking-widest text-rose-700 transition-all hover:bg-rose-100 disabled:opacity-50"
+                      >
+                        {resettingClasses ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                        Xóa lớp đã tách
+                      </button>
+                      <button
+                        onClick={handleExecuteZap}
+                        disabled={!execution?.id || processing}
+                        className="flex items-center gap-2 rounded-xl bg-[#004ea1] px-5 py-2.5 text-xs font-black uppercase tracking-widest text-white shadow-md transition-all hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {processing ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                        Kích hoạt hệ thống
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -1234,9 +1300,16 @@ export default function SemesterPlanScreen() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-sm">
-                      {coordinationItems.length > 0 ? (
-                        coordinationItems.map((item: any) => {
+                      {editableCoordinationItems.length > 0 ? (
+                        editableCoordinationItems.map((item: any) => {
                           const validation = getValidationState(item, activeSemester);
+                          const scheduledPeriods = getScheduledPeriods(item.generatedCourseClass);
+                          const requiredScheduledPeriods =
+                            Number(item.generatedCourseClass?.totalPeriods || 0) ||
+                            getRequiredTotalPeriods(item);
+                          const hasAnySchedule =
+                            (item?.generatedCourseClass?.sessions?.length || 0) > 0;
+                          const hasCompleteSchedule = executionItemHasCompleteSchedule(item);
                           return (
                             <tr key={item.id} className="transition-colors hover:bg-blue-50/30">
                               <td className="px-6 py-5">
@@ -1250,9 +1323,17 @@ export default function SemesterPlanScreen() {
                                   <span className="flex items-center gap-1 rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-slate-600">
                                     <Users size={10} /> {item.adminClass.code} ({item.expectedStudentCount} SV)
                                   </span>
-                                  {(item?.generatedCourseClass?.sessions?.length || 0) > 0 ? (
-                                    <span className="rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-700">
-                                      Đã có lịch
+                                  {hasAnySchedule ? (
+                                    <span
+                                      className={`rounded border px-2 py-0.5 ${
+                                        hasCompleteSchedule
+                                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                          : "border-amber-200 bg-amber-50 text-amber-700"
+                                      }`}
+                                    >
+                                      {hasCompleteSchedule
+                                        ? "Đủ lịch"
+                                        : `Thiếu lịch ${scheduledPeriods}/${requiredScheduledPeriods}`}
                                     </span>
                                   ) : null}
                                 </div>
@@ -1326,9 +1407,26 @@ export default function SemesterPlanScreen() {
                       ) : (
                         <tr>
                           <td colSpan={5} className="px-6 py-16 text-center text-slate-400">
-                            <LayoutGrid size={40} className="mx-auto mb-4 opacity-20" />
-                            <p className="text-base font-bold">Chưa có lớp học phần nào được tách.</p>
-                            <p className="mt-1 text-xs">Vui lòng quay lại "Kế hoạch khung" và phát hành kế hoạch trước khi điều phối.</p>
+                            {coordinationLocked ? (
+                              <>
+                                <ListChecks size={40} className="mx-auto mb-4 text-emerald-500 opacity-40" />
+                                <p className="text-base font-bold text-slate-500">
+                                  Các lớp đã có lịch vận hành.
+                                </p>
+                                <button
+                                  onClick={() => setActiveStep("VAN_HANH")}
+                                  className="mt-4 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-black uppercase tracking-widest text-white shadow-md transition-all hover:bg-emerald-700"
+                                >
+                                  Chuyển sang Theo dõi vận hành
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <LayoutGrid size={40} className="mx-auto mb-4 opacity-20" />
+                                <p className="text-base font-bold">Chưa có lớp học phần nào được tách.</p>
+                                <p className="mt-1 text-xs">Vui lòng quay lại "Kế hoạch khung" và phát hành kế hoạch trước khi điều phối.</p>
+                              </>
+                            )}
                           </td>
                         </tr>
                       )}

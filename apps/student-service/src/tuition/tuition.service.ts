@@ -33,6 +33,48 @@ export class TuitionService {
     return Number(value || 0);
   }
 
+  private async upsertSyncedReceipt(
+    prisma: any,
+    studentFeeId: string,
+    paidAmount: number,
+  ) {
+    const amount = Math.max(this.normalizeMoney(paidAmount), 0);
+    const transactionCode = `RCPT_${studentFeeId}`.slice(0, 100);
+
+    if (amount <= 0) {
+      await prisma.feeTransaction.deleteMany({
+        where: { studentFeeId, transactionCode },
+      });
+      return null;
+    }
+
+    const existing = await prisma.feeTransaction.findFirst({
+      where: { studentFeeId, transactionCode },
+      orderBy: { transactionDate: "desc" },
+    });
+
+    const payload = {
+      amount,
+      transactionType: "PAYMENT",
+      paymentMethod: "STAFF",
+      transactionCode,
+    };
+
+    if (existing) {
+      return prisma.feeTransaction.update({
+        where: { id: existing.id },
+        data: payload,
+      });
+    }
+
+    return prisma.feeTransaction.create({
+      data: {
+        studentFeeId,
+        ...payload,
+      },
+    });
+  }
+
   private isTuitionSummaryFeeName(name?: string | null) {
     return `${name || ""}`.toLowerCase().includes("học phí");
   }
@@ -119,17 +161,101 @@ export class TuitionService {
     return legacyMeta?.cohort || null;
   }
 
+  private parseCohortStartYear(cohortCode?: string | null) {
+    const cohortNumber = Number(`${cohortCode || ""}`.replace(/\D/g, ""));
+    if (!Number.isFinite(cohortNumber) || cohortNumber <= 0) return null;
+    if (cohortNumber >= 2000) return cohortNumber;
+    return 2006 + cohortNumber;
+  }
+
+  private parseConceptualSemester(semester: any) {
+    const source = `${semester?.code || ""} ${semester?.name || ""}`;
+    const match =
+      source.match(/HK\s*([1-8])/i) ||
+      source.match(/H[OỌ]C\s*K[YỲ]\s*([1-8])/i) ||
+      source.match(/SEMESTER\s*([1-8])/i);
+    if (match) return Number(match[1]);
+
+    const semesterNumber = Number(
+      semester?.cohortSemesterNumber || semester?.semesterNumber || 0,
+    );
+    return semesterNumber >= 1 && semesterNumber <= 8 ? semesterNumber : null;
+  }
+
+  private buildCohortSemester(semester: any, student: any, slot?: number | null) {
+    const cohortCode = this.resolveStudentCohortCode(student);
+    const startYear = this.parseCohortStartYear(cohortCode);
+    const semesterNumber = slot || this.parseConceptualSemester(semester);
+    if (!cohortCode || !startYear || !semesterNumber) return semester;
+
+    const studyYear = Math.ceil(semesterNumber / 2);
+    const academicStartYear = startYear + studyYear - 1;
+    const academicYearLabel = `${academicStartYear}-${academicStartYear + 1}`;
+    const isOddSemester = semesterNumber % 2 === 1;
+
+    return {
+      ...semester,
+      code: `${cohortCode}_HK${semesterNumber}`,
+      name: `HK${semesterNumber} - Năm ${studyYear} (${academicYearLabel})`,
+      year: isOddSemester ? academicStartYear : academicStartYear + 1,
+      startDate: isOddSemester
+        ? new Date(academicStartYear, 8, 1)
+        : new Date(academicStartYear + 1, 1, 1),
+      endDate: isOddSemester
+        ? new Date(academicStartYear + 1, 0, 20)
+        : new Date(academicStartYear + 1, 5, 30),
+      semesterNumber,
+      cohortCode,
+      cohortSemesterNumber: semesterNumber,
+      cohortStudyYear: studyYear,
+      cohortAcademicYear: academicYearLabel,
+    };
+  }
+
+  private getStudentSemesterBucketKey(semester: any, student: any) {
+    const slot = this.parseConceptualSemester(semester);
+    if (slot && slot >= 1 && slot <= 8) return `SLOT_${slot}`;
+    return `${semester?.id || semester?.code || semester?.name || ""}`.trim();
+  }
+
+  private async resolveStudentRecord(
+    identifier: string,
+    select: any,
+    prismaClient?: any,
+  ) {
+    if (!identifier) return null;
+    const prisma = prismaClient || this.prisma;
+
+    let student = await prisma.student.findUnique({
+      where: { id: identifier },
+      select,
+    });
+
+    if (!student) {
+      student = await prisma.student.findUnique({
+        where: { userId: identifier },
+        select,
+      });
+    }
+
+    if (!student) {
+      student = await prisma.student.findUnique({
+        where: { studentCode: identifier },
+        select,
+      });
+    }
+
+    return student;
+  }
+
   private async resolveLinkedStudentIds(studentId: string) {
-    const student = await this.prisma.student.findUnique({
-      where: { id: studentId },
-      select: {
-        id: true,
-        fullName: true,
-        studentCode: true,
-        intake: true,
-        adminClass: {
-          select: { id: true, code: true, cohort: true },
-        },
+    const student = await this.resolveStudentRecord(studentId, {
+      id: true,
+      fullName: true,
+      studentCode: true,
+      intake: true,
+      adminClass: {
+        select: { id: true, code: true, cohort: true },
       },
     });
 
@@ -210,13 +336,22 @@ export class TuitionService {
       },
     });
 
-    return plans
-      .map((plan) => plan.semester)
-      .filter(Boolean)
-      .sort(
-        (left, right) =>
-          new Date(right.startDate).getTime() - new Date(left.startDate).getTime(),
-      );
+    const semesterBySlot = new Map<number, any>();
+
+    for (const plan of plans) {
+      const conceptualSemester = Number(plan.conceptualSemester);
+      const slot =
+        conceptualSemester >= 1 && conceptualSemester <= 8
+          ? conceptualSemester
+          : this.parseConceptualSemester(plan.semester);
+      if (!plan.semester || !slot || semesterBySlot.has(slot)) continue;
+      semesterBySlot.set(slot, this.buildCohortSemester(plan.semester, student, slot));
+    }
+
+    return [...semesterBySlot.values()].sort(
+      (left, right) =>
+        new Date(right.startDate).getTime() - new Date(left.startDate).getTime(),
+    );
   }
 
   private async resolveTargetSemester(
@@ -344,6 +479,7 @@ export class TuitionService {
     fixedFees?: any[];
     tuitionSummaryFee?: any | null;
     priceConfigMap?: Map<string, number>;
+    preferEnrollmentStatus?: boolean;
   }) {
     const enrollments = data.enrollments || [];
     const fixedFees = (data.fixedFees || []).filter(
@@ -405,7 +541,7 @@ export class TuitionService {
       ),
     );
 
-    const tuitionItems = tuitionSummaryFee
+    const tuitionItems = tuitionSummaryFee && !data.preferEnrollmentStatus
       ? this.allocateTuitionPaidAmounts(
           baseTuitionItems,
           this.resolveFixedFeePaidAmount(tuitionSummaryFee),
@@ -474,15 +610,16 @@ export class TuitionService {
     studentId: string,
     semesterId?: string,
     prismaClient?: any,
+    preferEnrollmentStatus = false,
   ) {
     const prisma = prismaClient || this.prisma;
     const semester = await this.resolveTargetSemester(semesterId, undefined, prisma);
     if (!semester) return null;
     const linkedStudentIds = await this.resolveLinkedStudentIds(studentId);
 
-    const student = await prisma.student.findUnique({
-      where: { id: studentId },
-      select: {
+    const student = await this.resolveStudentRecord(
+      studentId,
+      {
         id: true,
         majorId: true,
         intake: true,
@@ -491,7 +628,8 @@ export class TuitionService {
           select: { cohort: true, code: true },
         },
       },
-    });
+      prisma,
+    );
 
     if (!student) return null;
 
@@ -535,13 +673,16 @@ export class TuitionService {
         !this.isTuitionSummaryFeeName(fee?.name),
     );
 
+    const normalizedSemester = this.buildCohortSemester(semester, student);
+
     return {
-      semester,
+      semester: normalizedSemester,
       ...this.buildTuitionBreakdown({
         enrollments,
         fixedFees,
         tuitionSummaryFee,
         priceConfigMap,
+        preferEnrollmentStatus,
       }),
     };
   }
@@ -556,6 +697,7 @@ export class TuitionService {
       studentId,
       semesterId,
       prisma,
+      true,
     );
 
     if (!details) return null;
@@ -564,6 +706,21 @@ export class TuitionService {
     const feeName = `Học phí ${details.semester.name || details.semester.id}`;
 
     if (details.tuitionTotal <= 0 && details.totalSubjects === 0) {
+      const staleFees = await prisma.studentFee.findMany({
+        where: {
+          studentId,
+          semesterId: details.semester.id,
+          feeType: "TUITION",
+        },
+        select: { id: true },
+      });
+      if (staleFees.length > 0) {
+        await prisma.feeTransaction.deleteMany({
+          where: {
+            studentFeeId: { in: staleFees.map((fee) => fee.id) },
+          },
+        });
+      }
       await prisma.studentFee.deleteMany({
         where: {
           studentId,
@@ -575,6 +732,7 @@ export class TuitionService {
         semesterId: details.semester.id,
         total: 0,
         paid: 0,
+        feeId: null,
       };
     }
 
@@ -622,6 +780,7 @@ export class TuitionService {
       semesterId: details.semester.id,
       total: details.tuitionTotal,
       paid: details.paidTuition,
+      feeId: existingFee?.id || tuitionFeeId,
     };
   }
 
@@ -826,20 +985,22 @@ export class TuitionService {
       return { total: 0, page, limit, items: [] };
     }
 
-    // studentIds is no longer needed here as we use nested filters below
-    const priceConfigMap = await this.getPriceConfigMap(
-      semester.year,
-      students.map((student) => student.majorId),
-    );
+    // Step 1: Bulk resolve linked student IDs to support mirrored records
+    const studentMirrorMap = new Map<string, string[]>();
+    for (const s of students) {
+      const linked = await this.resolveLinkedStudentIds(s.id);
+      studentMirrorMap.set(s.id, linked);
+    }
+    const allLinkedIds = [...new Set([...studentMirrorMap.values()].flat())];
 
-    const [enrollments, fixedFees, grades] = await Promise.all([
+    const [enrollments, studentFees, grades] = await Promise.all([
       this.prisma.enrollment.findMany({
         where: {
-          student: studentWhere,
+          studentId: { in: allLinkedIds },
           courseClass: { semesterId: semester.id },
         },
         include: {
-          student: { select: { majorId: true } },
+          student: { select: { majorId: true, studentCode: true } },
           courseClass: {
             include: {
               subject: true,
@@ -850,16 +1011,14 @@ export class TuitionService {
       }),
       this.prisma.studentFee.findMany({
         where: {
-          student: studentWhere,
+          studentId: { in: allLinkedIds },
           semesterId: semester.id,
-          NOT: {
-            name: { contains: "Học phí" },
-          },
         },
+        include: { semester: true },
       }),
       this.prisma.grade.findMany({
         where: {
-          student: studentWhere,
+          studentId: { in: allLinkedIds },
           courseClass: { semesterId: semester.id },
         },
         select: {
@@ -869,36 +1028,58 @@ export class TuitionService {
       }),
     ]);
 
-    const enrollmentsByStudent = new Map<string, any[]>();
-    const fixedFeesByStudent = new Map<string, any[]>();
-    const gradesByStudent = new Map<string, any[]>();
+    const priceConfigMap = await this.getPriceConfigMap(
+      semester.year,
+      students.map((student) => student.majorId),
+    );
+
+    const enrollmentsByGroup = new Map<string, any[]>();
+    const fixedFeesByGroup = new Map<string, any[]>();
+    const tuitionSummaryByGroup = new Map<string, any>();
+    const gradesByGroup = new Map<string, any[]>();
+
+    // Helper to find which canonical student ID a record belongs to
+    const findCanonicalId = (id: string) => {
+      for (const [canonicalId, linkedIds] of studentMirrorMap.entries()) {
+        if (linkedIds.includes(id)) return canonicalId;
+      }
+      return id;
+    };
 
     for (const enrollment of enrollments) {
-      const bucket = enrollmentsByStudent.get(enrollment.studentId) || [];
+      const canonicalId = findCanonicalId(enrollment.studentId);
+      const bucket = enrollmentsByGroup.get(canonicalId) || [];
       bucket.push(enrollment);
-      enrollmentsByStudent.set(enrollment.studentId, bucket);
+      enrollmentsByGroup.set(canonicalId, bucket);
     }
 
-    for (const fixedFee of fixedFees) {
-      const bucket = fixedFeesByStudent.get(fixedFee.studentId) || [];
-      bucket.push(fixedFee);
-      fixedFeesByStudent.set(fixedFee.studentId, bucket);
+    for (const fee of studentFees) {
+      const canonicalId = findCanonicalId(fee.studentId);
+      if (this.isTuitionSummaryFeeName(fee.name) || fee.feeType === 'TUITION') {
+        tuitionSummaryByGroup.set(canonicalId, fee);
+      } else {
+        const bucket = fixedFeesByGroup.get(canonicalId) || [];
+        bucket.push(fee);
+        fixedFeesByGroup.set(canonicalId, bucket);
+      }
     }
 
     for (const grade of grades) {
-      const bucket = gradesByStudent.get(grade.studentId) || [];
+      const canonicalId = findCanonicalId(grade.studentId);
+      const bucket = gradesByGroup.get(canonicalId) || [];
       bucket.push(grade);
-      gradesByStudent.set(grade.studentId, bucket);
+      gradesByGroup.set(canonicalId, bucket);
     }
 
     const summaries = students.map((student) => {
       const breakdown = this.buildTuitionBreakdown({
-        enrollments: enrollmentsByStudent.get(student.id) || [],
-        fixedFees: fixedFeesByStudent.get(student.id) || [],
+        enrollments: enrollmentsByGroup.get(student.id) || [],
+        fixedFees: fixedFeesByGroup.get(student.id) || [],
+        tuitionSummaryFee: tuitionSummaryByGroup.get(student.id),
         priceConfigMap,
       });
 
-      const studentGrades = gradesByStudent.get(student.id) || [];
+      const studentGrades = gradesByGroup.get(student.id) || [];
       const isEligibleForExam =
         studentGrades.length === 0
           ? true
@@ -922,6 +1103,7 @@ export class TuitionService {
         status: breakdown.debt > 0 ? "DEBT" : breakdown.totalFee > 0 ? "PAID" : "EMPTY",
         isEligibleForExam,
         enrollments: breakdown.items,
+        mirroredIds: studentMirrorMap.get(student.id) || [],
       };
     });
 
@@ -939,17 +1121,76 @@ export class TuitionService {
   }
 
   async updateEnrollmentTuitionFee(enrollmentId: string, customFee: number) {
-    const updated = await this.prisma.enrollment.update({
+    const feeAmount = Math.max(this.normalizeMoney(customFee), 0);
+    const enrollment = await this.prisma.enrollment.findUnique({
       where: { id: enrollmentId },
-      data: { tuitionFee: customFee },
-      include: {
-        student: { select: { id: true } },
-        courseClass: { select: { semesterId: true } },
+      include: { courseClass: true },
+    });
+
+    if (enrollment) {
+      const linkedIds = await this.resolveLinkedStudentIds(enrollment.studentId);
+      
+      await this.prisma.enrollment.updateMany({
+        where: {
+          studentId: { in: linkedIds },
+          courseClass: {
+            semesterId: enrollment.courseClass.semesterId,
+            subjectId: enrollment.courseClass.subjectId,
+          },
+        },
+        data: { tuitionFee: feeAmount },
+      });
+
+      const updated = await this.prisma.enrollment.findUnique({
+        where: { id: enrollmentId },
+        include: {
+          student: { select: { id: true } },
+          courseClass: { select: { semesterId: true } },
+        },
+      });
+
+      if (!updated) return null;
+
+      const summary = await this.syncStudentTuitionInternal(
+        updated.studentId,
+        updated.courseClass.semesterId,
+      );
+      if (summary?.feeId) {
+        await this.upsertSyncedReceipt(this.prisma, summary.feeId, summary.paid);
+      }
+      return updated;
+    }
+
+    const studentFee = await this.prisma.studentFee.findUnique({
+      where: { id: enrollmentId },
+    });
+    if (!studentFee) {
+      throw new Error("Khoản thu không tồn tại");
+    }
+
+    const paidAmount =
+      `${studentFee.status || ""}`.toUpperCase() === "PAID"
+        ? feeAmount
+        : Math.min(this.normalizeMoney(studentFee.paidAmount), feeAmount);
+
+    const updatedFee = await this.prisma.studentFee.update({
+      where: { id: enrollmentId },
+      data: {
+        totalAmount: feeAmount,
+        finalAmount: feeAmount,
+        paidAmount,
+        status:
+          paidAmount >= feeAmount && feeAmount > 0
+            ? "PAID"
+            : paidAmount > 0
+              ? "PARTIAL"
+              : "DEBT",
       },
     });
 
-    await this.syncStudentTuitionInternal(updated.studentId, updated.courseClass.semesterId);
-    return updated;
+    await this.upsertSyncedReceipt(this.prisma, updatedFee.id, paidAmount);
+    await this.syncStudentTuitionInternal(updatedFee.studentId, updatedFee.semesterId);
+    return updatedFee;
   }
 
   async updateEnrollmentPayment(
@@ -983,9 +1224,12 @@ export class TuitionService {
       const affectedStudentSemesters = new Set<string>();
 
       for (const enrollment of enrollments) {
+        // Resolve all mirrored student IDs to ensure global status consistency
+        const linkedIds = await this.resolveLinkedStudentIds(enrollment.studentId);
+        
         const result = await tx.enrollment.updateMany({
           where: {
-            studentId: enrollment.studentId,
+            studentId: { in: linkedIds },
             courseClass: {
               semesterId: enrollment.courseClass.semesterId,
               subjectId: enrollment.courseClass.subjectId,
@@ -996,29 +1240,36 @@ export class TuitionService {
           },
         });
         updatedEnrollments += result.count;
-        affectedStudentSemesters.add(
-          `${enrollment.studentId}::${enrollment.courseClass.semesterId}`,
-        );
+        
+        // Mark all linked IDs as affected for sync
+        linkedIds.forEach(id => {
+          affectedStudentSemesters.add(`${id}::${enrollment.courseClass.semesterId}`);
+        });
       }
 
       for (const fee of fixedFees) {
+        const paidAmount =
+          status === "PAID"
+            ? this.resolveFixedFeeAmount(fee)
+            : 0;
         await tx.studentFee.update({
           where: { id: fee.id },
           data: {
             status: status === "PAID" ? "PAID" : "DEBT",
-            paidAmount:
-              status === "PAID"
-                ? this.resolveFixedFeeAmount(fee)
-                : 0,
+            paidAmount,
           },
         });
+        await this.upsertSyncedReceipt(tx, fee.id, paidAmount);
         updatedFees += 1;
         affectedStudentSemesters.add(`${fee.studentId}::${fee.semesterId}`);
       }
 
       for (const entry of affectedStudentSemesters) {
         const [studentId, semesterId] = entry.split("::");
-        await this.syncStudentTuitionInternal(studentId, semesterId, tx);
+        const summary = await this.syncStudentTuitionInternal(studentId, semesterId, tx);
+        if (summary?.feeId) {
+          await this.upsertSyncedReceipt(tx, summary.feeId, summary.paid);
+        }
       }
 
       return {
@@ -1030,23 +1281,19 @@ export class TuitionService {
   }
 
   async getStudentFees(studentId: string) {
-    const [student, linkedStudentIds] = await Promise.all([
-      this.prisma.student.findUnique({
-        where: { id: studentId },
-        select: {
-          id: true,
-          majorId: true,
-          intake: true,
-          educationType: true,
-          adminClass: {
-            select: { cohort: true, code: true },
-          },
-        },
-      }),
-      this.resolveLinkedStudentIds(studentId),
-    ]);
+    const student = await this.resolveStudentRecord(studentId, {
+      id: true,
+      majorId: true,
+      intake: true,
+      educationType: true,
+      adminClass: {
+        select: { cohort: true, code: true },
+      },
+    });
 
     if (!student) return [];
+
+    const linkedStudentIds = await this.resolveLinkedStudentIds(student.id);
 
     const [enrollments, studentFees, plannedSemesters] = await Promise.all([
       this.prisma.enrollment.findMany({
@@ -1076,31 +1323,69 @@ export class TuitionService {
 
     for (const semester of plannedSemesters) {
       if (!semester?.id) continue;
-      semesterMap.set(semester.id, {
-        semester,
+      const key = this.getStudentSemesterBucketKey(semester, student);
+      if (!key) continue;
+      semesterMap.set(key, {
+        semester: this.buildCohortSemester(semester, student),
         enrollments: [],
         fixedFees: [],
         tuitionSummaryFee: null,
       });
     }
 
+    const cohortCode = this.resolveStudentCohortCode(student);
+    const startYear = this.parseCohortStartYear(cohortCode);
+    if (cohortCode && startYear) {
+      for (let slot = 1; slot <= 8; slot += 1) {
+        const key = `SLOT_${slot}`;
+        if (semesterMap.has(key)) continue;
+        semesterMap.set(key, {
+          semester: this.buildCohortSemester(
+            { id: `${cohortCode}_HK${slot}` },
+            student,
+            slot,
+          ),
+          enrollments: [],
+          fixedFees: [],
+          tuitionSummaryFee: null,
+        });
+      }
+    }
+
     for (const enrollment of enrollments) {
       const semester = enrollment.courseClass?.semester;
       if (!semester?.id) continue;
-      const bucket = semesterMap.get(semester.id) || {
-        semester,
+      const key = this.getStudentSemesterBucketKey(semester, student);
+      if (!key) continue;
+      const normalizedSemester = this.buildCohortSemester(semester, student);
+      const normalizedEnrollment = {
+        ...enrollment,
+        courseClass: {
+          ...enrollment.courseClass,
+          semester: normalizedSemester,
+        },
+      };
+      const bucket = semesterMap.get(key) || {
+        semester: normalizedSemester,
         enrollments: [],
         fixedFees: [],
         tuitionSummaryFee: null,
       };
-      bucket.enrollments.push(enrollment);
-      semesterMap.set(semester.id, bucket);
+      bucket.enrollments.push(normalizedEnrollment);
+      semesterMap.set(key, bucket);
     }
 
     for (const fee of studentFees) {
       if (!fee.semester?.id) continue;
-      const bucket = semesterMap.get(fee.semester.id) || {
-        semester: fee.semester,
+      const key = this.getStudentSemesterBucketKey(fee.semester, student);
+      if (!key) continue;
+      const normalizedSemester = this.buildCohortSemester(fee.semester, student);
+      const normalizedFee = {
+        ...fee,
+        semester: normalizedSemester,
+      };
+      const bucket = semesterMap.get(key) || {
+        semester: normalizedSemester,
         enrollments: [],
         fixedFees: [],
         tuitionSummaryFee: null,
@@ -1109,11 +1394,11 @@ export class TuitionService {
         `${fee?.feeType || ""}`.toUpperCase() === "TUITION" ||
         this.isTuitionSummaryFeeName(fee?.name)
       ) {
-        bucket.tuitionSummaryFee = fee;
+        bucket.tuitionSummaryFee = normalizedFee;
       } else {
-        bucket.fixedFees.push(fee);
+        bucket.fixedFees.push(normalizedFee);
       }
-      semesterMap.set(fee.semester.id, bucket);
+      semesterMap.set(key, bucket);
     }
 
     const semesterSummaries = await Promise.all(
@@ -1149,7 +1434,7 @@ export class TuitionService {
             semester: entry.semester,
             semesterId: entry.semester.id,
             summary: {
-              id: this.buildTuitionFeeId(studentId, entry.semester.id),
+              id: this.buildTuitionFeeId(student.id, entry.semester.id),
               name: `Học phí ${entry.semester.name}`,
               totalAmount: breakdown.totalFee,
               paidAmount: breakdown.paidAmount,
@@ -1170,7 +1455,19 @@ export class TuitionService {
         }),
     );
 
-    return semesterSummaries;
+    if (cohortCode && startYear) {
+      return semesterSummaries;
+    }
+
+    const visibleSummaries = semesterSummaries.filter(
+      (record) =>
+        Number(record.summary?.totalAmount || 0) > 0 ||
+        (Array.isArray(record.items) && record.items.length > 0) ||
+        record.semester?.isCurrent ||
+        record.semester?.isRegistering,
+    );
+
+    return visibleSummaries.length > 0 ? visibleSummaries : semesterSummaries.slice(0, 1);
   }
 
   async syncStudentTuition(studentId: string, semesterId: string) {

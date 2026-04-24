@@ -59,6 +59,7 @@ export interface GradeSheetTableProps {
   ) => void;
   onNoteChange?: (rowId: string, value: string) => void;
   onToggleAbsent?: (rowId: string) => void;
+  isRestricted?: boolean;
 }
 
 type ScoreArrayField = Extract<GradeCellField, 'regular' | 'coef1' | 'coef2' | 'practice'>;
@@ -283,6 +284,7 @@ export function GradeSheetTable({
   onCellChange,
   onNoteChange,
   onToggleAbsent,
+  isRestricted = false,
 }: GradeSheetTableProps) {
   const scoreGroups: ScoreGroupConfig[] = [
     {
@@ -400,42 +402,46 @@ export function GradeSheetTable({
             <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[88px] bg-orange-100/70')}>
               Dự thi
             </th>
-            <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[88px] bg-rose-100/70')}>
-              Điểm 1
-            </th>
-            <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[74px] bg-rose-100/70')}>
-              Vắng
-            </th>
-            <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[88px] bg-rose-100/70')}>
-              Điểm 2
-            </th>
-            <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[88px] bg-emerald-100/70')}>
-              TK 1
-            </th>
-            <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[88px] bg-emerald-100/70')}>
-              TK 2
-            </th>
-            <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[88px] bg-slate-100')}>
-              TK 10
-            </th>
-            <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[78px] bg-slate-100')}>
-              Hệ 4
-            </th>
-            <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[72px] bg-slate-100')}>
-              Chữ
-            </th>
-            <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[78px] bg-slate-100')}>
-              GPA
-            </th>
-            <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[78px] bg-slate-100')}>
-              CPA
-            </th>
-            <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[108px] bg-slate-100')}>
-              Xếp loại
-            </th>
-            <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[98px] bg-slate-100')}>
-              Kết quả
-            </th>
+            {!isRestricted && (
+              <>
+                <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[88px] bg-rose-100/70')}>
+                  Điểm 1
+                </th>
+                <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[74px] bg-rose-100/70')}>
+                  Vắng
+                </th>
+                <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[88px] bg-rose-100/70')}>
+                  Điểm 2
+                </th>
+                <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[88px] bg-emerald-100/70')}>
+                  TK 1
+                </th>
+                <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[88px] bg-emerald-100/70')}>
+                  TK 2
+                </th>
+                <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[88px] bg-slate-100')}>
+                  TK 10
+                </th>
+                <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[78px] bg-slate-100')}>
+                  Hệ 4
+                </th>
+                <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[72px] bg-slate-100')}>
+                  Chữ
+                </th>
+                <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[78px] bg-slate-100')}>
+                  GPA
+                </th>
+                <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[78px] bg-slate-100')}>
+                  CPA
+                </th>
+                <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[108px] bg-slate-100')}>
+                  Xếp loại
+                </th>
+                <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[98px] bg-slate-100')}>
+                  Kết quả
+                </th>
+              </>
+            )}
             {showNotes ? (
               <th rowSpan={2} className={cx(firstHeaderCellClass, 'min-w-[220px] bg-slate-100')}>
                 Ghi chú
@@ -569,69 +575,73 @@ export function GradeSheetTable({
                       {eligibleText}
                     </span>
                   </td>
-                  <td className={cx('border-r border-b border-slate-300 px-1 py-2 text-center bg-rose-50/40', rowHoverClass)}>
-                    <ScoreInput
-                      value={row.examScore1}
-                      disabled={!isEditable(row, 'examScore1', editableFields)}
-                      onChange={
-                        onCellChange
-                          ? (value) => onCellChange(row.id, 'examScore1', value)
-                          : undefined
-                      }
-                    />
-                  </td>
-                  <td className={cx('border-r border-b border-slate-300 px-2 py-2 text-center bg-rose-50/40', rowHoverClass)}>
-                    {isEditable(row, 'examScore1', editableFields) ? (
-                      <input
-                        type="checkbox"
-                        checked={Boolean(row.isAbsentFromExam)}
-                        onChange={() => onToggleAbsent?.(row.id)}
-                        className="h-4 w-4"
-                      />
-                    ) : (
-                      <span className="font-medium text-slate-700">
-                        {row.isAbsentFromExam ? 'Có' : ''}
-                      </span>
-                    )}
-                  </td>
-                  <td className={cx('border-r border-b border-slate-300 px-1 py-2 text-center bg-rose-50/40', rowHoverClass)}>
-                    <ScoreInput
-                      value={row.examScore2}
-                      disabled={!isEditable(row, 'examScore2', editableFields)}
-                      onChange={
-                        onCellChange
-                          ? (value) => onCellChange(row.id, 'examScore2', value)
-                          : undefined
-                      }
-                    />
-                  </td>
-                  <td className={cx('border-r border-b border-slate-300 px-2 py-2 text-center bg-emerald-50/40 text-slate-700 tabular-nums', rowHoverClass)}>
-                    {formatScore(row.finalScore1)}
-                  </td>
-                  <td className={cx('border-r border-b border-slate-300 px-2 py-2 text-center bg-emerald-50/40 text-slate-700 tabular-nums', rowHoverClass)}>
-                    {formatScore(row.finalScore2)}
-                  </td>
-                  <td className={cx('border-r border-b border-slate-300 px-2 py-2 text-center bg-slate-50 text-slate-700 tabular-nums font-semibold', rowHoverClass)}>
-                    {formatScore(row.totalScore10)}
-                  </td>
-                  <td className={cx('border-r border-b border-slate-300 px-2 py-2 text-center bg-slate-50 text-slate-700 tabular-nums', rowHoverClass)}>
-                    {formatScore(row.totalScore4)}
-                  </td>
-                  <td className={cx('border-r border-b border-slate-300 px-2 py-2 text-center bg-slate-50 text-slate-700', rowHoverClass)}>
-                    {row.letterGrade || ''}
-                  </td>
-                  <td className={cx('border-r border-b border-slate-300 px-2 py-2 text-center bg-slate-50 text-slate-700 tabular-nums', rowHoverClass)}>
-                    {formatScore(row.gpa, 2)}
-                  </td>
-                  <td className={cx('border-r border-b border-slate-300 px-2 py-2 text-center bg-slate-50 text-slate-700 tabular-nums', rowHoverClass)}>
-                    {formatScore(row.cpa, 2)}
-                  </td>
-                  <td className={cx('border-r border-b border-slate-300 px-2 py-2 text-center bg-slate-50 text-slate-700', rowHoverClass)}>
-                    {getRankLabel(row.letterGrade)}
-                  </td>
-                  <td className={cx('border-r border-b border-slate-300 px-2 py-2 text-center bg-slate-50 text-slate-700', rowHoverClass)}>
-                    {getResultLabel(row)}
-                  </td>
+                  {!isRestricted && (
+                    <>
+                      <td className={cx('border-r border-b border-slate-300 px-1 py-2 text-center bg-rose-50/40', rowHoverClass)}>
+                        <ScoreInput
+                          value={row.examScore1}
+                          disabled={!isEditable(row, 'examScore1', editableFields)}
+                          onChange={
+                            onCellChange
+                              ? (value) => onCellChange(row.id, 'examScore1', value)
+                              : undefined
+                          }
+                        />
+                      </td>
+                      <td className={cx('border-r border-b border-slate-300 px-2 py-2 text-center bg-rose-50/40', rowHoverClass)}>
+                        {isEditable(row, 'examScore1', editableFields) ? (
+                          <input
+                            type="checkbox"
+                            checked={Boolean(row.isAbsentFromExam)}
+                            onChange={() => onToggleAbsent?.(row.id)}
+                            className="h-4 w-4"
+                          />
+                        ) : (
+                          <span className="font-medium text-slate-700">
+                            {row.isAbsentFromExam ? 'Có' : ''}
+                          </span>
+                        )}
+                      </td>
+                      <td className={cx('border-r border-b border-slate-300 px-1 py-2 text-center bg-rose-50/40', rowHoverClass)}>
+                        <ScoreInput
+                          value={row.examScore2}
+                          disabled={!isEditable(row, 'examScore2', editableFields)}
+                          onChange={
+                            onCellChange
+                              ? (value) => onCellChange(row.id, 'examScore2', value)
+                              : undefined
+                          }
+                        />
+                      </td>
+                      <td className={cx('border-r border-b border-slate-300 px-2 py-2 text-center bg-emerald-50/40 text-slate-700 tabular-nums', rowHoverClass)}>
+                        {formatScore(row.finalScore1)}
+                      </td>
+                      <td className={cx('border-r border-b border-slate-300 px-2 py-2 text-center bg-emerald-50/40 text-slate-700 tabular-nums', rowHoverClass)}>
+                        {formatScore(row.finalScore2)}
+                      </td>
+                      <td className={cx('border-r border-b border-slate-300 px-2 py-2 text-center bg-slate-50 text-slate-700 tabular-nums font-semibold', rowHoverClass)}>
+                        {formatScore(row.totalScore10)}
+                      </td>
+                      <td className={cx('border-r border-b border-slate-300 px-2 py-2 text-center bg-slate-50 text-slate-700 tabular-nums', rowHoverClass)}>
+                        {formatScore(row.totalScore4)}
+                      </td>
+                      <td className={cx('border-r border-b border-slate-300 px-2 py-2 text-center bg-slate-50 text-slate-700', rowHoverClass)}>
+                        {row.letterGrade || ''}
+                      </td>
+                      <td className={cx('border-r border-b border-slate-300 px-2 py-2 text-center bg-slate-50 text-slate-700 tabular-nums', rowHoverClass)}>
+                        {formatScore(row.gpa, 2)}
+                      </td>
+                      <td className={cx('border-r border-b border-slate-300 px-2 py-2 text-center bg-slate-50 text-slate-700 tabular-nums', rowHoverClass)}>
+                        {formatScore(row.cpa, 2)}
+                      </td>
+                      <td className={cx('border-r border-b border-slate-300 px-2 py-2 text-center bg-slate-50 text-slate-700', rowHoverClass)}>
+                        {getRankLabel(row.letterGrade)}
+                      </td>
+                      <td className={cx('border-r border-b border-slate-300 px-2 py-2 text-center bg-slate-50 text-slate-700', rowHoverClass)}>
+                        {getResultLabel(row)}
+                      </td>
+                    </>
+                  )}
                   {showNotes ? (
                     <td className={cx('border-r border-b border-slate-300 px-2 py-2 bg-slate-50', rowHoverClass)}>
                       {isEditable(row, 'notes', editableFields) && onNoteChange ? (

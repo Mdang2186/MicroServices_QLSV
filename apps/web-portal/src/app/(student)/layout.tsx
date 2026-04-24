@@ -6,7 +6,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
         <StudentGuard>
             <div className="min-h-screen bg-slate-50 flex flex-col">
                 <StudentNavbar />
-                <main className="flex-1 flex flex-col overflow-hidden">
+                <main className="flex-1 flex flex-col">
                     {children}
                 </main>
             </div>

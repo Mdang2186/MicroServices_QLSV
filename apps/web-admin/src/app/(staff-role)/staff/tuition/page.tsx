@@ -171,16 +171,15 @@ export default function TuitionManagementPage() {
         const feeUpdates = Object.keys(pendingFees).map(id => ({ enrollmentId: id, customFee: pendingFees[id] }));
 
         try {
-            const reqs = [];
-            if (enrollmentIds.length) reqs.push(fetch('/api/students/tuition/confirm-payment', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enrollmentIds, status: 'PAID' }) }));
-            if (revertIds.length) reqs.push(fetch('/api/students/tuition/confirm-payment', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enrollmentIds: revertIds, status: 'REGISTERED' }) }));
-            
-            // Add custom fee updates
-            feeUpdates.forEach(update => {
-                reqs.push(fetch('/api/students/tuition/update-fee', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(update) }));
-            });
-
-            await Promise.all(reqs);
+            if (enrollmentIds.length) {
+                await fetch('/api/students/tuition/confirm-payment', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enrollmentIds, status: 'PAID' }) });
+            }
+            if (revertIds.length) {
+                await fetch('/api/students/tuition/confirm-payment', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enrollmentIds: revertIds, status: 'REGISTERED' }) });
+            }
+            for (const update of feeUpdates) {
+                await fetch('/api/students/tuition/update-fee', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(update) });
+            }
             
             setPendingChanges({});
             setPendingFees({});
@@ -189,6 +188,20 @@ export default function TuitionManagementPage() {
         } catch (e) {
             console.error(e);
         } finally { setIsSaving(false); }
+    };
+
+    const refreshSelectedStudent = async () => {
+        if (!selectedStudent || !selectedSemesterId) return;
+        const params = new URLSearchParams({
+            semesterId: selectedSemesterId,
+            query: selectedStudent.studentCode,
+            page: "1",
+            limit: "5",
+        });
+        const res = await fetch(`/api/students/tuition/list?${params.toString()}`);
+        const data = await res.json();
+        const refreshed = (data.items || []).find((item: any) => item.id === selectedStudent.id) || data.items?.[0];
+        if (refreshed) setSelectedStudent(refreshed);
     };
 
     const handleAddManualFee = async () => {
@@ -205,10 +218,7 @@ export default function TuitionManagementPage() {
                     amount: manualFeeForm.amount,
                 })
             });
-            // Refresh student data in modal
-            const res = await fetch(`/api/enrollments/student/${selectedStudent.id}/semester/${selectedSemesterId}`);
-            const data = await res.json();
-            setSelectedStudent({ ...selectedStudent, enrollments: data.enrollments });
+            await refreshSelectedStudent();
             setManualFeeForm({ name: "", amount: 0, configId: "" });
             loadData();
         } catch (e) {
@@ -227,10 +237,7 @@ export default function TuitionManagementPage() {
                 alert(err.message || "Không thể xóa");
                 return;
             }
-            // Refresh
-            const res2 = await fetch(`/api/enrollments/student/${selectedStudent.id}/semester/${selectedSemesterId}`);
-            const data = await res2.json();
-            setSelectedStudent({ ...selectedStudent, enrollments: data.enrollments });
+            await refreshSelectedStudent();
             loadData();
         } catch (e) {
             console.error(e);

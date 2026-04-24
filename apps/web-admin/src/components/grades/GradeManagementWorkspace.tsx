@@ -3,6 +3,7 @@
 import {
   type ChangeEvent,
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -17,12 +18,14 @@ import {
   ChevronRight,
   ClipboardList,
   Download,
+  Search,
   Save,
   Send,
   ShieldCheck,
   Upload,
 } from "lucide-react";
 import {
+  calculateUnetiAttendanceScore,
   calculateUnetiGrade,
   GradeSheetTable,
   normalizeScoreArray,
@@ -97,7 +100,7 @@ const getToken = (role: GradeRole) =>
 const getEditableFields = (role: GradeRole): GradeCellField[] =>
   role === "lecturer"
     ? ["regular", "coef1", "coef2", "practice", "notes"]
-    : ["regular", "coef1", "coef2", "practice", "examScore1", "examScore2", "notes"];
+    : ["attendanceScore", "regular", "coef1", "coef2", "practice", "examScore1", "examScore2", "notes"];
 
 const cloneRow = (row: EditableGradeRow): EditableGradeRow => ({
   ...row,
@@ -112,6 +115,131 @@ const cloneRows = (rows: EditableGradeRow[]) => rows.map(cloneRow);
 const normalizeNote = (value: string | null | undefined) => {
   const normalized = value?.trim() || "";
   return normalized || null;
+};
+
+const normalizeSearchText = (value?: string | null) =>
+  `${value || ""}`
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+    .replace(/,/g, ".")
+    .replace(/[^a-z0-9.\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const formatSearchNumber = (value: number | null | undefined, digits = 1) => {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return "";
+  return numericValue.toFixed(digits);
+};
+
+const getRankSearchLabel = (letterGrade?: string | null) => {
+  switch (letterGrade) {
+    case "A":
+      return "xuat sac";
+    case "B+":
+      return "gioi";
+    case "B":
+      return "kha";
+    case "C+":
+      return "kha trung binh";
+    case "C":
+      return "trung binh";
+    case "D+":
+    case "D":
+      return "yeu";
+    case "F+":
+    case "F":
+      return "kem";
+    default:
+      return "";
+  }
+};
+
+const getResultSearchLabel = (row: EditableGradeRow) => {
+  if (row.tbThuongKy === null || row.tbThuongKy === undefined) return "";
+  if (row.isEligibleForExam === false) return "hoc lai cam thi";
+  if (row.isAbsentFromExam && (row.examScore2 === null || row.examScore2 === undefined)) {
+    return "thi lai vang thi";
+  }
+  if (
+    row.examScore1 !== null &&
+    row.examScore1 !== undefined &&
+    row.finalScore1 !== null &&
+    row.finalScore1 !== undefined &&
+    !row.isPassed &&
+    (row.examScore2 === null || row.examScore2 === undefined)
+  ) {
+    return "thi lai";
+  }
+  if (row.finalScore2 !== null && row.finalScore2 !== undefined && !row.isPassed) {
+    return "hoc lai";
+  }
+  if (!row.letterGrade) return "";
+  return row.isPassed ? "dat" : "hoc lai";
+};
+
+const buildGradeSearchIndex = (
+  row: EditableGradeRow,
+  context?: {
+    classCode?: string | null;
+    subjectCode?: string | null;
+    subjectName?: string | null;
+    lecturerName?: string | null;
+    semesterLabel?: string | null;
+    credits?: number | null;
+  },
+) => {
+  const resultLabel = getResultSearchLabel(row);
+  const resultLabels = [
+    row.isEligibleForExam === true ? "du thi du dieu kien eligible" : "",
+    row.isEligibleForExam === false ? "cam thi khong du dieu kien hoc lai" : "",
+    row.isAbsentFromExam ? "vang thi thi lai" : "",
+    row.isPassed ? "dat passed" : "",
+    !row.isPassed && row.totalScore10 !== null ? "truot hoc lai failed" : "",
+    resultLabel,
+    getRankSearchLabel(row.letterGrade),
+    row.status === "APPROVED" ? "da duyet cong bo approved" : "",
+    row.status === "PENDING_APPROVAL" ? "cho duyet pending approval" : "",
+    row.status === "DRAFT" ? "nhap nhap dang luu draft" : "",
+  ];
+
+  return normalizeSearchText(
+    [
+      row.id,
+      row.studentId,
+      row.student?.fullName,
+      row.student?.studentCode,
+      row.student?.adminClass?.code,
+      row.student?.adminClass?.name,
+      row.notes,
+      row.letterGrade,
+      row.status,
+      ...resultLabels,
+      context?.classCode,
+      context?.subjectCode,
+      context?.subjectName,
+      context?.lecturerName,
+      context?.semesterLabel,
+      formatSearchNumber(context?.credits ?? null, 0),
+      formatSearchNumber(row.attendanceScore),
+      formatSearchNumber(row.tbThuongKy),
+      formatSearchNumber(row.examScore1),
+      formatSearchNumber(row.examScore2),
+      formatSearchNumber(row.finalScore1),
+      formatSearchNumber(row.finalScore2),
+      formatSearchNumber(row.totalScore10),
+      formatSearchNumber(row.totalScore4),
+      formatSearchNumber(row.student?.gpa ?? null, 2),
+      formatSearchNumber(row.student?.cpa ?? null, 2),
+      row.regularScores.map((score) => formatSearchNumber(score)).join(" "),
+      row.coef1Scores.map((score) => formatSearchNumber(score)).join(" "),
+      row.coef2Scores.map((score) => formatSearchNumber(score)).join(" "),
+      row.practiceScores.map((score) => formatSearchNumber(score)).join(" "),
+    ].join(" "),
+  );
 };
 
 const scoreEquals = (left: number | null | undefined, right: number | null | undefined) =>
@@ -129,25 +257,43 @@ const countDirtyCells = (
 
   for (const row of rows) {
     const baseline = baselineMap.get(row.id);
-    if (!baseline) continue;
-
-    for (const key of scoreArrayKeys) {
-      const maxLength = Math.max(row[key].length, baseline[key].length);
-      for (let index = 0; index < maxLength; index += 1) {
-        if (!scoreEquals(row[key][index], baseline[key][index])) {
-          dirtyCount += 1;
-        }
-      }
-    }
-
-    if (!scoreEquals(row.examScore1, baseline.examScore1)) dirtyCount += 1;
-    if (!scoreEquals(row.examScore2, baseline.examScore2)) dirtyCount += 1;
-    if (role === "staff" && row.isAbsentFromExam !== baseline.isAbsentFromExam) dirtyCount += 1;
-    if (normalizeNote(row.notes) !== normalizeNote(baseline.notes)) dirtyCount += 1;
+    dirtyCount += countDirtyCellsForRow(row, baseline, role);
   }
 
   return dirtyCount;
 };
+
+const countDirtyCellsForRow = (
+  row: EditableGradeRow,
+  baseline: EditableGradeRow | undefined,
+  role: GradeRole,
+) => {
+  if (!baseline) return 0;
+
+  let dirtyCount = 0;
+
+  for (const key of scoreArrayKeys) {
+    const maxLength = Math.max(row[key].length, baseline[key].length);
+    for (let index = 0; index < maxLength; index += 1) {
+      if (!scoreEquals(row[key][index], baseline[key][index])) {
+        dirtyCount += 1;
+      }
+    }
+  }
+
+  if (!scoreEquals(row.examScore1, baseline.examScore1)) dirtyCount += 1;
+  if (!scoreEquals(row.examScore2, baseline.examScore2)) dirtyCount += 1;
+  if (role === "staff" && row.isAbsentFromExam !== baseline.isAbsentFromExam) dirtyCount += 1;
+  if (normalizeNote(row.notes) !== normalizeNote(baseline.notes)) dirtyCount += 1;
+
+  return dirtyCount;
+};
+
+const isDirtyRow = (
+  row: EditableGradeRow,
+  baseline: EditableGradeRow | undefined,
+  role: GradeRole,
+) => countDirtyCellsForRow(row, baseline, role) > 0;
 
 const buildEditableRow = (
   grade: any,
@@ -277,6 +423,7 @@ export function GradeManagementWorkspace({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const token = getToken(role);
@@ -285,6 +432,7 @@ export function GradeManagementWorkspace({
   const practiceHours = Number(courseClass?.subject?.practiceHours || 0);
   const practiceColumns = Number(courseClass?.subject?.practiceHours || 0) > 0 ? 2 : 0;
   const editableFields = useMemo(() => getEditableFields(role), [role]);
+  const deferredSearch = useDeferredValue(searchQuery.trim());
 
   const scoreColumns = useMemo<ScoreColumnConfig[]>(
     () => [
@@ -447,15 +595,6 @@ export function GradeManagementWorkspace({
       const classData = await classResponse.json();
       setCourseClass(classData);
 
-      if (role === "staff") {
-        await fetch(`/api/grades/class/${classId}/sync-attendance`, {
-          method: "POST",
-          headers,
-        }).catch((error) => {
-          console.error("Không thể đồng bộ điểm chuyên cần.", error);
-        });
-      }
-
       const [gradeResult, enrollmentResult] = await Promise.allSettled([
         fetch(`/api/grades/class/${classId}`, { headers }),
         fetch(`/api/enrollments/admin/classes/${classId}/enrollments`, { headers }),
@@ -512,11 +651,29 @@ export function GradeManagementWorkspace({
       const classCredits = Number(classData?.subject?.credits || 3);
       const classPracticeColumns =
         Number(classData?.subject?.practiceHours || 0) > 0 ? 2 : 0;
+      const totalPeriods = Number(classData?.totalPeriods || 45);
+
+      const enrollmentMap = new Map(enrollmentData.map((e: any) => [e.studentId, e]));
 
       const mappedRows = blankPlaceholderScoreColumns(
-        (gradeData || []).map((grade: any) =>
-          buildEditableRow(grade, classCredits, classPracticeColumns),
-        ),
+        (gradeData || []).map((grade: any) => {
+          const row = buildEditableRow(grade, classCredits, classPracticeColumns);
+          
+          // Automatic attendance score calculation
+          if (row.attendanceScore === null) {
+            const enrollment = enrollmentMap.get(row.studentId);
+            if (enrollment?.attendances) {
+              const missedSessions = enrollment.attendances.filter((a: any) => 
+                a.status === "ABSENT" || a.status === "ABSENT_UNEXCUSED"
+              ).length;
+              // Quy ước 3 tiết/buổi
+              const missedPeriods = missedSessions * 3;
+              row.attendanceScore = calculateUnetiAttendanceScore(missedPeriods, totalPeriods);
+            }
+          }
+          
+          return row;
+        }),
       );
 
       setRows(mappedRows);
@@ -606,9 +763,9 @@ export function GradeManagementWorkspace({
     [role],
   );
 
-  const tableRows: GradeSheetRow[] = useMemo(
-    () =>
-      calculatedRows.map((row) => ({
+  const tableRows: GradeSheetRow[] = useMemo(() => {
+      const isLecturer = role === "lecturer";
+      return calculatedRows.map((row) => ({
         id: row.id,
         primaryText: row.student?.fullName || "Sinh viên",
         secondaryText: row.student?.studentCode || "",
@@ -620,24 +777,60 @@ export function GradeManagementWorkspace({
         practiceScores: row.practiceScores,
         tbThuongKy: row.tbThuongKy,
         isEligibleForExam: row.isEligibleForExam,
-        isAbsentFromExam: row.isAbsentFromExam,
-        examScore1: row.examScore1,
-        examScore2: row.examScore2,
-        finalScore1: row.finalScore1,
-        finalScore2: row.finalScore2,
-        totalScore10: row.totalScore10,
-        totalScore4: row.totalScore4,
-        letterGrade: row.letterGrade,
-        isPassed: row.isPassed,
+        // Restricted fields for lecturer
+        isAbsentFromExam: isLecturer ? false : row.isAbsentFromExam,
+        examScore1: isLecturer ? null : row.examScore1,
+        examScore2: isLecturer ? null : row.examScore2,
+        finalScore1: isLecturer ? null : row.finalScore1,
+        finalScore2: isLecturer ? null : row.finalScore2,
+        totalScore10: isLecturer ? null : row.totalScore10,
+        totalScore4: isLecturer ? null : row.totalScore4,
+        letterGrade: isLecturer ? null : row.letterGrade,
+        isPassed: isLecturer ? false : row.isPassed,
         notes: row.notes,
         status: row.status,
         adminClassCode: row.student?.adminClass?.code || row.student?.adminClass?.name || "",
-        gpa: row.student?.gpa ?? null,
-        cpa: row.student?.cpa ?? null,
+        gpa: isLecturer ? null : (row.student?.gpa ?? null),
+        cpa: isLecturer ? null : (row.student?.cpa ?? null),
         isLocked: false,
-      })),
-    [calculatedRows, credits],
+      }));
+    },
+    [calculatedRows, credits, role],
   );
+
+  const searchTokens = useMemo(
+    () => normalizeSearchText(deferredSearch).split(" ").filter(Boolean),
+    [deferredSearch],
+  );
+
+  const filteredTableRows = useMemo(() => {
+    if (searchTokens.length === 0) return tableRows;
+
+    const semesterLabel =
+      courseClass?.semester?.code || courseClass?.semester?.name || null;
+    const lecturerName =
+      courseClass?.lecturer?.fullName || courseClass?.lecturer?.user?.fullName || null;
+    const tableRowMap = new Map(tableRows.map((row) => [row.id, row]));
+
+    return calculatedRows
+      .filter((row) => {
+        const searchIndex = buildGradeSearchIndex(row, {
+          classCode: courseClass?.code,
+          subjectCode: courseClass?.subject?.code,
+          subjectName: courseClass?.subject?.name || courseClass?.name,
+          lecturerName,
+          semesterLabel,
+          credits,
+        });
+
+        return searchTokens.every((token) => searchIndex.includes(token));
+      })
+      .map((row) => tableRowMap.get(row.id))
+      .filter((row): row is GradeSheetRow => Boolean(row));
+  }, [calculatedRows, courseClass, credits, searchTokens, tableRows]);
+
+  const visibleStudentCount = filteredTableRows.length;
+  const hasActiveSearch = searchTokens.length > 0;
 
   const saveGrades = useCallback(
     async (silent = false) => {
@@ -652,7 +845,17 @@ export function GradeManagementWorkspace({
       if (!silent) setMessage("");
 
       try {
-        const payload = rows.map((row) => ({
+        const baselineMap = new Map(baselineRows.map((row) => [row.id, row]));
+        const changedRows = rows.filter((row) =>
+          isDirtyRow(row, baselineMap.get(row.id), role),
+        );
+
+        if (changedRows.length === 0) {
+          if (!silent) setMessage("Không có thay đổi nào cần lưu.");
+          return true;
+        }
+
+        const payload = changedRows.map((row) => ({
           id: row.id,
           studentId: row.studentId,
           courseClassId: classId,
@@ -690,8 +893,15 @@ export function GradeManagementWorkspace({
 
         if (!response.ok) throw new Error("Lưu bảng điểm thất bại.");
 
-        setRows(cloneRows(calculatedRows));
-        setBaselineRows(cloneRows(calculatedRows));
+        const changedIds = new Set(changedRows.map((row) => row.id));
+        const nextStatus = role === "staff" ? "PENDING_APPROVAL" : "DRAFT";
+        const savedRows = calculatedRows.map((row) => ({
+          ...cloneRow(row),
+          ...(changedIds.has(row.id) ? { status: nextStatus, isLocked: false } : {}),
+        }));
+
+        setRows(savedRows);
+        setBaselineRows(cloneRows(savedRows));
 
         if (!silent) {
           setMessage(
@@ -707,7 +917,7 @@ export function GradeManagementWorkspace({
         setSaving(false);
       }
     },
-    [calculatedRows, classId, dirtyCount, role, rows, token],
+    [baselineRows, calculatedRows, classId, dirtyCount, role, rows, token],
   );
 
   const submitLecturerGrades = useCallback(async () => {
@@ -726,20 +936,14 @@ export function GradeManagementWorkspace({
 
       if (!response.ok) throw new Error("Gửi bảng điểm thất bại.");
 
-      const submittedRows = calculatedRows.map((row) => ({
-        ...cloneRow(row),
-        status: "PENDING_APPROVAL",
-        isLocked: false,
-      }));
-      setRows(submittedRows);
-      setBaselineRows(cloneRows(submittedRows));
+      await fetchData();
       setMessage("Đã gửi bảng điểm quá trình cho Phòng đào tạo. Bảng vẫn mở để chỉnh sửa.");
     } catch {
       setMessage("Không thể gửi bảng điểm.");
     } finally {
       setSaving(false);
     }
-  }, [calculatedRows, classId, role, saveGrades, token]);
+  }, [classId, fetchData, role, saveGrades, token]);
 
   const approveStaffGrades = useCallback(async () => {
     if (!token) return;
@@ -757,20 +961,14 @@ export function GradeManagementWorkspace({
 
       if (!response.ok) throw new Error("Chốt bảng điểm thất bại.");
 
-      const approvedRows = calculatedRows.map((row) => ({
-        ...cloneRow(row),
-        status: "APPROVED",
-        isLocked: false,
-      }));
-      setRows(approvedRows);
-      setBaselineRows(cloneRows(approvedRows));
+      await fetchData();
       setMessage("Đã chốt và công bố bảng điểm. Bảng vẫn mở để chỉnh sửa khi cần.");
     } catch {
       setMessage("Không thể chốt bảng điểm.");
     } finally {
       setSaving(false);
     }
-  }, [calculatedRows, classId, role, saveGrades, token]);
+  }, [classId, fetchData, role, saveGrades, token]);
 
   const sendReminder = useCallback(async () => {
     if (!token || !courseClass?.lecturer?.userId) return;
@@ -939,8 +1137,49 @@ export function GradeManagementWorkspace({
     courseClass?.lecturer?.fullName ||
     courseClass?.lecturer?.user?.fullName ||
     "Chưa phân công";
-  const routePrefix = role === "staff" ? "/staff/grades" : "/lecturer/grades";
+  const returnHref =
+    role === "staff"
+      ? "/staff/grades"
+      : classId
+        ? `/lecturer/courses/${classId}`
+        : "/lecturer/courses";
+  const sectionHref = role === "staff" ? "/staff/grades" : "/lecturer/courses";
+  const sectionLabel = role === "staff" ? "Quản lý điểm" : "Lớp học phần";
   const isManagerLayout = layout === "manager";
+
+  const renderSearchBox = () => (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <label className="relative min-w-[260px] flex-1">
+        <Search
+          size={14}
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+        />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder="Tìm tên, mã SV, lớp HC, ghi chú, trạng thái, điểm..."
+          className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-[12px] font-semibold text-slate-700 outline-none transition-all placeholder:text-slate-400 focus:border-blue-200 focus:bg-white"
+        />
+      </label>
+
+      <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black text-slate-600">
+        {hasActiveSearch
+          ? `${visibleStudentCount}/${tableRows.length} SV khớp`
+          : `${tableRows.length} SV`}
+      </span>
+
+      {hasActiveSearch ? (
+        <button
+          type="button"
+          onClick={() => setSearchQuery("")}
+          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-black text-slate-600 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50"
+        >
+          Xóa lọc
+        </button>
+      ) : null}
+    </div>
+  );
 
   const renderActionButtons = (compact = false) => (
     <>
@@ -1140,7 +1379,7 @@ export function GradeManagementWorkspace({
                   {courseClass?.code || classId}
                 </span>
                 <span className="text-[11px] font-medium text-slate-400">
-                  GV: {lecturerName} • {rows.length} SV • {credits} TC
+                  GV: {lecturerName} • {visibleStudentCount}/{rows.length} SV • {credits} TC
                 </span>
               </div>
             </div>
@@ -1155,13 +1394,15 @@ export function GradeManagementWorkspace({
               {message}
             </div>
           ) : null}
+
+          {renderSearchBox()}
         </div>
 
         {renderResultStatistics()}
 
         <div className="flex-1 overflow-hidden">
           <GradeSheetTable
-            rows={tableRows}
+            rows={filteredTableRows}
             labelHeader="Họ và tên"
             coefColumns={credits}
             practiceColumns={practiceColumns}
@@ -1170,7 +1411,12 @@ export function GradeManagementWorkspace({
             onNoteChange={updateNote}
             onToggleAbsent={role === "staff" ? toggleAbsent : undefined}
             showNotes={true}
-            emptyMessage="Chưa có dữ liệu bảng điểm."
+            isRestricted={role === "lecturer"}
+            emptyMessage={
+              hasActiveSearch
+                ? "Không tìm thấy sinh viên hoặc dữ liệu điểm khớp với từ khóa hiện tại."
+                : "Chưa có dữ liệu bảng điểm."
+            }
           />
         </div>
       </div>
@@ -1183,7 +1429,7 @@ export function GradeManagementWorkspace({
         <div className="flex flex-col gap-2 2xl:flex-row 2xl:items-center 2xl:justify-between">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <Link
-              href={routePrefix}
+              href={returnHref}
               className="inline-flex h-8 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-black text-slate-600 shadow-sm transition-all hover:border-blue-200 hover:bg-blue-50 hover:text-uneti-blue"
             >
               <ArrowLeft size={14} />
@@ -1200,8 +1446,8 @@ export function GradeManagementWorkspace({
 
             <div className="min-w-0">
               <div className="flex min-w-0 flex-wrap items-center gap-1 text-[10px] font-semibold text-slate-400">
-                <Link href={routePrefix} className="hover:text-uneti-blue transition-colors">
-                  Quản lý điểm
+                <Link href={sectionHref} className="hover:text-uneti-blue transition-colors">
+                  {sectionLabel}
                 </Link>
                 <ChevronRight className="h-3 w-3" />
                 <span className="font-bold text-slate-600">{courseClass?.code || classId}</span>
@@ -1216,7 +1462,7 @@ export function GradeManagementWorkspace({
                 GV: {lecturerName}
               </span>
               <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
-                {rows.length} SV
+                {visibleStudentCount}/{rows.length} SV
               </span>
               <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
                 {credits} TC
@@ -1237,6 +1483,8 @@ export function GradeManagementWorkspace({
             {message}
           </div>
         ) : null}
+
+        {renderSearchBox()}
       </div>
 
       {renderResultStatistics()}
@@ -1244,7 +1492,7 @@ export function GradeManagementWorkspace({
       <div className="min-h-0 flex-1 overflow-hidden p-1.5">
         <div className="h-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <GradeSheetTable
-            rows={tableRows}
+            rows={filteredTableRows}
             labelHeader="Họ và tên"
             coefColumns={credits}
             practiceColumns={practiceColumns}
@@ -1253,7 +1501,12 @@ export function GradeManagementWorkspace({
             onNoteChange={updateNote}
             onToggleAbsent={role === "staff" ? toggleAbsent : undefined}
             showNotes={true}
-            emptyMessage="Chưa có dữ liệu bảng điểm."
+            isRestricted={role === "lecturer"}
+            emptyMessage={
+              hasActiveSearch
+                ? "Không tìm thấy sinh viên hoặc dữ liệu điểm khớp với từ khóa hiện tại."
+                : "Chưa có dữ liệu bảng điểm."
+            }
           />
         </div>
       </div>

@@ -15,7 +15,7 @@ export class PrismaService
   }
 
   async onModuleInit() {
-    await this.$connect();
+    // Avoid blocking service startup when SQL Server is slow; Prisma connects lazily on first query.
   }
 
   async onModuleDestroy() {

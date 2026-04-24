@@ -1,20 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
+import { GradeManagementWorkspace } from "@/components/grades/GradeManagementWorkspace";
 
-export default function LecturerCourseGradesRedirectPage() {
+export default function LecturerCourseGradesPage() {
     const { id } = useParams();
-    const router = useRouter();
+    const classId = `${id || ""}`;
 
-    useEffect(() => {
-        if (!id) return;
-        router.replace(`/lecturer/grades/${id}`);
-    }, [id, router]);
-
-    return (
-        <div className="flex min-h-[80vh] items-center justify-center">
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-600"></div>
-        </div>
-    );
+    return <GradeManagementWorkspace role="lecturer" classId={classId} />;
 }

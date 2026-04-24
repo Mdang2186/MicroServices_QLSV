@@ -122,8 +122,28 @@ export class AppController {
   @Post('admin/sample-scores')
   async seedSampleGrades(
     @Body()
-    body: { semesterId?: string; classId?: string; overwrite?: boolean },
+    body: {
+      semesterId?: string;
+      classId?: string;
+      overwrite?: boolean;
+      syncPerformance?: boolean;
+    },
   ) {
     return this.appService.seedSampleGrades(body);
+  }
+
+  @Post('admin/full-demo-data')
+  async seedFullAcademicData(@Body() body: { overwrite?: boolean }) {
+    return this.appService.startFullAcademicDataSeed(body);
+  }
+
+  @Get('admin/full-demo-data/status')
+  async getFullAcademicDataSeedStatus() {
+    return this.appService.getFullAcademicDataSeedStatus();
+  }
+
+  @Get('admin/class-progress')
+  async getAdminClassProgress() {
+    return this.appService.getAdminClassProgress();
   }
 }

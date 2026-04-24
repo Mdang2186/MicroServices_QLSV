@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useRef, useMemo } from "react";
 import Cookies from "js-cookie";
-import { Award, Save, Upload, Download, Loader2, Search, Check, Edit2 } from "lucide-react";
+import { Award, Save, Upload, Download, Loader2, Search, Check, Edit2, Settings2, Filter } from "lucide-react";
 import * as XLSX from "xlsx";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 
 export default function StaffTrainingScoresPage() {
     const [majors, setMajors] = useState<any[]>([]);
@@ -20,6 +21,7 @@ export default function StaffTrainingScoresPage() {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     
+    const [searchTerm, setSearchTerm] = useState("");
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const TOKEN = Cookies.get("staff_accessToken") || Cookies.get("admin_accessToken");
@@ -103,10 +105,18 @@ export default function StaffTrainingScoresPage() {
                 
                 // Map the students into a dictionary format: { studentCode: { semesterId: score } }
                 const normalized = data.map((st: any) => {
-                    const scoresMap: Record<string, { score: number, classification: string }> = {};
+                    // Initialize 8 slots with null or empty scores
+                    const slotScores: Record<string, { score: number, classification: string }> = {};
+                    
+                    // Map existing DB scores to their respective slots based on classSemesters
                     if (Array.isArray(st.scores)) {
                         st.scores.forEach((sc: any) => {
-                            scoresMap[sc.semesterId] = { score: sc.score, classification: sc.classification };
+                            // Find which slot(s) this semesterId belongs to
+                            classSemesters.forEach((slot, idx) => {
+                                if (slot.dbSemester?.id === sc.semesterId) {
+                                    slotScores[idx] = { score: sc.score, classification: sc.classification };
+                                }
+                            });
                         });
                     }
                     
@@ -114,7 +124,7 @@ export default function StaffTrainingScoresPage() {
                         id: st.id,
                         studentCode: st.studentCode,
                         fullName: st.fullName,
-                        scores: scoresMap,
+                        scores: slotScores,
                         dirtyScores: {} as Record<string, { score: number, classification: string }>
                     };
                 });
@@ -153,6 +163,7 @@ export default function StaffTrainingScoresPage() {
         // Generate the 8 "expected" slots mathematically (like web-portal's generateSemesters)
         type SemSlot = { dbSemester: any; expectedYear: number; expectedSemNo: number };
         const slots: SemSlot[] = [];
+        const usedSemIds = new Set<string>();
         
         for (let y = 0; y < 4; y++) {
             for (let s = 1; s <= 2; s++) {
@@ -161,33 +172,27 @@ export default function StaffTrainingScoresPage() {
                 const yearRange = `${acadYear}-${toYear}`; // e.g. "2024-2025"
                 const namYear = y + 1; // Năm 1, Năm 2, Năm 3, Năm 4
                 
-                // Score-based matching: find the best semester in DB for this slot
-                // Scoring criteria:
-                // +3: name contains HKs + year range (e.g. "HK1 - Năm 1 (2024-2025)")
-                // +2: name contains year range + "Năm namYear"  
-                // +1: name starts with HKs or "Học kỳ s"
-                // The "Năm X" label must match the year in 4-year sequence to avoid cross-cohort mixing
-                
                 let bestScore = -1;
                 let bestSem: any = null;
                 
                 for (const sem of sorted) {
+                    if (usedSemIds.has(sem.id)) continue;
+
                     const n = (sem.name || '').toLowerCase().replace(/\s+/g, '');
                     const hasYearRange = n.includes(yearRange.replace('-', '')) || n.includes(yearRange);
                     if (!hasYearRange) continue; // Only consider semesters for this academic year
                     
                     // Exclude K16 legacy semesters (HK3, HK5, HK7 etc which are > 2)
-                    // Those use HK numbering across 4 years, not per-year HK1/HK2
                     const isLegacyMultiSem = /^hk[3-9]|^hk[1-9][0-9]/.test(n);
                     if (isLegacyMultiSem) continue;
                     
-                    let score = 0;
+                    let score = 0; // Baseline score for matching yearRange
                     
                     // Check if it's the right HK (1 or 2) within the year
-                    if (n.startsWith(`hk${s}`) || n.startsWith(`họckỳ${s}`)) score += 2;
+                    if (n.startsWith(`hk${s}`) || n.startsWith(`họckỳ${s}`) || n.includes(`hk${s}`) || n.includes(`họckỳ${s}`)) score += 10;
                     
                     // Check if it's the right Năm in sequence  
-                    if (n.includes(`năm${namYear}`) || n.includes(`năm${namYear}(`)) score += 2;
+                    if (n.includes(`năm${namYear}`) || n.includes(`năm${namYear}(`)) score += 5;
                     
                     if (score > bestScore) {
                         bestScore = score;
@@ -195,21 +200,59 @@ export default function StaffTrainingScoresPage() {
                     }
                 }
                 
-                // Fallback: any semester in the correct time window
-                if (!bestSem) {
-                    const sepStart = new Date(`${acadYear}-09-01`).getTime();
-                    const febStart = new Date(`${toYear}-02-01`).getTime();
-                    const julyEnd = new Date(`${toYear}-07-31`).getTime();
-                    const windowStart = s === 1 ? sepStart : febStart;
-                    const windowEnd = s === 1 ? febStart : julyEnd;
+                // If the "best" found semester doesn't explicitly mention the HK we want, 
+                // OR if we didn't find any semester with that year range, use fallback window
+                if (bestScore < 3) { // Lowered threshold slightly
+                    // Widen windows to be more inclusive of different university calendars
+                    // HK1: Aug 1 to Jan 31
+                    // HK2: Jan 1 to Aug 31
+                    const augStart = new Date(`${acadYear}-08-01`).getTime();
+                    const janStart = new Date(`${toYear}-01-01`).getTime();
+                    const augEnd = new Date(`${toYear}-08-31`).getTime();
+                    
+                    const windowStart = s === 1 ? augStart : janStart;
+                    const windowEnd = s === 1 ? janStart : augEnd;
+                    
                     bestSem = sorted.find(sem => {
+                        if (usedSemIds.has(sem.id)) return false;
                         const t = new Date(sem.startDate).getTime();
                         const n = (sem.name || '').toLowerCase().replace(/\s+/g, '');
+                        // Still exclude legacy > 2 HKs unless there are no other options
                         const isLegacyMultiSem = /^hk[3-9]|^hk[1-9][0-9]/.test(n);
                         return t >= windowStart && t < windowEnd && !isLegacyMultiSem;
+                    });
+
+                    // Even more desperate date matching: just check if year matches and s relates to month
+                    if (!bestSem) {
+                        bestSem = sorted.find(sem => {
+                            if (usedSemIds.has(sem.id)) return false;
+                            const t = new Date(sem.startDate).getTime();
+                            const d = new Date(t);
+                            const yearMatches = d.getFullYear() === acadYear || d.getFullYear() === toYear;
+                            if (!yearMatches) return false;
+                            
+                            const month = d.getMonth() + 1; // 1-12
+                            // HK1 usually starts Aug-Nov
+                            // HK2 usually starts Dec-Mar
+                            if (s === 1) return month >= 8 && month <= 11;
+                            if (s === 2) return (month >= 12) || (month <= 3);
+                            return false;
+                        });
+                    }
+                }
+
+                // Final fallback: If still null, pick ANY unused semester that includes the year range anywhere in its name
+                if (!bestSem) {
+                    bestSem = sorted.find(sem => {
+                        if (usedSemIds.has(sem.id)) return false;
+                        const n = (sem.name || '').toLowerCase().replace(/\s+/g, '');
+                        const hasYearRange = n.includes(yearRange.replace('-', '')) || n.includes(yearRange);
+                        const hasYearOnly = n.includes(String(acadYear)) || n.includes(String(toYear));
+                        return hasYearRange || hasYearOnly;
                     }) || null;
                 }
                 
+                if (bestSem) usedSemIds.add(bestSem.id);
                 slots.push({ dbSemester: bestSem || null, expectedYear: acadYear, expectedSemNo: s });
             }
         }
@@ -230,38 +273,48 @@ export default function StaffTrainingScoresPage() {
         return "Kém";
     };
 
-    const handleScoreChange = (studentIndex: number, semesterId: string, value: string) => {
-        if (!semesterId) return;
-
+    const handleScoreChange = (studentId: string, slotIdx: number, value: string) => {
         let num = parseInt(value, 10);
         if (isNaN(num)) num = 0;
         if (num < 0) num = 0;
         if (num > 100) num = 100;
 
         const updated = [...students];
-        const student = updated[studentIndex];
+        const studentIndex = updated.findIndex(s => s.id === studentId);
+        if (studentIndex === -1) return;
         
-        const originalScore = originalScores[studentIndex].scores[semesterId]?.score ?? null;
+        const student = updated[studentIndex];
+        const originalStudent = originalScores.find(os => os.id === studentId);
+        const originalScore = originalStudent?.scores[slotIdx]?.score ?? null;
 
         // Either it's different from original, or it's a new insertion
         if (originalScore !== num) {
-            student.dirtyScores[semesterId] = {
+            student.dirtyScores[slotIdx] = {
                 score: num,
                 classification: getClassification(num)
             };
         } else {
             // Reverted to original
-            delete student.dirtyScores[semesterId];
+            delete student.dirtyScores[slotIdx];
         }
 
         // Update view model
-        student.scores[semesterId] = {
+        student.scores[slotIdx] = {
             score: num,
             classification: getClassification(num)
         };
 
         setStudents(updated);
     };
+
+    const filteredStudents = useMemo(() => {
+        if (!searchTerm) return students;
+        const term = searchTerm.toLowerCase();
+        return students.filter(s => 
+            s.studentCode.toLowerCase().includes(term) || 
+            s.fullName.toLowerCase().includes(term)
+        );
+    }, [students, searchTerm]);
 
     // Calculate total dirty cells
     const dirtyCount = students.reduce((acc, st) => acc + Object.keys(st.dirtyScores).length, 0);
@@ -274,20 +327,27 @@ export default function StaffTrainingScoresPage() {
 
         setSaving(true);
         try {
-            // Flatten dirtyScores into payload array
             const payload: any[] = [];
             students.forEach(s => {
-                Object.keys(s.dirtyScores).forEach(semId => {
-                    payload.push({
-                        studentId: s.id,
-                        semesterId: semId,
-                        score: s.dirtyScores[semId].score,
-                        classification: s.dirtyScores[semId].classification
-                    });
+                Object.keys(s.dirtyScores).forEach(slotIdxStr => {
+                    const slotIdx = parseInt(slotIdxStr, 10);
+                    const sem = classSemesters[slotIdx]?.dbSemester;
+                    if (sem) {
+                        payload.push({
+                            studentId: s.id,
+                            semesterId: sem.id,
+                            score: s.dirtyScores[slotIdx].score,
+                            classification: s.dirtyScores[slotIdx].classification
+                        });
+                    }
                 });
             });
 
-            if (payload.length === 0) return;
+            if (payload.length === 0) {
+                alert("Dữ liệu thay đổi không khớp với học kỳ nào trong hệ thống để lưu.");
+                setSaving(false);
+                return;
+            }
 
             const res = await fetch("/api/training-results/batch-save", {
                 method: "POST",
@@ -299,13 +359,18 @@ export default function StaffTrainingScoresPage() {
             });
 
             if (res.ok) {
-                alert(`Đã lưu thành công ${payload.length} biên bản điểm rèn luyện!`);
+                alert(`Đã lưu thành công ${payload.length} bản ghi!`);
+                // Clear dirty scores locally before re-fetching
+                const cleaned = students.map(s => ({ ...s, dirtyScores: {} }));
+                setStudents(cleaned);
+                setOriginalScores(JSON.parse(JSON.stringify(cleaned)));
                 await fetchScores();
             } else {
                 const err = await res.json();
                 alert(err.message || "Lỗi lưu bảng điểm");
             }
         } catch (error) {
+            console.error("Save error:", error);
             alert("Đã xảy ra lỗi kết nối");
         } finally {
             setSaving(false);
@@ -335,27 +400,26 @@ export default function StaffTrainingScoresPage() {
                         const idx = updatedStudents.findIndex(s => s.studentCode === code);
                         if (idx !== -1) {
                             const student = updatedStudents[idx];
-                            // Check all 8 semester columns in excel
-                            classSemesters.forEach((item, colIdx) => {
-                                const sem = item.dbSemester;
-                                if (sem) {
-                                    const colName = `Kỳ ${colIdx + 1}`;
-                                    const scoreRaw = row[colName];
-                                    if (scoreRaw !== undefined && scoreRaw !== "") {
-                                        let num = parseInt(scoreRaw, 10);
-                                        if (!isNaN(num)) {
-                                            if (num < 0) num = 0;
-                                            if (num > 100) num = 100;
+                            // Check all 8 semester slots in excel
+                            classSemesters.forEach((_, slotIdx) => {
+                                const colName = `Kỳ ${slotIdx + 1}`;
+                                const scoreRaw = row[colName];
+                                if (scoreRaw !== undefined && scoreRaw !== "") {
+                                    let num = parseInt(scoreRaw, 10);
+                                    if (!isNaN(num)) {
+                                        if (num < 0) num = 0;
+                                        if (num > 100) num = 100;
 
-                                            const currentScore = student.scores[sem.id]?.score;
-                                            if (currentScore !== num) {
-                                                student.dirtyScores[sem.id] = {
-                                                    score: num,
-                                                    classification: getClassification(num)
-                                                };
-                                                student.scores[sem.id] = student.dirtyScores[sem.id];
-                                                importedCount++;
-                                            }
+                                        const originalStudent = originalScores.find(os => os.id === student.id);
+                                        const originalScore = originalStudent?.scores[slotIdx]?.score ?? null;
+
+                                        if (originalScore !== num) {
+                                            student.dirtyScores[slotIdx] = {
+                                                score: num,
+                                                classification: getClassification(num)
+                                            };
+                                            student.scores[slotIdx] = student.dirtyScores[slotIdx];
+                                            importedCount++;
                                         }
                                     }
                                 }
@@ -405,24 +469,75 @@ export default function StaffTrainingScoresPage() {
 
     return (
         <div className="h-[calc(100vh-2rem)] flex flex-col bg-slate-50/50 relative">
-            <div className="px-8 py-6 bg-white border-b border-slate-100 flex-shrink-0">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-2xl bg-uneti-blue flex items-center justify-center text-white shadow-lg shadow-uneti-blue/20">
-                            <Award size={24} />
+            {/* Standardized Header - Integrated Single Row */}
+            <div className="px-6 py-3 bg-white border-b border-slate-200 flex-shrink-0 shadow-sm z-50">
+                <div className="flex items-center gap-3 justify-between">
+                    {/* Left: Title Section */}
+                    <div className="flex items-center gap-3 min-w-max">
+                        <div className="w-10 h-10 rounded-xl bg-uneti-blue flex items-center justify-center text-white shadow-md shadow-uneti-blue/10">
+                            <Award size={20} />
                         </div>
-                        <div>
-                            <h1 className="text-[20px] font-black text-slate-800 tracking-tight">Điểm Rèn Luyện Toàn Khóa</h1>
-                            <p className="text-[13px] font-medium text-slate-400 mt-1">Lưới tính điểm thông minh 8 Học kỳ theo đặc thù Khóa đào tạo.</p>
+                        <div className="hidden lg:block">
+                            <h1 className="text-[15px] font-black text-slate-800 tracking-tight leading-none uppercase">Điểm rèn luyện</h1>
+                            <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Hệ thống 8 học kỳ</p>
                         </div>
+                        <div className="h-8 w-px bg-slate-100 mx-1 hidden lg:block"></div>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    {/* Middle: Functional Area (Search & Filters) */}
+                    <div className="flex-1 flex items-center gap-2 px-4 max-w-5xl">
+                        {/* 1. Search Bar */}
+                        <div className="relative group flex-[1.5]">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-uneti-blue transition-colors" size={14} />
+                            <input
+                                type="text"
+                                placeholder="Tìm tên/mã sinh viên..."
+                                className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border-transparent rounded-xl text-[12px] font-bold outline-none focus:bg-white focus:ring-1 focus:ring-uneti-blue/20 transition-all border border-slate-100"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                        </div>
+
+                        {/* 2. Major Filter */}
+                        <div className="flex-[1.2]">
+                            <SearchableSelect
+                                items={majors.map(m => ({ id: m.id, name: m.name }))}
+                                value={selectedMajorId}
+                                onChange={(val) => { setSelectedMajorId(val); setSelectedClassId(""); }}
+                                placeholder="Chọn Khoa/Ngành"
+                                className="h-full"
+                            />
+                        </div>
+
+                        {/* 3. Class Filter */}
+                        <div className="flex-[1]">
+                            <SearchableSelect
+                                items={adminClasses.filter(c => c.majorId === selectedMajorId).map(c => ({ id: c.id, name: c.code }))}
+                                value={selectedClassId}
+                                onChange={(val) => setSelectedClassId(val)}
+                                placeholder="Lớp danh nghĩa"
+                                disabled={!selectedMajorId}
+                                className="h-full"
+                            />
+                        </div>
+
+                        {/* 4. Advanced Options */}
+                        <button type="button" className="flex items-center gap-2 px-3 py-2.5 bg-slate-50 text-slate-600 hover:bg-slate-100 rounded-xl text-[12px] font-bold border border-slate-100 transition-all">
+                            <Settings2 size={16} />
+                            <span className="hidden xl:inline">Nâng cao</span>
+                        </button>
+                    </div>
+
+                    {/* Right: Actions Area */}
+                    <div className="flex items-center gap-2 min-w-max">
                         <button 
+                            type="button"
                             onClick={() => fileInputRef.current?.click()}
-                            className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2.5 rounded-xl text-[13px] font-bold flex items-center gap-2 transition-all shadow-sm"
+                            className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center gap-2 transition-all border border-emerald-100"
+                            title="Nhập Excel 8 Kỳ"
                         >
-                            <Upload size={16} /> Nhập Excel 8 Kỳ
+                            <Upload size={16} />
+                            <span className="hidden xl:inline">Import</span>
                         </button>
                         <input 
                             type="file" 
@@ -433,54 +548,31 @@ export default function StaffTrainingScoresPage() {
                         />
 
                         <button 
+                            type="button"
                             onClick={handleDownloadTemplate}
-                            className="bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 px-4 py-2.5 rounded-xl text-[13px] font-bold flex items-center gap-2 transition-all shadow-sm"
+                            className="bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 px-3 py-2.5 rounded-xl text-[12px] font-bold flex items-center gap-2 transition-all"
+                            title="Tải Mẫu Data"
                         >
-                            <Download size={16} /> Tải Mẫu Data
+                            <Download size={16} />
+                            <span className="hidden xl:inline">Mẫu Data</span>
                         </button>
 
                         <div className="h-6 w-px bg-slate-200 mx-1"></div>
 
                         <button 
+                            type="button"
                             onClick={handleSave}
                             disabled={dirtyCount === 0 || saving}
-                            className={`px-6 py-2.5 rounded-xl text-[13px] font-bold flex items-center gap-2 transition-all shadow-lg ${
+                            className={`px-5 py-2.5 rounded-xl text-[12px] font-bold flex items-center gap-2 transition-all shadow-md ${
                                 dirtyCount > 0 && !saving 
-                                ? "bg-uneti-blue text-white shadow-uneti-blue/20 hover:scale-[1.02]" 
-                                : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                                ? "bg-uneti-blue text-white shadow-uneti-blue/10 hover:translate-y-[-1px]" 
+                                : "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
                             }`}
                         >
                             {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                            Lưu bảng điểm {dirtyCount > 0 ? `(${dirtyCount} ô)` : ''}
+                            <span className="hidden sm:inline">Lưu</span> {dirtyCount > 0 ? `(${dirtyCount})` : ''}
                         </button>
                     </div>
-                </div>
-            </div>
-
-            <div className="px-8 py-4 bg-white border-b border-slate-100 flex-shrink-0 flex flex-wrap gap-4 items-center">
-                <div className="flex items-center gap-3 min-w-[250px]">
-                    <div className="w-8 h-8 rounded-full border border-slate-200 flex flex-shrink-0 items-center justify-center text-slate-400">1</div>
-                    <select
-                        className="w-full bg-slate-50 border-transparent px-4 py-2 rounded-xl text-[13px] font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10 appearance-none"
-                        value={selectedMajorId}
-                        onChange={(e) => { setSelectedMajorId(e.target.value); setSelectedClassId(""); }}
-                    >
-                        <option value="">Lọc theo khoa/ngành</option>
-                        {majors.map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                    </select>
-                </div>
-
-                <div className="flex items-center gap-3 min-w-[300px]">
-                    <div className={`w-8 h-8 rounded-full border flex flex-shrink-0 items-center justify-center ${selectedMajorId ? 'border-uneti-blue text-uneti-blue font-bold' : 'border-slate-200 text-slate-400'}`}>2</div>
-                    <select
-                        className="w-full bg-slate-50 border-transparent px-4 py-2 rounded-xl text-[13px] font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-uneti-blue/10 appearance-none disabled:opacity-50"
-                        value={selectedClassId}
-                        onChange={(e) => setSelectedClassId(e.target.value)}
-                        disabled={!selectedMajorId}
-                    >
-                        <option value="">Chọn Lớp danh nghĩa</option>
-                        {adminClasses.filter(c => c.majorId === selectedMajorId).map((c: any) => <option key={c.id} value={c.id}>{c.code}</option>)}
-                    </select>
                 </div>
             </div>
 
@@ -507,15 +599,19 @@ export default function StaffTrainingScoresPage() {
                                     <th className="px-3 py-2 border border-slate-300 sticky left-[50px] bg-slate-100 z-30 min-w-[120px]">Mã sinh viên</th>
                                     <th className="px-3 py-2 border border-slate-300 sticky left-[170px] bg-slate-100 z-30 min-w-[180px]">Họ và tên</th>
                                     {classSemesters.map((item, idx) => (
-                                        <th key={idx} className="px-2 py-2 border border-slate-300 text-center min-w-[100px] bg-slate-100">
-                                            <div>Kỳ {idx + 1}</div>
-                                            {item.expectedYear > 0 && <div className="text-[10px] text-slate-500 font-normal">HK{item.expectedSemNo} ({item.expectedYear}-{item.expectedYear+1})</div>}
+                                        <th key={idx} className="px-2 py-2 border border-slate-300 text-center min-w-[100px] bg-slate-100" title={item.dbSemester?.name || "Chưa kết nối hệ thống"}>
+                                            <div className="text-slate-900">Kỳ {idx + 1}</div>
+                                            {item.expectedYear > 0 && (
+                                                <div className={`text-[10px] uppercase font-bold tracking-tight outline-none ${item.dbSemester ? 'text-slate-400' : 'text-rose-500 animate-pulse'}`}>
+                                                    HK{item.expectedSemNo} ({item.expectedYear}-{item.expectedYear+1})
+                                                </div>
+                                            )}
                                         </th>
                                     ))}
                                 </tr>
                             </thead>
                             <tbody className="font-medium text-slate-800">
-                                {students.map((st, i) => {
+                                {filteredStudents.map((st, i) => {
                                     return (
                                         <tr key={st.id} className="hover:bg-blue-50/30 transition-colors">
                                             <td className="px-3 py-2 border border-slate-300 sticky left-0 bg-white z-10 text-center">{i + 1}</td>
@@ -525,9 +621,8 @@ export default function StaffTrainingScoresPage() {
                                             {classSemesters.map((item, idx) => {
                                                 const sem = item.dbSemester;
                                                 // Use semester ID as key if exists, else use a placeholder key
-                                                const semKey = sem ? sem.id : `placeholder-${idx}`;
-                                                const isDirty = !!st.dirtyScores[semKey];
-                                                const scoreObj = st.scores[semKey];
+                                                const isDirty = !!st.dirtyScores[idx];
+                                                const scoreObj = st.scores[idx];
                                                 const val = scoreObj ? Math.round(scoreObj.score) : "";
                                                 const classification = scoreObj?.classification || "";
 
@@ -537,7 +632,7 @@ export default function StaffTrainingScoresPage() {
                                                             type="number"
                                                             min="0"
                                                             max="100"
-                                                            title={classification || (sem ? undefined : "Học kỳ này chưa được mở trong hệ thống, điểm sẽ được lưu sau khi học kỳ được khởi tạo")}
+                                                            title={classification || (sem ? undefined : "Cột này hiện chưa khớp với học kì nào trong hệ thống, dữ liệu chỉ lưu tạm ở trình duyệt")}
                                                             className={`w-full h-full min-h-[36px] px-2 py-2 text-center text-[13px] font-semibold border-none focus:outline-none focus:bg-blue-50 focus:ring-2 focus:ring-inset focus:ring-blue-500 transition-all ${
                                                                 isDirty 
                                                                 ? "bg-yellow-100 text-yellow-900" 
@@ -549,8 +644,7 @@ export default function StaffTrainingScoresPage() {
                                                             }`}
                                                             value={val}
                                                             placeholder={!sem ? "?" : ""}
-                                                            disabled={!sem}
-                                                            onChange={(e) => sem && handleScoreChange(i, semKey, e.target.value)}
+                                                            onChange={(e) => handleScoreChange(st.id, idx, e.target.value)}
                                                         />
                                                     </td>
                                                 );
@@ -558,7 +652,7 @@ export default function StaffTrainingScoresPage() {
                                         </tr>
                                     );
                                 })}
-                                {students.length === 0 && (
+                                {filteredStudents.length === 0 && (
                                     <tr>
                                         <td colSpan={12} className="text-center py-12 text-slate-400 font-medium">Lớp danh nghĩa này hiện tại không có sinh viên nào.</td>
                                     </tr>

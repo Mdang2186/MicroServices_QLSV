@@ -172,10 +172,10 @@ const sortCourses = (courses: CourseClass[]) =>
     return `${left.code || ""}`.localeCompare(`${right.code || ""}`, "vi");
   });
 
-async function fetchAllCoursesForSemester(
-  semesterId: string,
+async function fetchAllCourses(
   token: string,
   filters: {
+    semesterId?: string;
     facultyId: string;
     majorId: string;
     cohort: string;
@@ -188,11 +188,11 @@ async function fetchAllCoursesForSemester(
 
   do {
     const params = new URLSearchParams({
-      semesterId,
       page: `${page}`,
       limit: "200",
     });
 
+    if (filters.semesterId) params.set("semesterId", filters.semesterId);
     if (filters.facultyId) params.set("facultyId", filters.facultyId);
     if (filters.majorId) params.set("majorId", filters.majorId);
     if (filters.cohort) params.set("cohort", filters.cohort);
@@ -237,6 +237,7 @@ export default function StaffGradeManagementPage() {
 
   const token = Cookies.get("staff_accessToken") || Cookies.get("admin_accessToken");
   const deferredSearch = useDeferredValue(advancedSearch.trim());
+  const isGlobalSearch = deferredSearch.length > 0;
 
   useEffect(() => {
     if (!token) {
@@ -316,6 +317,16 @@ export default function StaffGradeManagementPage() {
     [matchedSemesters],
   );
 
+  const displayedSemesterCount = useMemo(() => {
+    if (!isGlobalSearch) return matchedSemesters.length;
+
+    return new Set(
+      courses
+        .map((course) => course.semester?.id || course.semesterId)
+        .filter(Boolean),
+    ).size;
+  }, [courses, isGlobalSearch, matchedSemesters.length]);
+
   useEffect(() => {
     if (!selectedMajorId) return;
 
@@ -327,7 +338,7 @@ export default function StaffGradeManagementPage() {
 
   useEffect(() => {
     if (!token) return;
-    if (matchedSemesterIds.length === 0) {
+    if (!isGlobalSearch && matchedSemesterIds.length === 0) {
       setCourses([]);
       setCourseLoading(false);
       return;
@@ -340,16 +351,26 @@ export default function StaffGradeManagementPage() {
       setFilterError("");
 
       try {
-        const results = await Promise.allSettled(
-          matchedSemesterIds.map((semesterId) =>
-            fetchAllCoursesForSemester(semesterId, token, {
+        const requests = isGlobalSearch
+          ? [
+            fetchAllCourses(token, {
               facultyId: selectedFacultyId,
               majorId: selectedMajorId,
               cohort: selectedCohort,
               search: deferredSearch,
             }),
-          ),
-        );
+          ]
+          : matchedSemesterIds.map((semesterId) =>
+            fetchAllCourses(token, {
+              semesterId,
+              facultyId: selectedFacultyId,
+              majorId: selectedMajorId,
+              cohort: selectedCohort,
+              search: deferredSearch,
+            }),
+          );
+
+        const results = await Promise.allSettled(requests);
 
         if (cancelled) return;
 
@@ -396,6 +417,7 @@ export default function StaffGradeManagementPage() {
       cancelled = true;
     };
   }, [
+    isGlobalSearch,
     deferredSearch,
     matchedSemesterIds,
     selectedCohort,
@@ -450,7 +472,9 @@ export default function StaffGradeManagementPage() {
               {courses.length} lớp học phần
             </span>
             <span className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[12px] font-black text-uneti-blue">
-              {matchedSemesters.length} học kỳ tương ứng
+              {isGlobalSearch
+                ? `${displayedSemesterCount} học kỳ có kết quả`
+                : `${matchedSemesters.length} học kỳ tương ứng`}
             </span>
           </div>
         </div>
@@ -549,7 +573,11 @@ export default function StaffGradeManagementPage() {
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-medium text-slate-500">
-          {matchedSemesters.length > 0 ? (
+          {isGlobalSearch ? (
+            <span>
+              Đang tìm trên toàn bộ học kỳ với từ khóa <strong>{deferredSearch}</strong>.
+            </span>
+          ) : matchedSemesters.length > 0 ? (
             <span>
               Ngày {formatDateLabel(selectedDate)} thuộc{" "}
               {matchedSemesters.map((semester) => semester.code || semester.name).join(", ")}.
@@ -571,7 +599,7 @@ export default function StaffGradeManagementPage() {
             <div className="mb-4 h-9 w-9 animate-spin rounded-full border-4 border-slate-100 border-t-uneti-blue" />
             <p className="text-[13px] font-bold text-slate-500">Đang tải lớp học phần...</p>
           </div>
-        ) : matchedSemesters.length === 0 ? (
+        ) : !isGlobalSearch && matchedSemesters.length === 0 ? (
           <div className="flex h-full min-h-[360px] flex-col items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-white px-6 text-center shadow-sm">
             <CalendarDays size={36} className="mb-4 text-slate-300" />
             <h3 className="text-[16px] font-black text-slate-800">
@@ -588,7 +616,9 @@ export default function StaffGradeManagementPage() {
               Không có lớp học phần phù hợp
             </h3>
             <p className="mt-2 max-w-[520px] text-[13px] font-medium leading-6 text-slate-500">
-              Bộ lọc hiện tại chưa trả về lớp học phần nào. Hãy nới điều kiện lọc hoặc đổi ngày.
+              {isGlobalSearch
+                ? "Không tìm thấy lớp học phần nào khớp với từ khóa hiện tại. Hãy thử mã lớp, mã học phần, học phần, giảng viên, khoa, ngành hoặc lớp hành chính."
+                : "Bộ lọc hiện tại chưa trả về lớp học phần nào. Hãy nới điều kiện lọc hoặc đổi ngày."}
             </p>
           </div>
         ) : (

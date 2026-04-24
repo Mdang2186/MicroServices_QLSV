@@ -41,6 +41,48 @@ export class CourseClassService {
     return semester || { id: ref, code: null, startDate: null, endDate: null };
   }
 
+  private async resolveDefaultSemesterRef(semesterRef?: string) {
+    const ref = `${semesterRef || ''}`.trim();
+    if (ref) return ref;
+
+    const today = new Date();
+    const activeSemester =
+      (await this.prisma.semester.findFirst({
+        where: {
+          startDate: { lte: today },
+          endDate: { gte: today },
+        },
+        select: { id: true },
+        orderBy: [{ isCurrent: 'desc' }, { startDate: 'desc' }],
+      })) ||
+      (await this.prisma.semester.findFirst({
+        where: { isCurrent: true },
+        select: { id: true },
+        orderBy: { startDate: 'desc' },
+      }));
+
+    return activeSemester?.id;
+  }
+
+  private async resolveLecturerProfileId(lecturerRef?: string) {
+    const ref = `${lecturerRef || ''}`.trim();
+    if (!ref) return null;
+
+    const lecturer = await this.prisma.lecturer.findFirst({
+      where: {
+        OR: [
+          { id: ref },
+          { userId: ref },
+          { lectureCode: ref },
+          { fullName: ref },
+        ],
+      },
+      select: { id: true },
+    });
+
+    return lecturer?.id || ref;
+  }
+
   private async buildCourseClassSemesterWhere(semesterRef?: string) {
     const semester = await this.resolveSemesterRef(semesterRef);
     if (!semester) return null;
@@ -696,6 +738,8 @@ export class CourseClassService {
     semesterId: string,
     excludeId?: string,
   ) {
+    const resolvedLecturerId =
+      (await this.resolveLecturerProfileId(lecturerId)) || lecturerId;
     const semesterWhere = await this.buildClassSessionSemesterWhere(semesterId);
     return this.prisma.classSession.findMany({
       where: semesterWhere
@@ -704,7 +748,7 @@ export class CourseClassService {
               semesterWhere,
               {
                 courseClass: {
-                  lecturerId,
+                  lecturerId: resolvedLecturerId,
                   id: excludeId ? { not: excludeId } : undefined,
                   status: { not: 'CANCELLED' },
                 },
@@ -713,7 +757,7 @@ export class CourseClassService {
           }
         : {
             courseClass: {
-              lecturerId,
+              lecturerId: resolvedLecturerId,
               id: excludeId ? { not: excludeId } : undefined,
               status: { not: 'CANCELLED' },
             },
@@ -737,10 +781,12 @@ export class CourseClassService {
     startDate: Date,
     endDate: Date,
   ) {
+    const resolvedLecturerId =
+      (await this.resolveLecturerProfileId(lecturerId)) || lecturerId;
     return this.prisma.classSession.findMany({
       where: {
         date: { gte: startDate, lte: endDate },
-        courseClass: { lecturerId },
+        courseClass: { lecturerId: resolvedLecturerId },
       },
       include: {
         courseClass: {
@@ -807,10 +853,19 @@ export class CourseClassService {
   }
 
   async findByLecturerId(lecturerId: string, semesterId?: string) {
-    const semesterWhere = await this.buildCourseClassSemesterWhere(semesterId);
+    const resolvedLecturerId =
+      (await this.resolveLecturerProfileId(lecturerId)) || lecturerId;
+    const effectiveSemesterRef =
+      await this.resolveDefaultSemesterRef(semesterId);
+    const semesterWhere =
+      await this.buildCourseClassSemesterWhere(effectiveSemesterRef);
+    const lecturerWhere = {
+      lecturerId: resolvedLecturerId,
+      status: { not: 'CANCELLED' },
+    };
     const where: any = semesterWhere
-      ? { AND: [{ lecturerId }, semesterWhere] }
-      : { lecturerId };
+      ? { AND: [lecturerWhere, semesterWhere] }
+      : lecturerWhere;
 
     return this.prisma.courseClass.findMany({
       where,

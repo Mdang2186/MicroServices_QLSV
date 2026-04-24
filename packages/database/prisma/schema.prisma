@@ -78,8 +78,35 @@ model AcademicCohort {
   isActive              Boolean                @default(true)
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @default(now()) @updatedAt
+  cohortSemesters       CohortSemester[]
   semesterPlans         SemesterPlan[]
   trainingPlanTemplates TrainingPlanTemplate[]
+}
+
+model CohortSemester {
+  id                String         @id @default(uuid()) @db.VarChar(50)
+  cohortCode        String         @db.VarChar(50)
+  semesterId        String         @db.VarChar(50)
+  semesterNumber    Int
+  studyYear         Int
+  academicYear      String         @db.VarChar(20)
+  label             String         @db.NVarChar(100)
+  startDate         DateTime       @db.Date
+  endDate           DateTime       @db.Date
+  isCurrent         Boolean        @default(false)
+  isRegistering     Boolean        @default(false)
+  registerStartDate DateTime?
+  registerEndDate   DateTime?
+  status            String         @default("ACTIVE") @db.VarChar(30)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @default(now()) @updatedAt
+  cohort            AcademicCohort @relation(fields: [cohortCode], references: [code], onUpdate: NoAction)
+  semester          Semester       @relation(fields: [semesterId], references: [id], onUpdate: NoAction)
+
+  @@unique([cohortCode, semesterNumber])
+  @@unique([cohortCode, semesterId])
+  @@index([cohortCode, academicYear])
+  @@index([semesterId])
 }
 
 model Specialization {
@@ -273,6 +300,7 @@ model Semester {
   semesterNumber       Int             @default(1)
   sessions             ClassSession[]
   classes              CourseClass[]
+  cohortSemesters      CohortSemester[]
   semesterPlans        SemesterPlan[]
   studentFees          StudentFee[]
   trainingScores       TrainingScore[]

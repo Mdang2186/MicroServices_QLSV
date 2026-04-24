@@ -16,7 +16,10 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { CompactLecturerHeader } from "@/components/dashboard/CompactLecturerHeader";
+import {
+    fetchLecturerWeekSessions,
+    getLecturerFallbackRefs,
+} from "@/lib/lecturer-courses";
 
 const SESSIONS = [
     { label: "Sáng", time: "07:00 - 12:15", value: "morning" },
@@ -34,10 +37,12 @@ const DAYS = [
     { name: "Chủ nhật", short: "CN", value: 8 },
 ];
 
-const getLecturerProfileId = (user: any) =>
-    user?.profileId || user?.lecturerId || user?.lecturer?.id || "";
-
-const toDateInputValue = (date: Date) => date.toISOString().split("T")[0];
+const toDateInputValue = (date: Date) => {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, "0");
+    const day = `${date.getDate()}`.padStart(2, "0");
+    return `${year}-${month}-${day}`;
+};
 
 const getWeekStart = (value: Date) => {
     const date = new Date(value);
@@ -61,13 +66,14 @@ const getShiftBucket = (startShift: number) => {
 
 export default function LecturerSchedulePage() {
     const [user, setUser] = useState<any>(null);
+    const [userLoaded, setUserLoaded] = useState(false);
     const [loading, setLoading] = useState(false);
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [schedule, setSchedule] = useState<any[]>([]);
     const [filter, setFilter] = useState<"all" | "study" | "exam">("all");
 
     const token = Cookies.get("lecturer_accessToken") || Cookies.get("admin_accessToken");
-    const lecturerProfileId = getLecturerProfileId(user);
+    const lecturerFallbackRefs = useMemo(() => getLecturerFallbackRefs(user), [user]);
     const weekStart = useMemo(() => getWeekStart(selectedDate), [selectedDate]);
     const weekDays = useMemo(
         () => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)),
@@ -83,30 +89,24 @@ export default function LecturerSchedulePage() {
                 setUser(null);
             }
         }
+        setUserLoaded(true);
     }, []);
 
     useEffect(() => {
-        if (!lecturerProfileId || !token) {
+        if (!userLoaded) return;
+
+        if (!lecturerFallbackRefs.length || !token) {
             setSchedule([]);
             setLoading(false);
             return;
         }
 
         setLoading(true);
-        const startDate = toDateInputValue(weekDays[0]);
-        const endDate = toDateInputValue(weekDays[6]);
-
-        fetch(
-            `/api/courses/sessions/lecturer/${lecturerProfileId}?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`,
-            {
-                headers: { Authorization: `Bearer ${token}` },
-            },
-        )
-            .then((response) => (response.ok ? response.json() : []))
+        fetchLecturerWeekSessions(token, lecturerFallbackRefs, selectedDate)
             .then((data) => setSchedule(Array.isArray(data) ? data : []))
             .catch(() => setSchedule([]))
             .finally(() => setLoading(false));
-    }, [lecturerProfileId, token, weekDays]);
+    }, [lecturerFallbackRefs, selectedDate, token, userLoaded]);
 
     const getSchedulesForDayAndSession = (dayValue: number, sessionValue: string) => {
         const targetJsDay = dayValue === 8 ? 0 : dayValue - 1;
@@ -138,14 +138,6 @@ export default function LecturerSchedulePage() {
 
     return (
         <div className="min-h-screen space-y-4 pb-20 w-full max-w-full p-4 md:p-6 animate-in fade-in duration-700 bg-[#fbfcfd]">
-            <CompactLecturerHeader
-                userName={`${user?.degree || "Giảng viên"} ${user?.fullName || "Cao cấp"}`}
-                userId={`GV-${user?.username || "UNETI"}`}
-                minimal={true}
-                title="Lịch giảng dạy"
-                onSemesterChange={() => {}}
-                hideSemester={true}
-            />
 
             <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-3 px-5 rounded-2xl border border-slate-100 shadow-sm">
                 <div className="flex items-center gap-6">

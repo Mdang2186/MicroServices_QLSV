@@ -145,7 +145,8 @@ export default function SchedulePage() {
                 const userId = getStudentUserId(user);
                 if (!userId) return;
 
-                const data = await StudentService.getProfile(userId);
+                const data = await StudentService.getProfileSummary(userId);
+                if (!data?.id) return;
 
                 if (data.enrollments) {
                     setEnrollments(data.enrollments);

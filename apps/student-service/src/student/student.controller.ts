@@ -55,6 +55,16 @@ export class StudentController {
     return this.studentService.findByAdminClass(adminClassId);
   }
 
+  @Get("resolve/:id")
+  resolveStudent(@Param("id") id: string) {
+    return this.studentService.findSummary(id);
+  }
+
+  @Get("user/:userId/summary")
+  findUserSummary(@Param("userId") userId: string) {
+    return this.studentService.findSummary(userId);
+  }
+
   @Get(":id")
   findOne(@Param("id") id: string) {
     return this.studentService.findOne(id);

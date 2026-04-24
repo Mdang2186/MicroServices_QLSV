@@ -378,13 +378,305 @@ export class EnrollmentService {
     }
 
     private resolveStudentCohortCode(student: any) {
-        const directCohort = `${student?.intake || student?.adminClass?.cohort || ''}`.trim().toUpperCase();
-        if (directCohort) {
-            return directCohort;
+        const candidates = [
+            student?.intake,
+            student?.adminClass?.cohort,
+            student?.adminClass?.code,
+            student?.studentCode,
+        ];
+
+        for (const candidate of candidates) {
+            const cohortCode = this.normalizeCohortCode(candidate);
+            if (cohortCode) {
+                return cohortCode;
+            }
         }
 
         const legacyMeta = this.parseLegacyAdminClass(student?.adminClass?.code);
         return legacyMeta?.cohort || null;
+    }
+
+    private normalizeCohortCode(value?: string | null) {
+        const raw = `${value || ''}`.trim().toUpperCase();
+        if (!raw) return null;
+
+        const direct = raw.match(/^K?(\d{1,2})$/);
+        if (direct) return `K${Number(direct[1])}`;
+
+        const kMatch = raw.match(/\bK(\d{1,2})\b/);
+        if (kMatch) return `K${Number(kMatch[1])}`;
+
+        const legacyClass = raw.match(/^(\d{2})A[12]/);
+        if (legacyClass) return `K${Number(legacyClass[1])}`;
+
+        const studentCode = raw.match(/^SVK?(\d{2})/);
+        if (studentCode) return `K${Number(studentCode[1])}`;
+
+        return null;
+    }
+
+    private parseCohortStartYear(cohortCode?: string | null) {
+        const normalized = this.normalizeCohortCode(cohortCode);
+        const cohortNumber = Number(`${normalized || ''}`.replace(/\D/g, ''));
+        if (!Number.isFinite(cohortNumber) || cohortNumber <= 0) return null;
+        if (cohortNumber >= 2000) return cohortNumber;
+        return 2006 + cohortNumber;
+    }
+
+    private resolveCohortStartYear(student: any, academicCohort?: any | null) {
+        const cohortStartYear = this.parseCohortStartYear(this.resolveStudentCohortCode(student));
+        if (cohortStartYear) return cohortStartYear;
+
+        const admissionYear = student?.admissionDate
+            ? new Date(student.admissionDate).getFullYear()
+            : null;
+        if (Number.isInteger(admissionYear) && admissionYear >= 2000) {
+            return admissionYear;
+        }
+
+        const academicStartYear = Number(academicCohort?.startYear || 0);
+        return Number.isInteger(academicStartYear) && academicStartYear >= 2000
+            ? academicStartYear
+            : null;
+    }
+
+    private isSemesterInCohortWindow(semester: any, startYear: number | null) {
+        if (!startYear) return true;
+
+        const startDate = semester?.startDate ? new Date(semester.startDate) : null;
+        const endDate = semester?.endDate ? new Date(semester.endDate) : null;
+        const windowStart = new Date(startYear, 7, 1);
+        const windowEnd = new Date(startYear + 4, 7, 31, 23, 59, 59);
+
+        if (startDate && !Number.isNaN(startDate.getTime())) {
+            const compareDate = endDate && !Number.isNaN(endDate.getTime()) ? endDate : startDate;
+            return compareDate >= windowStart && startDate <= windowEnd;
+        }
+
+        const semesterYear = Number(semester?.year || 0);
+        return semesterYear >= startYear && semesterYear <= startYear + 4;
+    }
+
+    private isDateInSemester(date: Date, semester: any) {
+        const startDate = semester?.startDate ? new Date(semester.startDate) : null;
+        const endDate = semester?.endDate ? new Date(semester.endDate) : null;
+        if (!startDate || !endDate) return false;
+        return date >= startDate && date <= endDate;
+    }
+
+    private getCohortSemesterSlot(semester: any, startYear: number | null) {
+        if (!startYear) return null;
+
+        const startDate = semester?.startDate ? new Date(semester.startDate) : null;
+        const endDate = semester?.endDate ? new Date(semester.endDate) : null;
+        if (!startDate || Number.isNaN(startDate.getTime())) return null;
+
+        const compareDate = endDate && !Number.isNaN(endDate.getTime()) ? endDate : startDate;
+        for (let yearIndex = 0; yearIndex < 4; yearIndex += 1) {
+            const academicStartYear = startYear + yearIndex;
+            const oddSemester = yearIndex * 2 + 1;
+            const evenSemester = yearIndex * 2 + 2;
+            const firstStart = new Date(academicStartYear, 8, 1);
+            const firstEnd = new Date(academicStartYear + 1, 0, 31, 23, 59, 59);
+            const secondStart = new Date(academicStartYear + 1, 1, 1);
+            const secondEnd = new Date(academicStartYear + 1, 6, 31, 23, 59, 59);
+
+            if (compareDate >= firstStart && startDate <= firstEnd) {
+                return {
+                    semesterNumber: oddSemester,
+                    studyYear: yearIndex + 1,
+                    academicYearLabel: `${academicStartYear}-${academicStartYear + 1}`,
+                    standardStartDate: firstStart,
+                    standardEndDate: new Date(academicStartYear + 1, 0, 20),
+                };
+            }
+
+            if (compareDate >= secondStart && startDate <= secondEnd) {
+                return {
+                    semesterNumber: evenSemester,
+                    studyYear: yearIndex + 1,
+                    academicYearLabel: `${academicStartYear}-${academicStartYear + 1}`,
+                    standardStartDate: secondStart,
+                    standardEndDate: new Date(academicStartYear + 1, 5, 30),
+                };
+            }
+        }
+
+        return null;
+    }
+
+    private normalizeSemesterForCohort(semester: any, cohortCode: string | null, startYear: number | null) {
+        const slot = this.getCohortSemesterSlot(semester, startYear);
+        if (!slot) return semester;
+
+        return {
+            ...semester,
+            code: `${cohortCode || 'KHOA'}_HK${slot.semesterNumber}`,
+            name: `HK${slot.semesterNumber} - Năm ${slot.studyYear} (${slot.academicYearLabel})`,
+            year: slot.semesterNumber % 2 === 1 ? startYear + slot.studyYear - 1 : startYear + slot.studyYear,
+            startDate: slot.standardStartDate,
+            endDate: slot.standardEndDate,
+            semesterNumber: slot.semesterNumber,
+            cohortSemesterNumber: slot.semesterNumber,
+            cohortStudyYear: slot.studyYear,
+            cohortAcademicYear: slot.academicYearLabel,
+        };
+    }
+
+    private buildSyntheticCohortSemester(cohortCode: string, startYear: number, semesterNumber: number) {
+        const studyYear = Math.ceil(semesterNumber / 2);
+        const academicStartYear = startYear + studyYear - 1;
+        const academicYearLabel = `${academicStartYear}-${academicStartYear + 1}`;
+        const isOddSemester = semesterNumber % 2 === 1;
+
+        return {
+            id: `${cohortCode}_HK${semesterNumber}`,
+            code: `${cohortCode}_HK${semesterNumber}`,
+            name: `HK${semesterNumber} - Năm ${studyYear} (${academicYearLabel})`,
+            year: isOddSemester ? academicStartYear : academicStartYear + 1,
+            startDate: isOddSemester
+                ? new Date(academicStartYear, 8, 1)
+                : new Date(academicStartYear + 1, 1, 1),
+            endDate: isOddSemester
+                ? new Date(academicStartYear + 1, 0, 20)
+                : new Date(academicStartYear + 1, 5, 30),
+            semesterNumber,
+            cohortCode,
+            cohortSemesterNumber: semesterNumber,
+            cohortStudyYear: studyYear,
+            cohortAcademicYear: academicYearLabel,
+            isCurrent: false,
+            isRegistering: false,
+        };
+    }
+
+    private normalizeStudentSemestersForCohort(semesters: any[], cohortCode: string | null, startYear: number | null) {
+        const semesterBySlot = new Map<number, any>();
+        const semesterById = new Set<string>();
+
+        for (const semester of semesters) {
+            if (!semester?.id || semesterById.has(semester.id)) continue;
+            semesterById.add(semester.id);
+
+            const normalized = this.normalizeSemesterForCohort(semester, cohortCode, startYear);
+            const slot = Number(normalized?.cohortSemesterNumber || 0);
+            if (slot >= 1 && slot <= 8 && !semesterBySlot.has(slot)) {
+                semesterBySlot.set(slot, normalized);
+            }
+        }
+
+        if (cohortCode && startYear) {
+            for (let slot = 1; slot <= 8; slot += 1) {
+                if (!semesterBySlot.has(slot)) {
+                    semesterBySlot.set(
+                        slot,
+                        this.buildSyntheticCohortSemester(cohortCode, startYear, slot),
+                    );
+                }
+            }
+        }
+
+        return this.sortSemestersDesc([...semesterBySlot.values()]).slice(0, 8);
+    }
+
+    private mapCohortSemesterRow(row: any, startYear: number | null) {
+        const semester = row?.semester || {};
+        return this.normalizeSemesterForCohort(
+            {
+                ...semester,
+                id: row.semesterId || semester.id,
+                code: `${row.cohortCode}_HK${row.semesterNumber}`,
+                name: row.label,
+                year: row.semesterNumber % 2 === 1
+                    ? Number(startYear || semester.year || 0) + row.studyYear - 1
+                    : Number(startYear || semester.year || 0) + row.studyYear,
+                startDate: row.startDate,
+                endDate: row.endDate,
+                isCurrent: row.isCurrent,
+                isRegistering: row.isRegistering,
+                registerStartDate: row.registerStartDate,
+                registerEndDate: row.registerEndDate,
+                semesterNumber: row.semesterNumber,
+                cohortSemesterId: row.id,
+                cohortCode: row.cohortCode,
+                cohortSemesterNumber: row.semesterNumber,
+                cohortStudyYear: row.studyYear,
+                cohortAcademicYear: row.academicYear,
+            },
+            row.cohortCode,
+            startYear,
+        );
+    }
+
+    private async getPersistedCohortSemesters(cohortCode: string, startYear: number | null) {
+        try {
+            const rows = await (this.prisma as any).cohortSemester.findMany({
+                where: {
+                    cohortCode,
+                    status: 'ACTIVE',
+                },
+                include: { semester: true },
+                orderBy: { semesterNumber: 'asc' },
+            });
+
+            return rows
+                .map((row: any) => this.mapCohortSemesterRow(row, startYear))
+                .filter((semester: any) =>
+                    this.isRegularSemester(semester) &&
+                    this.isSemesterInCohortWindow(semester, startYear),
+                );
+        } catch (error) {
+            this.logger.warn(
+                `CohortSemester unavailable for ${cohortCode}; falling back to Semester mapping: ${(error as Error)?.message}`,
+            );
+            return [];
+        }
+    }
+
+    private async resolveCourseClassRegistrationWindow(tx: any, courseClass: any) {
+        const classCohort = this.normalizeCohortCode(courseClass?.cohort);
+        try {
+            const cohortSemester = classCohort
+                ? await tx.cohortSemester.findFirst({
+                    where: {
+                        cohortCode: classCohort,
+                        semesterId: courseClass.semesterId,
+                        status: 'ACTIVE',
+                    },
+                })
+                : null;
+
+            if (cohortSemester) {
+                return {
+                    ...courseClass.semester,
+                    isCurrent: cohortSemester.isCurrent,
+                    isRegistering: cohortSemester.isRegistering,
+                    registerStartDate: cohortSemester.registerStartDate,
+                    registerEndDate: cohortSemester.registerEndDate,
+                };
+            }
+        } catch {
+            // CohortSemester is additive; if migration has not run, use Semester.
+        }
+
+        return courseClass.semester;
+    }
+
+    private isRegularSemester(semester: any) {
+        const normalized = `${semester?.code || ''} ${semester?.name || ''}`
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase();
+
+        return !/(hoc\s*ky\s*phu|hockyphu|summer|phu)/.test(normalized);
+    }
+
+    private sortSemestersDesc(semesters: any[]) {
+        return semesters.sort((left, right) => {
+            const leftTime = left?.startDate ? new Date(left.startDate).getTime() : 0;
+            const rightTime = right?.startDate ? new Date(right.startDate).getTime() : 0;
+            return rightTime - leftTime;
+        });
     }
 
     private async getStudentSemestersFromPlan(student: any) {
@@ -401,18 +693,72 @@ export class EnrollmentService {
             include: {
                 semester: true,
             },
+            orderBy: {
+                conceptualSemester: 'asc',
+            },
         });
 
-        const semesterMap = new Map<string, any>();
+        const semesterByConcept = new Map<number, any>();
         for (const plan of plans) {
-            if (plan.semester?.id) {
-                semesterMap.set(plan.semester.id, plan.semester);
+            const conceptualSemester = Number(plan.conceptualSemester);
+            if (
+                plan.semester?.id &&
+                conceptualSemester >= 1 &&
+                conceptualSemester <= 8 &&
+                this.isRegularSemester(plan.semester) &&
+                !semesterByConcept.has(conceptualSemester)
+            ) {
+                semesterByConcept.set(conceptualSemester, plan.semester);
             }
         }
 
-        return [...semesterMap.values()].sort(
-            (left, right) =>
-                new Date(right.startDate).getTime() - new Date(left.startDate).getTime(),
+        const plannedSemesters = this.sortSemestersDesc([...semesterByConcept.values()]);
+
+        const academicCohort = await this.prisma.academicCohort.findUnique({
+            where: { code: cohortCode },
+        });
+        const startYear = this.resolveCohortStartYear(student, academicCohort);
+        const persistedCohortSemesters = await this.getPersistedCohortSemesters(cohortCode, startYear);
+        if (persistedCohortSemesters.length > 0) {
+            return persistedCohortSemesters;
+        }
+
+        let cohortWindowSemesters: any[] = [];
+        if (startYear > 0) {
+            const semesters = await this.prisma.semester.findMany({
+                where: {
+                    year: {
+                        gte: startYear,
+                        lte: startYear + 4,
+                    },
+                },
+                orderBy: { startDate: 'desc' },
+            });
+
+            cohortWindowSemesters = this.sortSemestersDesc(
+                semesters.filter((semester) =>
+                    this.isRegularSemester(semester) &&
+                    this.isSemesterInCohortWindow(semester, startYear),
+                ),
+            );
+        }
+
+        const semesterMap = new Map<string, any>();
+        for (const semester of [...plannedSemesters, ...cohortWindowSemesters]) {
+            if (
+                semester?.id &&
+                !semesterMap.has(semester.id) &&
+                this.isRegularSemester(semester) &&
+                this.isSemesterInCohortWindow(semester, startYear)
+            ) {
+                semesterMap.set(semester.id, semester);
+            }
+        }
+
+        return this.normalizeStudentSemestersForCohort(
+            [...semesterMap.values()],
+            cohortCode,
+            startYear,
         );
     }
 
@@ -474,12 +820,13 @@ export class EnrollmentService {
                 });
 
                 if (!courseClass) throw new NotFoundException('Lớp học phần không tồn tại');
-                this.ensureSemesterRegistrationOpen(courseClass.semester);
-
-                // 2. Check Slot and Status (Initial check)
+                // 1. Check Slot and Status (Initial check)
                 if (courseClass.status !== 'OPEN') {
+                    const registrationWindow = await this.resolveCourseClassRegistrationWindow(tx, courseClass);
+                    this.ensureSemesterRegistrationOpen(registrationWindow);
                     throw new BadRequestException('Lớp học phần chưa mở hoặc đã đóng đăng ký');
                 }
+                
                 if (courseClass.currentSlots >= courseClass.maxSlots) {
                     throw new BadRequestException('Lớp đã hết chỗ (Class is full)');
                 }
@@ -774,8 +1121,9 @@ export class EnrollmentService {
             });
 
             if (!newClass) throw new NotFoundException('Lớp học phần mới không tồn tại');
-            this.ensureSemesterRegistrationOpen(newClass.semester);
             if (newClass.status !== 'OPEN') {
+                const registrationWindow = await this.resolveCourseClassRegistrationWindow(tx, newClass);
+                this.ensureSemesterRegistrationOpen(registrationWindow);
                 const statusLabel = newClass.status === 'LOCKED' ? 'Bị khóa' : newClass.status;
                 throw new BadRequestException(`Lớp mới đang ở trạng thái '${statusLabel}', không thể đăng ký chuyển lớp.`);
             }
@@ -890,7 +1238,13 @@ export class EnrollmentService {
 
     async getRegistrationOverview(studentIdOrUserId: string) {
         const student = await this.resolveStudent(studentIdOrUserId);
-        const targetSemester = await this.resolveTargetSemester();
+        const studentSemesters = await this.getStudentSemestersFromPlan(student);
+        const now = new Date();
+        const targetSemester =
+            studentSemesters.find((semester) => this.isDateInSemester(now, semester)) ||
+            studentSemesters.find((semester) => semester.isRegistering || semester.isCurrent) ||
+            studentSemesters[0] ||
+            await this.resolveTargetSemester();
         let semester = targetSemester;
         let enrolledCourses = await this.getStudentEnrollments(student.id, targetSemester.id);
 
@@ -928,7 +1282,14 @@ export class EnrollmentService {
     async getRegistrationStatus(studentIdOrUserId: string, semesterId?: string) {
         const student = await this.resolveStudent(studentIdOrUserId);
         const studentId = student.id;
-        const targetSemester = await this.resolveTargetSemester(semesterId);
+        const studentSemesters = semesterId ? [] : await this.getStudentSemestersFromPlan(student);
+        const now = new Date();
+        const targetSemester = semesterId
+            ? await this.resolveTargetSemester(semesterId)
+            : studentSemesters.find((semester) => this.isDateInSemester(now, semester)) ||
+                studentSemesters.find((semester) => semester.isRegistering || semester.isCurrent) ||
+                studentSemesters[0] ||
+                await this.resolveTargetSemester();
         const targetSemesterId = targetSemester.id;
 
         const cohortCode = this.resolveStudentCohortCode(student);
@@ -1060,50 +1421,25 @@ export class EnrollmentService {
 
     async getSemestersByStudent(studentIdOrUserId: string) {
         const student = await this.resolveStudent(studentIdOrUserId);
-
-        const [plannedSemesters, enrollments, trainingScores, studentFees] = await Promise.all([
-            this.getStudentSemestersFromPlan(student),
-            this.prisma.enrollment.findMany({
-                where: { studentId: student.id },
-                select: {
-                    courseClass: {
-                        select: { semester: true },
-                    },
-                },
-            }),
-            this.prisma.trainingScore.findMany({
-                where: { studentId: student.id },
-                select: { semester: true },
-            }),
-            this.prisma.studentFee.findMany({
-                where: { studentId: student.id },
-                select: { semester: true },
-            }),
-        ]);
-
-        const semesterMap = new Map<string, any>();
-        const pushSemester = (semester: any) => {
-            if (semester?.id) {
-                semesterMap.set(semester.id, semester);
-            }
-        };
-
-        plannedSemesters.forEach(pushSemester);
-        enrollments.forEach((item) => pushSemester(item.courseClass?.semester));
-        trainingScores.forEach((item) => pushSemester(item.semester));
-        studentFees.forEach((item) => pushSemester(item.semester));
-
-        const semesters = [...semesterMap.values()].sort((left, right) => {
-            const leftTime = left?.startDate ? new Date(left.startDate).getTime() : 0;
-            const rightTime = right?.startDate ? new Date(right.startDate).getTime() : 0;
-            return rightTime - leftTime;
-        });
-
-        if (semesters.length > 0) {
-            return semesters;
+        const plannedSemesters = await this.getStudentSemestersFromPlan(student);
+        if (plannedSemesters.length > 0) {
+            return plannedSemesters;
         }
 
-        return this.prisma.semester.findMany({ orderBy: { startDate: 'desc' } });
+        const regularSemesters = await this.prisma.semester.findMany({
+            orderBy: { startDate: 'desc' },
+        });
+        const cohortCode = this.resolveStudentCohortCode(student);
+        const cohortStartYear = this.resolveCohortStartYear(student);
+
+        return this.normalizeStudentSemestersForCohort(
+            regularSemesters.filter((semester) =>
+                this.isRegularSemester(semester) &&
+                this.isSemesterInCohortWindow(semester, cohortStartYear),
+            ),
+            cohortCode,
+            cohortStartYear,
+        );
     }
 
     async getClassesBySubject(subjectId: string, semesterId?: string) {
@@ -1138,12 +1474,11 @@ export class EnrollmentService {
     }
 
     async getStudentEnrollments(studentIdOrUserId: string, semesterId?: string) {
-        const student = await this.resolveStudent(studentIdOrUserId);
-        const studentId = student.id;
+        const linkedStudentIds = await this.resolveLinkedStudentIds(studentIdOrUserId);
 
         const enrollments = await this.prisma.enrollment.findMany({
             where: { 
-                studentId,
+                studentId: { in: linkedStudentIds },
                 ...(semesterId ? { courseClass: { semesterId } } : {})
             },
             include: {
@@ -1230,6 +1565,9 @@ export class EnrollmentService {
                 include: {
                     student: {
                         include: { user: true, adminClass: true }
+                    },
+                    attendances: {
+                        orderBy: { date: 'desc' }
                     }
                 },
                 orderBy: { student: { studentCode: 'asc' } }
@@ -1378,5 +1716,68 @@ export class EnrollmentService {
 
             return results;
         });
+    }
+
+    private async resolveLinkedStudentIds(studentIdOrUserId: string) {
+        const student = await this.resolveStudent(studentIdOrUserId);
+        if (!student) {
+            return [studentIdOrUserId];
+        }
+
+        const linkedStudentIds = [student.id];
+        const legacyMeta = this.parseLegacyAdminClass(
+            student.adminClass?.code,
+            student.adminClass?.cohort || student.intake,
+        );
+
+        if (!legacyMeta) {
+            return linkedStudentIds;
+        }
+
+        const mirrorAdminClass = await this.prisma.adminClass.findFirst({
+            where: {
+                cohort: legacyMeta.cohort,
+                code: {
+                    startsWith: `${legacyMeta.cohort}-`,
+                    contains: `-${legacyMeta.majorCode}`,
+                    endsWith: `-${legacyMeta.section}`,
+                },
+            },
+            orderBy: { code: 'asc' },
+            select: { id: true },
+        });
+
+        if (!mirrorAdminClass) {
+            return linkedStudentIds;
+        }
+
+        let mirrorStudent = await this.prisma.student.findFirst({
+            where: {
+                adminClassId: mirrorAdminClass.id,
+                fullName: student.fullName,
+                status: 'STUDYING',
+            },
+            select: { id: true },
+        });
+
+        if (!mirrorStudent) {
+            const codeSuffix = `${student.studentCode || ''}`.match(/(\d{2})$/)?.[1];
+            if (codeSuffix) {
+                mirrorStudent = await this.prisma.student.findFirst({
+                    where: {
+                        adminClassId: mirrorAdminClass.id,
+                        studentCode: { endsWith: codeSuffix },
+                        status: 'STUDYING',
+                    },
+                    select: { id: true },
+                });
+            }
+        }
+
+        if (mirrorStudent?.id) {
+            linkedStudentIds.push(mirrorStudent.id);
+        }
+
+        return [...new Set(linkedStudentIds)];
     }
 }

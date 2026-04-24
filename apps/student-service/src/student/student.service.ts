@@ -43,6 +43,14 @@ export class StudentService {
     },
   } as const;
 
+  private readonly studentSummaryInclude = {
+    user: true,
+    major: true,
+    specialization: true,
+    familyMembers: true,
+    adminClass: true,
+  } as const;
+
   private toPortalDayOfWeek(value: Date | string) {
     const day = new Date(value).getDay();
     return day === 0 ? 8 : day + 1;
@@ -505,6 +513,71 @@ export class StudentService {
     };
   }
 
+  private async resolveLinkedStudentIds(studentIdOrUserId: string) {
+    const student = await this.resolveStudent(studentIdOrUserId);
+    if (!student) {
+        return [studentIdOrUserId];
+    }
+
+    const linkedStudentIds = [student.id];
+    const legacyMeta = this.parseLegacyAdminClass(
+        student.adminClass?.code,
+        student.adminClass?.cohort || student.intake,
+    );
+
+    if (!legacyMeta) {
+        return linkedStudentIds;
+    }
+
+    const mirrorAdminClass = await this.prisma.adminClass.findFirst({
+        where: {
+            cohort: legacyMeta.cohort,
+            code: {
+                startsWith: `${legacyMeta.cohort}-`,
+                contains: `-${legacyMeta.majorCode}`,
+                endsWith: `-${legacyMeta.section}`,
+            },
+        },
+        orderBy: { code: "asc" },
+        select: { id: true },
+    });
+
+    if (!mirrorAdminClass) {
+        return linkedStudentIds;
+    }
+
+    let mirrorStudent = await this.prisma.student.findFirst({
+        where: {
+            adminClassId: mirrorAdminClass.id,
+            fullName: student.fullName,
+            status: "STUDYING",
+        },
+        select: { id: true },
+    });
+
+    if (!mirrorStudent) {
+        const codeSuffix = `${student.studentCode || ""}`.match(/(\d{2})$/)?.[1];
+        if (codeSuffix) {
+            mirrorStudent = await this.prisma.student.findFirst({
+                where: {
+                    adminClassId: mirrorAdminClass.id,
+                    studentCode: { endsWith: codeSuffix },
+                    status: "STUDYING",
+                },
+                select: { id: true },
+            });
+        }
+    }
+
+    if (mirrorStudent?.id) {
+        linkedStudentIds.push(mirrorStudent.id);
+    }
+
+    return [...new Set(linkedStudentIds)];
+  }
+
+
+
   private resolveStudentCohortCode(student: any) {
     const directCohort =
       `${student?.intake || student?.adminClass?.cohort || ""}`.trim().toUpperCase();
@@ -538,6 +611,31 @@ export class StudentService {
       student = await this.prisma.student.findFirst({
         where: { studentCode: idOrCode },
         include: this.portalStudentInclude,
+      });
+    }
+
+    return student;
+  }
+
+  private async resolveStudentSummary(idOrCode: string) {
+    if (!idOrCode) return null;
+
+    let student = await this.prisma.student.findUnique({
+      where: { id: idOrCode },
+      include: this.studentSummaryInclude,
+    });
+
+    if (!student) {
+      student = await this.prisma.student.findUnique({
+        where: { userId: idOrCode },
+        include: this.studentSummaryInclude,
+      });
+    }
+
+    if (!student) {
+      student = await this.prisma.student.findFirst({
+        where: { studentCode: idOrCode },
+        include: this.studentSummaryInclude,
       });
     }
 
@@ -746,6 +844,15 @@ export class StudentService {
 
   async findByAdminClass(adminClassId: string): Promise<StudentResponse[]> {
     return this.findAll({ adminClassId });
+  }
+
+  async findSummary(id: string): Promise<StudentResponse | null> {
+    try {
+      return (await this.resolveStudentSummary(id)) as unknown as StudentResponse | null;
+    } catch (error) {
+      this.logger.error(`Error in findSummary for student ${id}: ${error.message}`);
+      return null;
+    }
   }
 
   async findOne(id: string): Promise<StudentResponse | null> {
@@ -1011,8 +1118,15 @@ export class StudentService {
         });
 
     // 2. Map Progress
+    const finalLinkedStudentIds = await this.resolveLinkedStudentIds(studentId);
+    if (!finalLinkedStudentIds.includes(studentId)) {
+        finalLinkedStudentIds.push(studentId);
+    }
+
     const grades = await this.prisma.grade.findMany({
-      where: { studentId: { in: linkedStudentIds } },
+      where: {
+        studentId: { in: finalLinkedStudentIds },
+      },
       select: {
         subjectId: true,
         isPassed: true,

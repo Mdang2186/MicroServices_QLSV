@@ -116,39 +116,153 @@ export class AcademicCohortService {
       const yearStart = startYear + i;
       const yearEnd = yearStart + 1;
       const academicYearLabel = `${yearStart}-${yearEnd}`;
+      const firstSemesterNumber = i * 2 + 1;
+      const secondSemesterNumber = i * 2 + 2;
 
       // Semester 1: Sep to Jan
-      await this.createSemesterSafe({
-        name: `HK${i * 2 + 1} - Năm ${i + 1} (${academicYearLabel})`,
-        code: `${cohortCode}_HK${i * 2 + 1}`,
+      const firstSemester = await this.createSemesterSafe({
+        name: `HK${firstSemesterNumber} - Năm ${i + 1} (${academicYearLabel})`,
+        code: `${cohortCode}_HK${firstSemesterNumber}`,
         year: yearStart,
         startDate: new Date(`${yearStart}-09-01`),
         endDate: new Date(`${yearEnd}-01-20`),
-        semesterNumber: i * 2 + 1,
+        semesterNumber: firstSemesterNumber,
+      });
+      await this.createCohortSemesterSafe({
+        cohortCode,
+        semester: firstSemester,
+        semesterNumber: firstSemesterNumber,
+        studyYear: i + 1,
+        academicYear: academicYearLabel,
+        label: `HK${firstSemesterNumber} - Năm ${i + 1} (${academicYearLabel})`,
+        startDate: new Date(`${yearStart}-09-01`),
+        endDate: new Date(`${yearEnd}-01-20`),
       });
 
       // Semester 2: Feb to Jun
-      await this.createSemesterSafe({
-        name: `HK${i * 2 + 2} - Năm ${i + 1} (${academicYearLabel})`,
-        code: `${cohortCode}_HK${i * 2 + 2}`,
+      const secondSemester = await this.createSemesterSafe({
+        name: `HK${secondSemesterNumber} - Năm ${i + 1} (${academicYearLabel})`,
+        code: `${cohortCode}_HK${secondSemesterNumber}`,
         year: yearEnd,
         startDate: new Date(`${yearEnd}-02-01`),
         endDate: new Date(`${yearEnd}-06-30`),
-        semesterNumber: i * 2 + 2,
+        semesterNumber: secondSemesterNumber,
+      });
+      await this.createCohortSemesterSafe({
+        cohortCode,
+        semester: secondSemester,
+        semesterNumber: secondSemesterNumber,
+        studyYear: i + 1,
+        academicYear: academicYearLabel,
+        label: `HK${secondSemesterNumber} - Năm ${i + 1} (${academicYearLabel})`,
+        startDate: new Date(`${yearEnd}-02-01`),
+        endDate: new Date(`${yearEnd}-06-30`),
       });
     }
   }
 
   private async createSemesterSafe(data: any) {
     try {
-      await this.prisma.semester.upsert({
+      return await this.prisma.semester.upsert({
         where: { code: data.code },
-        update: {},
+        update: data,
         create: data,
       });
     } catch (error) {
       console.warn(`Failed to auto-generate semester ${data.code}:`, error);
+      return null;
     }
+  }
+
+  private async createCohortSemesterSafe(data: {
+    cohortCode: string;
+    semester: any;
+    semesterNumber: number;
+    studyYear: number;
+    academicYear: string;
+    label: string;
+    startDate: Date;
+    endDate: Date;
+  }) {
+    if (!data.semester?.id) return null;
+
+    try {
+      return await (this.prisma as any).cohortSemester.upsert({
+        where: {
+          cohortCode_semesterNumber: {
+            cohortCode: data.cohortCode,
+            semesterNumber: data.semesterNumber,
+          },
+        },
+        update: {
+          semesterId: data.semester.id,
+          studyYear: data.studyYear,
+          academicYear: data.academicYear,
+          label: data.label,
+          startDate: data.startDate,
+          endDate: data.endDate,
+        },
+        create: {
+          id: `CS_${data.cohortCode}_HK${data.semesterNumber}`.slice(0, 50),
+          cohortCode: data.cohortCode,
+          semesterId: data.semester.id,
+          semesterNumber: data.semesterNumber,
+          studyYear: data.studyYear,
+          academicYear: data.academicYear,
+          label: data.label,
+          startDate: data.startDate,
+          endDate: data.endDate,
+          isCurrent: Boolean(data.semester.isCurrent),
+          isRegistering: Boolean(data.semester.isRegistering),
+          registerStartDate: data.semester.registerStartDate,
+          registerEndDate: data.semester.registerEndDate,
+          status: 'ACTIVE',
+        },
+      });
+    } catch (error) {
+      console.warn(
+        `Failed to auto-generate cohort semester ${data.cohortCode} HK${data.semesterNumber}:`,
+        (error as Error)?.message || error,
+      );
+      return null;
+    }
+  }
+
+  async getSemesters(code: string) {
+    const cohortCode = `${code || ''}`.trim().toUpperCase();
+    if (!cohortCode) {
+      throw new BadRequestException('Mã khóa sinh viên không được để trống.');
+    }
+
+    try {
+      const rows = await (this.prisma as any).cohortSemester.findMany({
+        where: { cohortCode, status: 'ACTIVE' },
+        include: { semester: true },
+        orderBy: { semesterNumber: 'asc' },
+      });
+
+      if (rows.length > 0) {
+        return rows;
+      }
+    } catch (error) {
+      console.warn(
+        `AcademicCohortService.getSemesters fallback for ${cohortCode}:`,
+        (error as Error)?.message,
+      );
+    }
+
+    const cohort = await (this.prisma as any).academicCohort.findFirst({
+      where: { code: cohortCode },
+    });
+    if (!cohort) return [];
+
+    return this.prisma.semester.findMany({
+      where: {
+        startDate: { gte: new Date(`${cohort.startYear}-08-01`) },
+        endDate: { lte: new Date(`${cohort.endYear}-08-31`) },
+      },
+      orderBy: { startDate: 'asc' },
+    });
   }
 
   async update(code: string, data: any) {

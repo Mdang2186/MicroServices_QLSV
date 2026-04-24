@@ -18,7 +18,12 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { CompactLecturerHeader } from "@/components/dashboard/CompactLecturerHeader";
+import {
+    fetchCurrentLecturerTeachingCourses,
+    getLecturerFallbackRefs,
+    getLecturerCourseScopeLabel,
+    type SemesterOption,
+} from "@/lib/lecturer-courses";
 
 const normalizeText = (value?: string) =>
     `${value || ""}`
@@ -26,20 +31,19 @@ const normalizeText = (value?: string) =>
         .replace(/[\u0300-\u036f]/g, "")
         .toLowerCase();
 
-const getLecturerProfileId = (user: any) =>
-    user?.profileId || user?.lecturerId || user?.lecturer?.id || "";
-
 export default function LecturerCoursesPage() {
     const router = useRouter();
     const [user, setUser] = useState<any>(null);
+    const [userLoaded, setUserLoaded] = useState(false);
     const [courses, setCourses] = useState<any[]>([]);
+    const [currentSemester, setCurrentSemester] = useState<SemesterOption | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [loading, setLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 8;
 
     const token = Cookies.get("lecturer_accessToken") || Cookies.get("admin_accessToken");
-    const lecturerProfileId = getLecturerProfileId(user);
+    const lecturerFallbackRefs = useMemo(() => getLecturerFallbackRefs(user), [user]);
 
     useEffect(() => {
         const raw = Cookies.get("lecturer_user") || Cookies.get("admin_user");
@@ -50,24 +54,31 @@ export default function LecturerCoursesPage() {
                 setUser(null);
             }
         }
+        setUserLoaded(true);
     }, []);
 
     useEffect(() => {
-        if (!lecturerProfileId || !token) {
+        if (!userLoaded) return;
+
+        if (!token) {
             setCourses([]);
+            setCurrentSemester(null);
             setLoading(false);
             return;
         }
 
         setLoading(true);
-        fetch(`/api/courses/lecturer/${lecturerProfileId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-        })
-            .then((response) => (response.ok ? response.json() : []))
-            .then((data) => setCourses(Array.isArray(data) ? data : data?.data || []))
-            .catch(() => setCourses([]))
+        fetchCurrentLecturerTeachingCourses(token, lecturerFallbackRefs)
+            .then(({ courses: lecturerCourses, semester }) => {
+                setCourses(lecturerCourses);
+                setCurrentSemester(semester);
+            })
+            .catch(() => {
+                setCourses([]);
+                setCurrentSemester(null);
+            })
             .finally(() => setLoading(false));
-    }, [lecturerProfileId, token]);
+    }, [lecturerFallbackRefs, token, userLoaded]);
 
     const filteredCourses = useMemo(() => {
         const query = normalizeText(searchQuery);
@@ -85,8 +96,9 @@ export default function LecturerCoursesPage() {
         );
     }, [courses, searchQuery]);
 
-    const totalCredits = filteredCourses.reduce((acc, course) => acc + (course.subject?.credits || 0), 0);
-    const totalStudents = filteredCourses.reduce((acc, course) => acc + (course.currentSlots || 0), 0);
+    const totalCredits = courses.reduce((acc, course) => acc + (course.subject?.credits || 0), 0);
+    const totalStudents = courses.reduce((acc, course) => acc + (course.currentSlots || 0), 0);
+    const semesterLabel = getLecturerCourseScopeLabel(courses, currentSemester);
 
     const getAdminClassLabel = (course: any) =>
         course.adminClasses?.map((adminClass: any) => adminClass.code).join(", ") || "Chưa gắn lớp";
@@ -121,15 +133,8 @@ export default function LecturerCoursesPage() {
     }
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-700 bg-[#fbfcfd] min-h-screen pb-20 px-1 max-w-7xl mx-auto">
-            <CompactLecturerHeader
-                userName={`${user?.degree || "Giảng viên"} ${user?.fullName || "Cao cấp"}`}
-                userId={`GV-${user?.username || "UNETI"}`}
-                minimal={true}
-                title="Danh mục học phần"
-                onSemesterChange={() => {}}
-                hideSemester={true}
-            />
+        <div className="space-y-6 animate-in fade-in duration-700 bg-[#fbfcfd] min-h-screen pb-20 p-4 md:p-6 w-full max-w-full">
+
 
             <div className="flex flex-wrap items-center gap-4 px-1">
                 <div className="bg-white px-5 py-3 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3">
@@ -138,7 +143,7 @@ export default function LecturerCoursesPage() {
                     </div>
                     <div className="flex flex-col">
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Tổng học phần</span>
-                        <span className="text-sm font-black text-slate-800">{filteredCourses.length} Lớp</span>
+                        <span className="text-sm font-black text-slate-800">{courses.length} Lớp</span>
                     </div>
                 </div>
 
@@ -159,6 +164,13 @@ export default function LecturerCoursesPage() {
                     <div className="flex flex-col">
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Tổng sinh viên</span>
                         <span className="text-sm font-black text-slate-800">{totalStudents} SV</span>
+                    </div>
+                </div>
+
+                <div className="bg-white px-5 py-3 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3">
+                    <div className="flex flex-col">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Học kỳ</span>
+                        <span className="text-sm font-black text-slate-800">{semesterLabel}</span>
                     </div>
                 </div>
 
@@ -247,7 +259,7 @@ export default function LecturerCoursesPage() {
                                                 </Button>
                                                 <Button
                                                     variant="outline"
-                                                    onClick={() => router.push(`/lecturer/grades/${course.id}`)}
+                                                    onClick={() => router.push(`/lecturer/courses/${course.id}/grades`)}
                                                     className="h-9 px-4 rounded-xl border-slate-100 text-[10px] font-black uppercase text-uneti-blue hover:bg-uneti-blue-light/50 hover:border-uneti-blue/30 transition-all shadow-sm"
                                                 >
                                                     Nhập điểm

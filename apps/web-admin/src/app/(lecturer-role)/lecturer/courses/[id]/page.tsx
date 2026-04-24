@@ -90,8 +90,7 @@ export default function LecturerCourseDetailPage() {
         const totalEstimatedSessions = Math.ceil(totalPlannedHours / 3);
         const total = totalEstimatedSessions > 0 ? totalEstimatedSessions : (courseClass?.sessions?.length || 15);
 
-        if (!attendances || attendances.length === 0) return 0;
-        const absent = attendances.filter(a => a.status === "ABSENT" || a.status === "ABSENT_UNEXCUSED").length;
+        const absent = (attendances || []).filter(a => a.status === "ABSENT" || a.status === "ABSENT_UNEXCUSED").length;
         const presentRate = ((total - absent) / total) * 100;
         return Math.max(0, Math.min(100, Math.round(presentRate)));
     };
@@ -133,7 +132,7 @@ export default function LecturerCourseDetailPage() {
 
     return (
         <div className="min-h-screen w-full max-w-full animate-in space-y-6 bg-[#fbfcfd] px-4 py-6 pb-20 fade-in duration-700 md:px-6">
-            
+
             {/* Header & Actions */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-100 pb-6">
                 <div className="space-y-2">
@@ -164,7 +163,7 @@ export default function LecturerCourseDetailPage() {
                     </Button>
                     <Button
                         variant="outline"
-                        onClick={() => router.push(`/lecturer/grades/${classId}`)}
+                        onClick={() => router.push(`/lecturer/courses/${classId}/grades`)}
                         className="h-11 rounded-xl px-6 text-[10px] font-black text-slate-600 border-slate-200 hover:bg-slate-50 transition-all uppercase tracking-widest"
                     >
                         <FileText size={16} className="mr-2" /> Nhập điểm
@@ -173,14 +172,14 @@ export default function LecturerCourseDetailPage() {
             </div>
 
             {/* Stats Row */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                 {[
-                    { label: "Sĩ số lớp", value: `${enrollments.length} SV`, sub: "Hiện tại", icon: Users },
+
                     { label: "Tỷ lệ có mặt", value: `${avgAttendance}%`, sub: "Theo điểm danh", icon: Activity },
                     { label: "Tín chỉ", value: courseClass?.subject?.credits, sub: "Định mức", icon: BookMarked },
                     { label: "Phòng học", value: primaryRoom, sub: "Cố định", icon: MapPin },
                     { label: "Lớp danh nghĩa", value: adminClassLabel, sub: "Theo quản lý", icon: GraduationCap },
-                    { label: "Ngành học", value: majorLabel, sub: "Phụ trách", icon: BookOpen },
+
                 ].map((s, i) => (
                     <div key={i} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
                         <div className="p-3 rounded-xl bg-slate-50 text-uneti-blue/60">
@@ -225,7 +224,9 @@ export default function LecturerCourseDetailPage() {
                                 <th className="py-4 px-8 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">#</th>
                                 <th className="py-4 px-4 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">Sinh viên</th>
                                 <th className="py-4 px-4 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">Mã SV</th>
-                                <th className="py-4 px-4 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50 text-center">Tỷ lệ có mặt</th>
+                                <th className="py-4 px-4 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50 text-center">Vắng</th>
+                                <th className="py-4 px-4 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50 text-center">Tỷ lệ</th>
+                                <th className="py-4 px-4 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50 text-center">Điểm CC</th>
                                 <th className="py-4 px-4 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50 text-center">Điểm TK</th>
                                 <th className="py-4 px-8 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50 text-right">Chi tiết</th>
                             </tr>
@@ -249,6 +250,14 @@ export default function LecturerCourseDetailPage() {
                                             <p className="text-[9px] font-bold text-slate-400 uppercase opacity-60">{enr.student?.adminClass?.code}</p>
                                         </td>
                                         <td className="py-4 px-4 text-[10px] font-black text-slate-500">{enr.student?.studentCode}</td>
+                                        <td className="py-4 px-4 text-center">
+                                            <span className={cn(
+                                                "text-[11px] font-black tabular-nums",
+                                                (enr.attendances || []).filter((a: any) => a.status === "ABSENT" || a.status === "ABSENT_UNEXCUSED").length > 3 ? "text-rose-500" : "text-slate-500"
+                                            )}>
+                                                {(enr.attendances || []).filter((a: any) => a.status === "ABSENT" || a.status === "ABSENT_UNEXCUSED").length}
+                                            </span>
+                                        </td>
                                         <td className="py-4 px-4">
                                             <div className="flex flex-col items-center gap-1">
                                                 <span className={cn(
@@ -261,23 +270,28 @@ export default function LecturerCourseDetailPage() {
                                             </div>
                                         </td>
                                         <td className="py-4 px-4 text-center">
+                                            <span className="text-[11px] font-black text-indigo-600 tabular-nums">
+                                                {studentGrade?.attendanceScore !== null && studentGrade?.attendanceScore !== undefined ? studentGrade?.attendanceScore : ""}
+                                            </span>
+                                        </td>
+                                        <td className="py-4 px-4 text-center">
                                             <span className="text-[11px] font-black text-slate-700 tabular-nums">
                                                 {studentGrade?.totalScore10 !== null && studentGrade?.totalScore10 !== undefined ? studentGrade?.totalScore10 : ""}
                                             </span>
                                         </td>
                                         <td className="py-4 px-8 text-right">
                                             <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                                                <Button 
-                                                    variant="ghost" 
-                                                    size="icon" 
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
                                                     title="Chi tiết điểm"
                                                     className="h-8 w-8 rounded-lg text-slate-400 hover:text-uneti-blue hover:bg-white border border-transparent hover:border-slate-100"
                                                 >
                                                     <TrendingUp size={14} />
                                                 </Button>
-                                                <Button 
-                                                    variant="ghost" 
-                                                    size="icon" 
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
                                                     title="Lịch sử điểm danh"
                                                     className="h-8 w-8 rounded-lg text-slate-400 hover:text-uneti-blue hover:bg-white border border-transparent hover:border-slate-100"
                                                 >

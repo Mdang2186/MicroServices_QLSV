@@ -14,7 +14,9 @@ interface DashboardLayoutProps {
 function LayoutContent({ children, sidebar, header }: DashboardLayoutProps) {
     const { isCollapsed } = useSidebar();
     const pathname = usePathname();
-    const isGradeDetailWorkspace = /^\/(staff|lecturer)\/grades\/[^/]+$/.test(pathname || "");
+    const isGradeDetailWorkspace =
+        /^\/staff\/grades\/[^/]+$/.test(pathname || "") ||
+        /^\/lecturer\/courses\/[^/]+\/grades$/.test(pathname || "");
 
     return (
         <div className="flex h-screen overflow-hidden bg-[#f8fafc] text-slate-800 font-sans">

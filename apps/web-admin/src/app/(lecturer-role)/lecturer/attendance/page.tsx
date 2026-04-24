@@ -11,6 +11,10 @@ import {
     Calendar
 } from "lucide-react";
 import { CompactLecturerHeader } from "@/components/dashboard/CompactLecturerHeader";
+import {
+    fetchCurrentLecturerTeachingCourses,
+    getLecturerFallbackRefs,
+} from "@/lib/lecturer-courses";
 
 const normalizeText = (value?: string) =>
     `${value || ""}`
@@ -18,13 +22,22 @@ const normalizeText = (value?: string) =>
         .replace(/[\u0300-\u036f]/g, "")
         .toLowerCase();
 
+const getCourseWeeklyPeriods = (course: any) =>
+    (course.sessions || course.schedules || []).reduce(
+        (total: number, session: any) =>
+            total + Math.max(1, Number(session.endShift || 0) - Number(session.startShift || 0) + 1),
+        0,
+    );
+
 export default function LecturerAttendanceSelectionPage() {
     const [user, setUser] = useState<any>(null);
+    const [userLoaded, setUserLoaded] = useState(false);
     const [courses, setCourses] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
 
     const token = Cookies.get("lecturer_accessToken") || Cookies.get("admin_accessToken");
+    const lecturerFallbackRefs = useMemo(() => getLecturerFallbackRefs(user), [user]);
 
     useEffect(() => {
         const raw = Cookies.get("lecturer_user") || Cookies.get("admin_user");
@@ -35,17 +48,24 @@ export default function LecturerAttendanceSelectionPage() {
                 setUser(null);
             }
         }
+        setUserLoaded(true);
     }, []);
 
     useEffect(() => {
-        const headers: any = token ? { Authorization: `Bearer ${token}` } : {};
+        if (!userLoaded) return;
 
-        fetch("/api/courses/my-classes", { headers })
-            .then((response) => (response.ok ? response.json() : []))
-            .then((data) => setCourses(Array.isArray(data) ? data : data?.data || []))
+        if (!token) {
+            setCourses([]);
+            setLoading(false);
+            return;
+        }
+
+        setLoading(true);
+        fetchCurrentLecturerTeachingCourses(token, lecturerFallbackRefs)
+            .then(({ courses: lecturerCourses }) => setCourses(lecturerCourses))
             .catch(() => setCourses([]))
             .finally(() => setLoading(false));
-    }, [token]);
+    }, [lecturerFallbackRefs, token, userLoaded]);
 
     const filteredCourses = useMemo(() => {
         const keyword = normalizeText(searchQuery);
@@ -133,7 +153,7 @@ export default function LecturerAttendanceSelectionPage() {
                                     </div>
                                     <div className="flex items-center gap-1.5">
                                         <Calendar size={14} className="text-slate-300" />
-                                        <span className="text-xs font-bold">{course.schedules?.length || 0} Tiết/tuần</span>
+                                        <span className="text-xs font-bold">{getCourseWeeklyPeriods(course)} Tiết/tuần</span>
                                     </div>
                                 </div>
 

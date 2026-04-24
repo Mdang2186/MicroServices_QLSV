@@ -15,17 +15,24 @@ import {
 import { cn } from "@/lib/utils";
 import { CompactLecturerHeader } from "@/components/dashboard/CompactLecturerHeader";
 import { StatsGrid } from "@/components/dashboard/StatsGrid";
-
-const getLecturerProfileId = (user: any) =>
-    user?.profileId || user?.lecturerId || user?.lecturer?.id || "";
+import {
+    fetchCurrentLecturerTeachingCourses,
+    getCourseDayLabels,
+    getLecturerFallbackRefs,
+    getLecturerCourseScopeLabel,
+    getTodaySessions,
+    type SemesterOption,
+} from "@/lib/lecturer-courses";
 
 export default function LecturerDashboard() {
     const [user, setUser] = useState<any>(null);
+    const [userLoaded, setUserLoaded] = useState(false);
     const [courses, setCourses] = useState<any[]>([]);
+    const [currentSemester, setCurrentSemester] = useState<SemesterOption | null>(null);
     const [loading, setLoading] = useState(true);
 
     const token = Cookies.get("lecturer_accessToken") || Cookies.get("admin_accessToken");
-    const lecturerProfileId = getLecturerProfileId(user);
+    const lecturerFallbackRefs = useMemo(() => getLecturerFallbackRefs(user), [user]);
 
     useEffect(() => {
         const raw = Cookies.get("lecturer_user") || Cookies.get("admin_user");
@@ -36,35 +43,34 @@ export default function LecturerDashboard() {
                 setUser(null);
             }
         }
+        setUserLoaded(true);
     }, []);
 
     useEffect(() => {
-        if (!lecturerProfileId || !token) {
+        if (!userLoaded) return;
+
+        if (!token) {
             setCourses([]);
+            setCurrentSemester(null);
             setLoading(false);
             return;
         }
 
         setLoading(true);
-        fetch(`/api/courses/lecturer/${lecturerProfileId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-        })
-            .then((response) => (response.ok ? response.json() : []))
-            .then((data) => setCourses(Array.isArray(data) ? data : data?.data || []))
-            .catch(() => setCourses([]))
+        fetchCurrentLecturerTeachingCourses(token, lecturerFallbackRefs)
+            .then(({ courses: lecturerCourses, semester }) => {
+                setCourses(lecturerCourses);
+                setCurrentSemester(semester);
+            })
+            .catch(() => {
+                setCourses([]);
+                setCurrentSemester(null);
+            })
             .finally(() => setLoading(false));
-    }, [lecturerProfileId, token]);
+    }, [lecturerFallbackRefs, token, userLoaded]);
 
-    const todayIndex = new Date().getDay();
-    const todayNum = todayIndex === 0 ? 8 : todayIndex + 1;
-
-    const todayCourses = useMemo(
-        () =>
-            courses.filter((course: any) =>
-                course.schedules?.some((schedule: any) => schedule.dayOfWeek === todayNum),
-            ),
-        [courses, todayNum],
-    );
+    const todaySessions = useMemo(() => getTodaySessions(courses), [courses]);
+    const courseScopeLabel = getLecturerCourseScopeLabel(courses, currentSemester);
 
     const totalCredits = courses.reduce((acc, course) => acc + (course.subject?.credits || 0), 0);
     const totalStudents = courses.reduce((acc, course) => acc + (course.currentSlots || 0), 0);
@@ -75,7 +81,7 @@ export default function LecturerDashboard() {
             value: courses.length,
             icon: BookOpen,
             color: "blue",
-            sub: "Toàn bộ phân công",
+            sub: courseScopeLabel,
             trend: { value: "Active", type: "up" }
         },
         {
@@ -83,7 +89,7 @@ export default function LecturerDashboard() {
             value: totalCredits,
             icon: BookMarked,
             color: "indigo",
-            sub: "Khối lượng dạy",
+            sub: "Khối lượng hiện tại",
             trend: { value: "Duy trì", type: "neutral" }
         },
         {
@@ -91,16 +97,16 @@ export default function LecturerDashboard() {
             value: totalStudents,
             icon: Users,
             color: "emerald",
-            sub: "Tổng danh sách",
+            sub: "Danh sách hiện tại",
             trend: { value: `${courses.length || 0} lớp`, type: "up" }
         },
         {
             label: "Ca dạy hôm nay",
-            value: todayCourses.length,
+            value: todaySessions.length,
             icon: Clock,
             color: "orange",
             sub: "Lịch theo ngày hiện tại",
-            trend: { value: todayCourses.length > 0 ? "Bận" : "Trống", type: todayCourses.length > 0 ? "up" : "neutral" }
+            trend: { value: todaySessions.length > 0 ? "Bận" : "Trống", type: todaySessions.length > 0 ? "up" : "neutral" }
         },
     ];
 
@@ -113,7 +119,7 @@ export default function LecturerDashboard() {
     }
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-700 bg-[#fbfcfd] min-h-screen pb-20 px-1">
+        <div className="space-y-6 animate-in fade-in duration-700 bg-[#fbfcfd] min-h-screen pb-20 p-4 md:p-6 w-full max-w-full">
             <CompactLecturerHeader
                 userName={`${user?.degree || "Giảng viên"} ${user?.fullName || "Cao cấp"}`}
                 userId={`GV-${user?.username || "UNETI"}`}
@@ -161,7 +167,7 @@ export default function LecturerDashboard() {
                                                 <h3 className="font-bold text-slate-800 text-[13px] truncate uppercase group-hover:text-uneti-blue transition-colors">{course.subject?.name}</h3>
                                                 <div className="flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase tracking-tight">
                                                     <Calendar size={10} className="text-slate-300" />
-                                                    <span className="text-slate-600">{course.schedules?.map((schedule: any) => `T${schedule.dayOfWeek}`).join(", ") || "Chưa xếp lịch"}</span>
+                                                    <span className="text-slate-600">{getCourseDayLabels(course).join(", ") || "Chưa xếp lịch"}</span>
                                                 </div>
                                             </div>
 
@@ -201,18 +207,18 @@ export default function LecturerDashboard() {
                                 </h2>
                                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">Ngày {new Date().toLocaleDateString("vi-VN")}</p>
                             </div>
-                            <div className={cn("h-2 w-2 rounded-full", todayCourses.length > 0 ? "bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-slate-200")}></div>
+                            <div className={cn("h-2 w-2 rounded-full", todaySessions.length > 0 ? "bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-slate-200")}></div>
                         </div>
 
                         <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar space-y-4" style={{ maxHeight: "380px" }}>
-                            {todayCourses.length === 0 ? (
+                            {todaySessions.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center text-slate-200 py-20 gap-3 border-2 border-dashed border-slate-50 rounded-2xl bg-slate-50/20">
                                     <Clock size={32} strokeWidth={1} className="opacity-20" />
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center leading-relaxed px-4">Hôm nay bạn không có <br /> lịch dạy chuyên môn</p>
                                 </div>
                             ) : (
-                                todayCourses.map((course: any, index: number) => {
-                                    const schedule = course.schedules?.find((item: any) => item.dayOfWeek === todayNum);
+                                todaySessions.map((session: any, index: number) => {
+                                    const course = session.course;
                                     return (
                                         <Link
                                             key={index}
@@ -222,9 +228,9 @@ export default function LecturerDashboard() {
                                             <div className="absolute top-0 -left-[5px] w-2 h-2 rounded-full bg-slate-200 group-hover/item:bg-uneti-blue transition-all"></div>
                                             <div className="space-y-3">
                                                 <div className="flex items-center justify-between">
-                                                    <span className="text-[9px] font-black text-uneti-blue uppercase bg-uneti-blue-light px-2 py-0.5 rounded-lg border border-uneti-blue/10">Ca {schedule?.startShift}-{schedule?.endShift || "?"}</span>
+                                                    <span className="text-[9px] font-black text-uneti-blue uppercase bg-uneti-blue-light px-2 py-0.5 rounded-lg border border-uneti-blue/10">Ca {session.startShift || "?"}-{session.endShift || "?"}</span>
                                                     <div className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase">
-                                                        {schedule?.room?.name || "---"}
+                                                        {session.room?.name || "---"}
                                                     </div>
                                                 </div>
                                                 <h4 className="text-[12px] font-black text-slate-800 leading-tight uppercase tracking-tight group-hover/item:text-uneti-blue transition-colors">{course.subject?.name}</h4>

@@ -20,10 +20,19 @@ export async function resolveCurrentStudentContext(): Promise<CurrentStudentCont
     const userId = getStudentUserId(sessionUser);
     const profileId = getStudentProfileId(sessionUser);
 
+    if (profileId) {
+        const profile = await StudentService.getProfileSummary(profileId).catch(() => null);
+        return {
+            sessionUser,
+            userId,
+            studentId: profile?.id || profileId,
+            profile: profile || sessionUser?.student || sessionUser || null,
+        };
+    }
+
     if (userId) {
         try {
-            // First try fetching as a Student
-            let profile = await StudentService.getProfile(userId);
+            let profile = await StudentService.getProfileSummary(userId);
             
             // If not found, try fetching as a Lecturer
             if (!profile) {
@@ -39,16 +48,6 @@ export async function resolveCurrentStudentContext(): Promise<CurrentStudentCont
         } catch {
             // Fall back to direct student lookup when the session still has a profile id.
         }
-    }
-
-    if (profileId) {
-        const profile = await StudentService.getProfileByStudentId(profileId);
-        return {
-            sessionUser,
-            userId: null,
-            studentId: profile?.id || profileId,
-            profile: profile || null,
-        };
     }
 
     return {

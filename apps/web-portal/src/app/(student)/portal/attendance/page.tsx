@@ -26,6 +26,8 @@ export default function AttendancePage() {
     const router = useRouter();
     const [student, setStudent] = useState<any>(null);
     const [enrollments, setEnrollments] = useState<any[]>([]);
+    const [curriculum, setCurriculum] = useState<any>(null);
+    const [curriculumMap, setCurriculumMap] = useState<Map<string, number>>(new Map());
     const [loading, setLoading] = useState(true);
     const [expandedClass, setExpandedClass] = useState<string | null>(null);
     const [expandedSemesters, setExpandedSemesters] = useState<Record<string, boolean>>({});
@@ -44,6 +46,13 @@ export default function AttendancePage() {
             // Legacy note
         }
         return { manualNote: `${note}`, meta: {} as any };
+    };
+
+    const getSemesterFromCode = (code?: string) => {
+        if (!code) return null;
+        // Search for patterns like HK1, HK2... HK8
+        const match = code.match(/HK(\d+)/i);
+        return match ? parseInt(match[1]) : null;
     };
 
     const normalizeAttendance = (attendance: any) => {
@@ -68,13 +77,56 @@ export default function AttendancePage() {
                 if (!studentData) return;
 
                 setStudent(studentData);
-                const enrollmentData = await StudentService.getEnrollments(context.studentId);
-                setEnrollments(
-                    (enrollmentData || []).map((enrollment: any) => ({
-                        ...enrollment,
-                        attendances: (enrollment.attendances || []).map(normalizeAttendance),
-                    })),
-                );
+                
+                // Fetch enrollments and curriculum in parallel
+                const [enrollmentData, curriculumData] = await Promise.all([
+                    StudentService.getEnrollments(context.studentId),
+                    StudentService.getCurriculumProgress(context.studentId).catch(() => null)
+                ]);
+
+                setCurriculum(curriculumData);
+
+                // 1. Build Curriculum Map (Subject Code -> Conceptual Semester)
+                const cMap = new Map<string, number>();
+                if (curriculumData?.semesters) {
+                    curriculumData.semesters.forEach((sem: any) => {
+                        (sem.items || []).forEach((item: any) => {
+                            const code = item.code || item.subjectCode;
+                            if (code) cMap.set(code, Number(sem.semester));
+                        });
+                    });
+                }
+                setCurriculumMap(cMap);
+
+                // 2. Deduplicate Enrollments by Subject Code + Predicted Semester
+                // This ensures we don't show the same subject twice in the same semester slot
+                const uniqueEnrollmentsMap = new Map<string, any>();
+                (enrollmentData || []).forEach((enr: any) => {
+                    const subjectCode = enr.courseClass?.subject?.code;
+                    if (!subjectCode) return;
+                    
+                    const classCode = enr.courseClass?.code;
+                    const codeSem = getSemesterFromCode(classCode);
+                    const currSem = curriculumMap.get(subjectCode);
+                    const metaSem = enr.courseClass?.semester?.semesterNumber;
+                    
+                    // The "Target Slot" is what determines redundancy
+                    const targetSlot = codeSem || currSem || metaSem || "other";
+                    const key = `${subjectCode}_${targetSlot}`;
+                    
+                    const normalizedEnr = {
+                        ...enr,
+                        attendances: (enr.attendances || []).map(normalizeAttendance),
+                    };
+
+                    // Priority: keep the one with more attendances if duplicates exist
+                    const existing = uniqueEnrollmentsMap.get(key);
+                    if (!existing || normalizedEnr.attendances.length > existing.attendances.length) {
+                        uniqueEnrollmentsMap.set(key, normalizedEnr);
+                    }
+                });
+
+                setEnrollments(Array.from(uniqueEnrollmentsMap.values()));
             } catch (error) {
                 console.error("Failed to fetch attendance data:", error);
             } finally {
@@ -96,9 +148,14 @@ export default function AttendancePage() {
 
     const getAttendancePeriods = (attendance: any, enrollment: any) => {
         if (attendance?.session) {
-            return Math.max(Number(attendance.session.endShift) - Number(attendance.session.startShift) + 1, 0);
+            const p = Math.max(Number(attendance.session.endShift) - Number(attendance.session.startShift) + 1, 0);
+            if (p > 0) return p;
         }
-        return getPeriodsForAttendance(attendance?.date, enrollment.courseClass?.schedules || []);
+        
+        const schedulePeriods = getPeriodsForAttendance(attendance?.date, enrollment.courseClass?.schedules || []);
+        if (schedulePeriods > 0) return schedulePeriods;
+
+        return enrollment.courseClass?.periodsPerSession || 3;
     };
 
     const formatAttendanceMethod = (attendance: any) => {
@@ -107,49 +164,119 @@ export default function AttendancePage() {
         return "Thủ công";
     };
 
-    const calculateAttendanceRate = (enrollment: any) => {
-        const attendances = enrollment.attendances;
-        if (!attendances || attendances.length === 0) return 100;
-        
-        const totalPeriods = attendances.reduce((acc: number, a: any) => 
-            acc + getAttendancePeriods(a, enrollment), 0);
-            
-        if (totalPeriods === 0) return 100;
-
-        const attendedPeriods = attendances
-            .filter((a: any) => a.status === "PRESENT" || a.status === "EXCUSED" || a.status === "ABSENT_EXCUSED")
-            .reduce((acc: number, a: any) => acc + getAttendancePeriods(a, enrollment), 0);
-
-        return Math.round((attendedPeriods / totalPeriods) * 100);
+    const getStartYear = (student: any) => {
+        if (student?.intake) {
+            const num = parseInt(student.intake.replace(/\D/g, ""));
+            if (!isNaN(num)) return 2006 + num;
+        }
+        if (student?.admissionDate) {
+            return new Date(student.admissionDate).getFullYear();
+        }
+        return 2024; // Fallback
     };
 
-    const averageRate = enrollments.length > 0
-        ? Math.round(enrollments.reduce((acc, curr) => acc + calculateAttendanceRate(curr), 0) / enrollments.length)
-        : 100;
+    const startYear = getStartYear(student);
+    const academicSemesters = Array.from({ length: 8 }, (_, i) => {
+        const semesterNum = i + 1;
+        const yearOffset = Math.floor(i / 2);
+        const currentYear = startYear + yearOffset;
+        const semesterLabel = `HK${semesterNum % 2 === 0 ? 2 : 1}`;
+        return {
+            key: semesterNum,
+            label: `Kỳ ${semesterNum}`,
+            subLabel: `${semesterLabel} (${currentYear} - ${currentYear + 1})`,
+            year: currentYear,
+            isOdd: semesterNum % 2 === 1
+        };
+    });
 
-    const groupedEnrollments = enrollments.reduce((acc: any, enr: any) => {
-        const sem = enr.courseClass?.semester;
-        const key = sem ? `${sem.name} (${sem.year} - ${sem.year + 1})` : "Khác";
-        if (!acc[key]) acc = { [key]: [], ...acc };
-        acc[key].push(enr);
+
+    const groupedEnrollments = academicSemesters.reduce((acc: any, sem: any) => {
+        // 1. Get curriculum-defined subjects for this semester
+        const curriculumItems = curriculum?.semesters?.find((s: any) => s.semester === sem.key)?.items || [];
+        const curriculumSubjectCodes = new Set(curriculumItems.map((item: any) => item.code || item.subjectCode));
+
+        // 2. Find enrollments that match subjects in the curriculum for THIS semester
+        const curriculumEnrollments = enrollments.filter(enr => {
+            const subjectCode = enr.courseClass?.subject?.code;
+            return subjectCode && curriculumSubjectCodes.has(subjectCode);
+        });
+
+        // 3. Find enrollments that are NOT in the curriculum for this semester, 
+        // but are explicitly marked with this HK number in the class code
+        const codeMatchedEnrollments = enrollments.filter(enr => {
+            const classCode = enr.courseClass?.code;
+            const subjectCode = enr.courseClass?.subject?.code;
+            const codeSem = getSemesterFromCode(classCode);
+            
+            // Avoid double counting if already caught by curriculum logic above
+            if (subjectCode && curriculumSubjectCodes.has(subjectCode)) return false;
+            
+            return codeSem === sem.key;
+        });
+
+        // 4. Fallback: If not matched by curriculum or code, check semester object's name/year
+        const fallbackEnrollments = enrollments.filter(enr => {
+            const s = enr.courseClass?.semester;
+            const subjectCode = enr.courseClass?.subject?.code;
+            
+            // Only fall back if it hasn't been matched yet by stricter rules
+            if (subjectCode && curriculumMap.has(subjectCode)) return false;
+            if (getSemesterFromCode(enr.courseClass?.code) !== null) return false;
+            
+            if (!s) return false;
+            const nameMatch = s.name?.includes(`HK${sem.isOdd ? 1 : 2}`);
+            const yearMatch = Number(s.year) === sem.year;
+            return nameMatch && yearMatch;
+        });
+
+        // Combine all, maintaining uniqueness
+        const seenIds = new Set();
+        const combined = [...curriculumEnrollments, ...codeMatchedEnrollments, ...fallbackEnrollments].filter(e => {
+            if (seenIds.has(e.id)) return false;
+            seenIds.add(e.id);
+            return true;
+        });
+
+        acc[sem.key] = {
+            ...sem,
+            enrollments: combined
+        };
         return acc;
     }, {});
 
-    const sortedSemesterKeys = Object.keys(groupedEnrollments).sort((a, b) => b.localeCompare(a));
+    // Catch-all for subjects that don't fit into the standard 8 slots (e.g., year 5+)
+    const matchedIds = new Set();
+    Object.values(groupedEnrollments).forEach((v: any) => v.enrollments.forEach((e: any) => matchedIds.add(e.id)));
+    const otherEnrollments = enrollments.filter(e => !matchedIds.has(e.id));
 
-    const toggleSemester = (key: string) => {
+    const sortedSemesterKeys = academicSemesters.map(s => s.key);
+
+    const toggleSemester = (key: any) => {
         setExpandedSemesters(prev => ({
             ...prev,
             [key]: !prev[key]
         }));
     };
 
-    // Auto-expand the most recent semester
+    // Auto-expand ALL semesters that have data
     useEffect(() => {
-        if (sortedSemesterKeys.length > 0 && Object.keys(expandedSemesters).length === 0) {
-            setExpandedSemesters({ [sortedSemesterKeys[0]]: true });
+        if (enrollments.length > 0 && Object.keys(expandedSemesters).length === 0) {
+            const toExpand: Record<string, boolean> = {};
+            sortedSemesterKeys.forEach(key => {
+                if (groupedEnrollments[key].enrollments.length > 0) {
+                    toExpand[key] = true;
+                }
+            });
+            if (otherEnrollments.length > 0) toExpand["other"] = true;
+            
+            // Fallback to expanding at least the first if all are empty
+            if (Object.keys(toExpand).length === 0) {
+                toExpand[sortedSemesterKeys[0]] = true;
+            }
+            setExpandedSemesters(toExpand);
         }
-    }, [sortedSemesterKeys]);
+    }, [enrollments]);
 
     const calculateTermAbsences = (enr: any, type: 'EXCUSED' | 'UNEXCUSED') => {
         const statuses = type === 'EXCUSED' 
@@ -160,231 +287,226 @@ export default function AttendancePage() {
             .reduce((acc: number, a: any) => acc + getAttendancePeriods(a, enr), 0) || 0;
     };
 
-    const totalExcused = enrollments.reduce((acc, enr) => acc + calculateTermAbsences(enr, 'EXCUSED'), 0);
-    const totalUnexcused = enrollments.reduce((acc, enr) => acc + calculateTermAbsences(enr, 'UNEXCUSED'), 0);
+    const renderEnrollmentRow = (enr: any, index: number) => {
+        const excused = calculateTermAbsences(enr, 'EXCUSED');
+        const unexcused = calculateTermAbsences(enr, 'UNEXCUSED');
+        const isExpanded = expandedClass === enr.id;
+
+        return (
+            <React.Fragment key={enr.id}>
+                <TableRow
+                    className="hover:bg-slate-50 border-blue-100 transition-colors cursor-pointer h-12"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setExpandedClass(isExpanded ? null : enr.id);
+                    }}
+                >
+                    <TableCell className="text-center font-medium border-x border-blue-50 text-slate-500">{index + 1}</TableCell>
+                    <TableCell className="text-center font-bold border-x border-blue-50 text-slate-600 text-[12px]">{enr.courseClass?.code}</TableCell>
+                    <TableCell className="font-bold text-slate-700 border-x border-blue-50 px-6 text-[13px]">{enr.courseClass?.subject?.name}</TableCell>
+                    <TableCell className="text-center font-bold border-x border-blue-50 text-slate-600">{enr.courseClass?.subject?.credits || 0}</TableCell>
+                    <TableCell className="text-center font-bold text-blue-600 border-x border-blue-50 text-[14px]">{excused}</TableCell>
+                    <TableCell className="text-center font-bold text-blue-600 border-x border-blue-50 text-[14px]">{unexcused}</TableCell>
+                </TableRow>
+
+                <AnimatePresence>
+                    {isExpanded && (
+                        <TableRow className="bg-blue-50/20 border-none">
+                            <TableCell colSpan={6} className="p-0 border-x border-blue-100">
+                                <motion.div
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: "auto", opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    className="overflow-hidden p-6"
+                                >
+                                    <div className="bg-white border border-blue-100 rounded-lg p-4 shadow-sm">
+                                        <div className="flex items-center gap-2 mb-4 border-b border-blue-50 pb-2">
+                                            <div className="h-2 w-2 rounded-full bg-blue-500"></div>
+                                            <p className="text-[10px] font-black text-blue-800 uppercase tracking-widest">Nhật ký điểm danh chi tiết</p>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                            {enr.attendances?.length > 0 ? (
+                                                enr.attendances.map((att: any, i: number) => {
+                                                    const periods = getAttendancePeriods(att, enr);
+                                                    return (
+                                                        <div key={i} className={cn(
+                                                            "flex items-center gap-3 p-3 rounded-md border text-[12px] font-bold shadow-sm transition-all hover:translate-x-1",
+                                                            att.status === "PRESENT" ? "bg-emerald-50 text-emerald-700 border-emerald-100/50" :
+                                                            (att.status === "EXCUSED" || att.status === "ABSENT_EXCUSED") ? "bg-blue-50 text-blue-700 border-blue-100/50" :
+                                                            "bg-rose-50 text-rose-700 border-rose-100/50"
+                                                        )}>
+                                                            <div className="flex flex-col">
+                                                                <span className="text-[10px] opacity-60 uppercase">{new Date(att.date).toLocaleDateString("vi-VN", { weekday: 'short' })}</span>
+                                                                <span className="text-[13px]">{new Date(att.date).toLocaleDateString("vi-VN")}</span>
+                                                            </div>
+                                                            <div className="h-8 w-px bg-current opacity-20"></div>
+                                                            <div className="flex-1 flex flex-col">
+                                                                <span className="text-[13px]">{att.status === "PRESENT" ? "Hiện diện" : (att.status === "EXCUSED" || att.status === "ABSENT_EXCUSED") ? "Nghỉ có phép" : "Nghỉ không phép"}</span>
+                                                                <span className="text-[10px] opacity-60 font-medium italic">{periods} tiết học</span>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })
+                                            ) : (
+                                                <div className="col-span-full py-4 text-center">
+                                                    <p className="text-xs italic text-slate-400 font-medium">Chưa có dữ liệu chi tiết cho học phần này</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            </TableCell>
+                        </TableRow>
+                    )}
+                </AnimatePresence>
+            </React.Fragment>
+        );
+    };
+
+    // Calculate Grand Totals
+    const grandTotalExcused = enrollments.reduce((acc, enr) => acc + calculateTermAbsences(enr, 'EXCUSED'), 0);
+    const grandTotalUnexcused = enrollments.reduce((acc, enr) => acc + calculateTermAbsences(enr, 'UNEXCUSED'), 0);
 
     if (loading) {
         return (
             <div className="flex min-h-[80vh] items-center justify-center">
-                <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-600"></div>
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600"></div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen space-y-6 bg-transparent pb-20">
-            {/* Header Section */}
-            <div className="bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden">
-                <div className="px-6 py-5 flex flex-col md:flex-row justify-between items-center bg-slate-50/50 border-b border-slate-200 gap-4">
+        <div className="container mx-auto px-4 py-8 max-w-7xl min-h-screen space-y-6">
+            <div className="bg-white border border-blue-200 shadow-md rounded-lg overflow-hidden">
+                <div className="px-5 py-4 flex flex-col md:flex-row justify-between items-center bg-blue-50 border-b border-blue-200 gap-4">
                     <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-indigo-600 shadow-sm">
-                            <ClipboardCheck className="h-5 w-5" />
+                        <div className="h-10 w-10 rounded-lg bg-white border border-blue-200 flex items-center justify-center text-blue-600 shadow-sm">
+                            <ClipboardCheck className="h-6 w-6" />
                         </div>
                         <div>
-                            <h1 className="text-lg font-black text-slate-800 uppercase tracking-tight">Thông tin điểm danh</h1>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Giám sát chuyên cần học tập</p>
+                            <h1 className="text-xl font-bold text-blue-800 uppercase tracking-tight">Thông tin điểm danh</h1>
+                            <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Dữ liệu chi tiết chuyên cần</p>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-6">
-                        <div className="text-right">
-                            <p className="text-[9px] font-bold uppercase text-slate-400 tracking-widest">Tỷ lệ chuyên cần TB</p>
-                            <p className="text-lg font-black text-indigo-600">{averageRate}%</p>
-                        </div>
-                        <div className="h-10 w-px bg-slate-200"></div>
-                        <Button variant="outline" className="h-9 rounded-lg border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50">
-                            <Printer className="mr-2 h-4 w-4" /> In báo cáo
+                    <div className="flex items-center gap-4">
+                        <Button 
+                            variant="outline" 
+                            size="sm"
+                            className="h-9 rounded-md border-blue-200 text-blue-600 hover:bg-blue-50 font-bold text-xs"
+                        >
+                            <Printer className="mr-2 h-4 w-4" /> IN BÁO CÁO
                         </Button>
                     </div>
                 </div>
 
                 <div className="overflow-x-auto">
-                    <Table>
-                        <TableHeader className="bg-slate-50/50">
-                            <TableRow className="hover:bg-transparent border-slate-200 h-10 text-center">
-                                <TableHead className="w-12 text-center font-bold text-slate-500 text-[10px] uppercase">STT</TableHead>
-                                <TableHead className="w-32 text-left font-bold text-slate-500 text-[10px] uppercase">Mã lớp HP</TableHead>
-                                <TableHead className="text-left font-bold text-slate-500 text-[10px] uppercase">Tên môn học</TableHead>
-                                <TableHead className="w-14 text-center font-bold text-slate-500 text-[10px] uppercase">TC</TableHead>
-                                <TableHead className="w-28 text-center font-bold text-slate-500 text-[10px] uppercase bg-indigo-50/40">Tỷ lệ CC</TableHead>
-                                <TableHead className="w-24 text-center font-bold text-indigo-600 text-[10px] uppercase bg-indigo-50/40">Điểm CC</TableHead>
-                                <TableHead className="w-28 text-center font-bold text-blue-600 text-[10px] uppercase bg-blue-50/30">Nghỉ CP</TableHead>
-                                <TableHead className="w-28 text-center font-bold text-rose-600 text-[10px] uppercase bg-rose-50/30">Nghỉ KP</TableHead>
-                                <TableHead className="w-20 text-center font-bold text-slate-500 text-[10px] uppercase pr-6">Chi tiết</TableHead>
+                    <Table className="border-collapse">
+                        <TableHeader className="bg-blue-50/50">
+                            <TableRow className="hover:bg-transparent border-blue-200">
+                                <TableHead className="w-12 text-center font-bold text-blue-700 uppercase py-4 border-x border-blue-100 text-[11px]">STT</TableHead>
+                                <TableHead className="w-40 text-center font-bold text-blue-700 uppercase py-4 border-x border-blue-100 text-[11px]">Mã lớp học phần</TableHead>
+                                <TableHead className="text-center font-bold text-blue-700 uppercase py-4 border-x border-blue-100 text-[11px]">Tên môn học/học phần</TableHead>
+                                <TableHead className="w-16 text-center font-bold text-blue-700 uppercase py-4 border-x border-blue-100 text-[11px]">TC</TableHead>
+                                <TableHead className="w-48 text-center font-bold text-blue-700 uppercase py-4 border-x border-blue-100 text-[11px]">Số tiết nghỉ có phép</TableHead>
+                                <TableHead className="w-48 text-center font-bold text-blue-700 uppercase py-4 border-x border-blue-100 text-[11px]">Số tiết nghỉ không phép</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {sortedSemesterKeys.length > 0 ? (
-                                sortedSemesterKeys.map((semesterKey) => {
-                                    const isOpen = expandedSemesters[semesterKey];
-                                    return (
-                                        <React.Fragment key={semesterKey}>
-                                            <TableRow
-                                                className="bg-slate-50/80 hover:bg-slate-100 cursor-pointer border-slate-200"
-                                                onClick={() => toggleSemester(semesterKey)}
-                                            >
-                                                <TableCell colSpan={9} className="py-2.5 px-6">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className={cn("transition-transform", isOpen && "rotate-90")}>
-                                                            <ChevronDown size={14} className="text-slate-400" />
-                                                        </div>
-                                                        <span className="text-[11px] font-black text-slate-700 uppercase tracking-wider">{semesterKey}</span>
-                                                        <span className="text-[9px] font-bold text-slate-400 ml-auto uppercase bg-white border border-slate-200 px-2 py-0.5 rounded-full">
-                                                            {groupedEnrollments[semesterKey].length} Lớp học phần
-                                                        </span>
+                            {/* Standard Semesters */}
+                            {sortedSemesterKeys.map((semesterKey) => {
+                                const data = groupedEnrollments[semesterKey];
+                                const isOpen = expandedSemesters[semesterKey];
+                                const semesterEnrollments = data.enrollments || [];
+                                
+                                return (
+                                    <React.Fragment key={semesterKey}>
+                                        <TableRow
+                                            className="bg-blue-50/40 hover:bg-blue-50/70 cursor-pointer border-blue-200"
+                                            onClick={() => toggleSemester(semesterKey)}
+                                        >
+                                            <TableCell colSpan={6} className="py-2.5 px-4">
+                                                <div className="flex items-center gap-2">
+                                                    <div className={cn("transition-transform", isOpen && "rotate-90")}>
+                                                        <ChevronDown size={18} className="text-blue-600" />
                                                     </div>
-                                                </TableCell>
-                                            </TableRow>
+                                                    <div className="flex flex-col">
+                                                        <span className="text-sm font-black text-blue-800 tracking-wide">{data.label}</span>
+                                                        <span className="text-[10px] font-bold text-blue-400">{data.subLabel}</span>
+                                                    </div>
+                                                    {!isOpen && semesterEnrollments.length === 0 && (
+                                                        <span className="text-[10px] italic text-slate-400 ml-auto">Chưa có dữ liệu</span>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
 
-                                            <AnimatePresence>
-                                                {isOpen && groupedEnrollments[semesterKey].map((enr: any, index: number) => {
-                                                    const excused = calculateTermAbsences(enr, 'EXCUSED');
-                                                    const unexcused = calculateTermAbsences(enr, 'UNEXCUSED');
-                                                    const attendanceRate = calculateAttendanceRate(enr);
-                                                    const isExpanded = expandedClass === enr.id;
-                                                    // attendanceScore comes from the grade record via enrollment
-                                                    const grade = enr.grade;
-                                                    const attendanceScore = grade?.attendanceScore ?? enr.attendanceScore ?? null;
-                                                    const isEligibleForExam = grade?.isEligibleForExam ?? enr.isEligibleForExam ?? null;
+                                        <AnimatePresence mode="wait">
+                                            {isOpen && (
+                                                semesterEnrollments.length > 0 ? (
+                                                    semesterEnrollments.map((enr: any, index: number) => renderEnrollmentRow(enr, index))
+                                                ) : (
+                                                    <TableRow className="bg-slate-50/30">
+                                                        <TableCell colSpan={6} className="py-8 text-center border-x border-blue-50">
+                                                            <p className="text-xs italic text-slate-400 font-medium uppercase tracking-widest">Không tìm thấy dữ liệu điểm danh cho học kỳ này</p>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )
+                                            )}
+                                        </AnimatePresence>
+                                    </React.Fragment>
+                                );
+                            })}
 
-                                                    return (
-                                                        <React.Fragment key={enr.id}>
-                                                            <motion.tr
-                                                                initial={{ opacity: 0, y: -4 }}
-                                                                animate={{ opacity: 1, y: 0 }}
-                                                                className="hover:bg-slate-50/80 border-slate-100 h-14 group transition-colors cursor-pointer"
-                                                                onClick={() => setExpandedClass(isExpanded ? null : enr.id)}
-                                                            >
-                                                                <TableCell className="text-center font-medium text-slate-400 text-[10px] border-b border-slate-50">{index + 1}</TableCell>
-                                                                <TableCell className="font-bold text-indigo-600 text-[10px] border-b border-slate-50">{enr.courseClass?.code}</TableCell>
-                                                                <TableCell className="font-bold text-slate-700 text-[11px] border-b border-slate-50">{enr.courseClass?.subject?.name}</TableCell>
-                                                                <TableCell className="text-center font-bold text-slate-600 text-[10px] border-b border-slate-50">{enr.courseClass?.subject?.credits || 0}</TableCell>
-                                                                {/* Attendance Rate + Eligibility */}
-                                                                <TableCell className="text-center border-b border-slate-50 bg-indigo-50/10">
-                                                                    <div className="flex flex-col items-center gap-0.5">
-                                                                        <span className="font-black text-indigo-600 text-[12px]">{attendanceRate}%</span>
-                                                                        {isEligibleForExam !== null ? (
-                                                                            <span className={cn(
-                                                                                "text-[9px] font-black px-1.5 py-0.5 rounded-full",
-                                                                                isEligibleForExam === false ? "bg-rose-100 text-rose-600" : "bg-emerald-100 text-emerald-700"
-                                                                            )}>
-                                                                                {isEligibleForExam === false ? "Cấm thi" : "Đủ ĐK"}
-                                                                            </span>
-                                                                        ) : null}
-                                                                    </div>
-                                                                </TableCell>
-                                                                {/* Attendance Score */}
-                                                                <TableCell className="text-center border-b border-slate-50 bg-indigo-50/10">
-                                                                    <span className={cn(
-                                                                        "font-black text-[15px]",
-                                                                        attendanceScore !== null
-                                                                            ? (attendanceScore >= 8 ? "text-emerald-600" : attendanceScore >= 5 ? "text-amber-500" : "text-rose-600")
-                                                                            : "text-slate-300"
-                                                                    )}>
-                                                                        {attendanceScore !== null ? attendanceScore : "—"}
-                                                                    </span>
-                                                                </TableCell>
-                                                                <TableCell className="text-center font-black text-blue-600 text-[12px] border-b border-slate-50 bg-blue-50/10">{excused}</TableCell>
-                                                                <TableCell className="text-center font-black text-rose-500 text-[12px] border-b border-slate-50 bg-rose-50/10">{unexcused}</TableCell>
-                                                                <TableCell className="text-center pr-6 border-b border-slate-50">
-                                                                    <div className={cn(
-                                                                        "h-6 w-6 inline-flex items-center justify-center rounded transition-transform bg-slate-100 border border-slate-200",
-                                                                        isExpanded && "rotate-180 bg-indigo-50 border-indigo-200"
-                                                                    )}>
-                                                                        <ChevronDown size={12} className={cn(isExpanded ? "text-indigo-600" : "text-slate-400")} />
-                                                                    </div>
-                                                                </TableCell>
-                                                            </motion.tr>
+                            {/* Extra Semesters */}
+                            {otherEnrollments.length > 0 && (
+                                <React.Fragment key="other">
+                                    <TableRow
+                                        className="bg-slate-100 hover:bg-slate-200 cursor-pointer border-slate-300"
+                                        onClick={() => toggleSemester("other")}
+                                    >
+                                        <TableCell colSpan={6} className="py-2.5 px-4">
+                                            <div className="flex items-center gap-2">
+                                                <div className={cn("transition-transform", expandedSemesters["other"] && "rotate-90")}>
+                                                    <ChevronDown size={18} className="text-slate-600" />
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-sm font-black text-slate-800 tracking-wide">Học kỳ khác</span>
+                                                    <span className="text-[10px] font-bold text-slate-400">Các môn học ngoài 8 học kỳ chính</span>
+                                                </div>
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                    <AnimatePresence mode="wait">
+                                        {expandedSemesters["other"] && (
+                                            otherEnrollments.map((enr: any, index: number) => renderEnrollmentRow(enr, index))
+                                        )}
+                                    </AnimatePresence>
+                                </React.Fragment>
+                            )}
 
-                                                            {/* Expanded Attendance Logs */}
-                                                            <AnimatePresence>
-                                                                {isExpanded && (
-                                                                    <TableRow className="bg-slate-50/50 border-none">
-                                                                        <TableCell colSpan={9} className="p-0">
-                                                                            <motion.div
-                                                                                initial={{ height: 0, opacity: 0 }}
-                                                                                animate={{ height: "auto", opacity: 1 }}
-                                                                                exit={{ height: 0, opacity: 0 }}
-                                                                                className="overflow-hidden border-x border-slate-100 mx-10 my-2 rounded-lg bg-white shadow-sm border border-slate-200"
-                                                                            >
-                                                                                <div className="p-4 flex flex-wrap gap-2">
-                                                                                    {enr.attendances?.length > 0 ? (
-                                                                                        enr.attendances.map((att: any, i: number) => {
-                                                                                            const periods = getAttendancePeriods(att, enr);
-                                                                                            return (
-                                                                                                <div key={i} className={cn(
-                                                                                                    "flex items-center gap-2.5 px-3 py-1.5 rounded-md border text-[10px] font-bold",
-                                                                                                    att.status === "PRESENT" ? "bg-emerald-50 text-emerald-700 border-emerald-100/50" :
-                                                                                                    (att.status === "EXCUSED" || att.status === "ABSENT_EXCUSED") ? "bg-blue-50 text-blue-700 border-blue-100/50" :
-                                                                                                    "bg-rose-50 text-rose-700 border-rose-100/50"
-                                                                                                )}>
-                                                                                                    <span className="opacity-60">{new Date(att.date).toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit' })}</span>
-                                                                                                    <div className="h-3 w-px bg-current opacity-20"></div>
-                                                                                                    <span>
-                                                                                                        {att.status === "PRESENT" ? "Đã điểm danh" : 
-                                                                                                         (att.status === "EXCUSED" || att.status === "ABSENT_EXCUSED") ? "Nghỉ có phép" : "Nghỉ không phép"}
-                                                                                                    </span>
-                                                                                                    <div className="h-3 w-px bg-current opacity-20"></div>
-                                                                                                    <span className="text-slate-400">{periods} Tiết</span>
-                                                                                                    <div className="h-3 w-px bg-current opacity-20"></div>
-                                                                                                    <span className="text-slate-500">{formatAttendanceMethod(att)}</span>
-                                                                                                    {att.markedAt && (
-                                                                                                        <>
-                                                                                                            <div className="h-3 w-px bg-current opacity-20"></div>
-                                                                                                            <span className="text-slate-500">{new Date(att.markedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</span>
-                                                                                                        </>
-                                                                                                    )}
-                                                                                                    {att.isLocationVerified && (
-                                                                                                        <>
-                                                                                                            <div className="h-3 w-px bg-current opacity-20"></div>
-                                                                                                            <span className="text-emerald-600">GPS OK{typeof att.distanceMeters === "number" ? ` ${Math.round(att.distanceMeters)}m` : ""}</span>
-                                                                                                        </>
-                                                                                                    )}
-                                                                                                </div>
-                                                                                            );
-                                                                                        })
-                                                                                    ) : (
-                                                                                        <div className="w-full py-2 text-center text-slate-400 text-[10px] font-medium italic">
-                                                                                            Chưa có dữ liệu chi tiết
-                                                                                        </div>
-                                                                                    )}
-                                                                                </div>
-                                                                            </motion.div>
-                                                                        </TableCell>
-                                                                    </TableRow>
-                                                                )}
-                                                            </AnimatePresence>
-                                                        </React.Fragment>
-                                                    );
-                                                })}
-                                            </AnimatePresence>
-                                        </React.Fragment>
-                                    );
-                                })
-                            ) : (
+                            {enrollments.length === 0 && (
                                 <TableRow>
-                                    <TableCell colSpan={9} className="h-32 text-center">
+                                    <TableCell colSpan={6} className="h-48 text-center bg-slate-50/30 border-x border-blue-50">
                                         <div className="flex flex-col items-center justify-center opacity-40">
-                                            <ClipboardCheck className="h-8 w-8 text-slate-300 mb-2" />
-                                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Không tìm thấy dữ liệu điểm danh</p>
+                                            <ClipboardCheck className="h-12 w-12 text-slate-300 mb-3" />
+                                            <p className="text-sm font-black text-slate-400 uppercase tracking-widest">Không tìm thấy bất kỳ dữ liệu học tập nào</p>
                                         </div>
                                     </TableCell>
                                 </TableRow>
                             )}
                         </TableBody>
-                        {enrollments.length > 0 && (
-                            <tfoot className="bg-slate-50/80 border-t-2 border-slate-200 relative z-10">
-                                <TableRow className="h-14">
-                                    <TableCell colSpan={6} className="text-right py-3 pr-6 font-black text-slate-700 text-[11px] uppercase tracking-widest">Tổng cộng tiết nghỉ:</TableCell>
-                                    <TableCell className="text-center font-black text-blue-700 text-sm bg-blue-50/20">{totalExcused}</TableCell>
-                                    <TableCell className="text-center font-black text-rose-600 text-sm bg-rose-50/20">{totalUnexcused}</TableCell>
-                                    <TableCell></TableCell>
-                                </TableRow>
-                            </tfoot>
-                        )}
+                        <tfoot className="bg-slate-100/80 border-t-2 border-blue-200">
+                            <TableRow className="h-14">
+                                <TableCell colSpan={4} className="text-center font-black text-blue-900 uppercase tracking-widest text-[13px]">Tổng cộng số tiết đã nghỉ:</TableCell>
+                                <TableCell className="text-center font-black text-red-600 text-xl border-x border-blue-100 shadow-inner">{grandTotalExcused}</TableCell>
+                                <TableCell className="text-center font-black text-red-600 text-xl border-x border-blue-100 shadow-inner">{grandTotalUnexcused}</TableCell>
+                            </TableRow>
+                        </tfoot>
                     </Table>
                 </div>
             </div>
         </div>
     );
 }
+

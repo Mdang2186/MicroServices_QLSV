@@ -3,6 +3,8 @@ import { PrismaService } from './prisma.service';
 
 @Injectable()
 export class GpaService {
+  private readonly publishedGradeStatuses = ['APPROVED', 'PUBLISHED'];
+
   constructor(private prisma: PrismaService) {}
 
   private parseLegacyAdminClass(
@@ -24,8 +26,10 @@ export class GpaService {
   }
 
   private async resolveLinkedStudentIds(studentId: string) {
-    const student = await this.prisma.student.findUnique({
-      where: { id: studentId },
+    const student = await this.prisma.student.findFirst({
+      where: {
+        OR: [{ id: studentId }, { studentCode: studentId }, { userId: studentId }],
+      },
       include: { adminClass: true },
     });
 
@@ -92,7 +96,13 @@ export class GpaService {
 
   private getGradePriority(grade: any) {
     let score = 0;
-    if (`${grade?.status || ''}`.toUpperCase() === 'APPROVED') score += 100;
+    if (
+      this.publishedGradeStatuses.includes(
+        `${grade?.status || ''}`.trim().toUpperCase(),
+      )
+    ) {
+      score += 100;
+    }
     if (grade?.isLocked) score += 20;
     if (Number.isFinite(Number(grade?.totalScore10))) {
       score += 10 + Number(grade.totalScore10);
@@ -122,6 +132,7 @@ export class GpaService {
     const grades = await this.prisma.grade.findMany({
       where: {
         studentId: { in: linkedStudentIds },
+        status: { in: this.publishedGradeStatuses },
         courseClass: { semesterId },
       },
       include: {
@@ -155,6 +166,7 @@ export class GpaService {
     const grades = await this.prisma.grade.findMany({
       where: {
         studentId: { in: linkedStudentIds },
+        status: { in: this.publishedGradeStatuses },
       },
       include: {
         courseClass: {
@@ -192,6 +204,7 @@ export class GpaService {
     const grades = await this.prisma.grade.findMany({
       where: {
         studentId: { in: linkedStudentIds },
+        status: { in: this.publishedGradeStatuses },
         isPassed: true,
       },
       include: { subject: true },

@@ -1,19 +1,11 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { GradeSheetTable, parseScoreArray, type GradeSheetRow } from "@repo/shared-utils";
+import React, { useEffect, useState, useMemo } from "react";
+import { parseScoreArray } from "@repo/shared-utils";
 import { StudentService } from "@/services/student.service";
 import {
-    Search,
-    Printer,
-    FileText,
     GraduationCap,
-    Hash,
-    User,
-    Download,
-    LayoutGrid,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { resolveCurrentStudentContext } from "@/lib/current-student";
 
@@ -48,231 +40,78 @@ function getRowPriority(row: any) {
     return score;
 }
 
-function getMaxScoreLength(rows: any[], field: "coef1Scores" | "coef2Scores" | "practiceScores") {
-    return rows.reduce((max, row) => {
-        if (row?.isPlaceholder) return max;
-        return Math.max(max, parseScoreArray(row?.[field]).length);
-    }, 0);
-}
-
-type StudentCohortMeta = {
-    code: string;
-    startYear: number;
-    endYear: number;
-};
-
-function inferCohortMeta(cohortCode?: string | null): StudentCohortMeta | null {
+function inferCohortMeta(cohortCode?: string | null) {
     const normalized = `${cohortCode || ""}`.trim().toUpperCase();
     const match = normalized.match(/^K(\d{2,})$/i);
     if (!match) return null;
-
     const cohortNumber = Number(match[1]);
-    if (!Number.isFinite(cohortNumber)) return null;
-
     const startYear = 2006 + cohortNumber;
-    return {
-        code: normalized,
-        startYear,
-        endYear: startYear + 4,
-    };
+    return { code: normalized, startYear, endYear: startYear + 4 };
 }
 
 function parseConceptualSemester(semester: any) {
     const source = `${semester?.code || ""} ${semester?.name || ""}`;
-    const match =
-        source.match(/HK\s*([1-8])/i) ||
-        source.match(/H[OỌ]C\s*K[YỲ]\s*([1-8])/i) ||
-        source.match(/SEMESTER\s*([1-8])/i);
+    const match = source.match(/HK\s*([1-8])/i) || source.match(/H[OỌ]C\s*K[YỲ]\s*([1-8])/i) || source.match(/SEMESTER\s*([1-8])/i);
     return match ? Number(match[1]) : null;
 }
 
 function expectedYearForSemester(startYear: number, conceptualSemester: number) {
-    return startYear + Math.floor(conceptualSemester / 2);
+    return startYear + Math.floor((conceptualSemester - 1) / 2);
 }
 
 function getSemesterStartYear(semester: any) {
     const startDate = semester?.startDate ? new Date(semester.startDate) : null;
-    if (startDate && !Number.isNaN(startDate.getTime())) {
-        return startDate.getFullYear();
-    }
-
+    if (startDate && !Number.isNaN(startDate.getTime())) return startDate.getFullYear();
     const codeMatch = `${semester?.code || ""}`.match(/(20\d{2})/);
-    if (codeMatch) {
-        return Number(codeMatch[1]);
-    }
-
+    if (codeMatch) return Number(codeMatch[1]);
     const nameMatch = `${semester?.name || ""}`.match(/(20\d{2})\s*-\s*20\d{2}/);
-    if (nameMatch) {
-        return Number(nameMatch[1]);
-    }
-
+    if (nameMatch) return Number(nameMatch[1]);
     return Number(semester?.year || 0);
 }
 
 function getSemesterHalfMatch(semester: any, conceptualSemester: number) {
     const startDate = semester?.startDate ? new Date(semester.startDate) : null;
-    if (!startDate || Number.isNaN(startDate.getTime())) {
-        return 0;
-    }
-
+    if (!startDate || Number.isNaN(startDate.getTime())) return 0;
     const startMonth = startDate.getMonth() + 1;
-    if (conceptualSemester % 2 === 1) {
-        return startMonth >= 7 ? 1 : 0;
-    }
-
+    if (conceptualSemester % 2 === 1) return startMonth >= 7 ? 1 : 0;
     return startMonth >= 1 && startMonth <= 6 ? 1 : 0;
 }
 
-function getVisibleSemestersForCohort(semesters: any[], cohortMeta: StudentCohortMeta | null) {
+function getVisibleSemestersForCohort(semesters: any[], cohortMeta: any) {
     if (!cohortMeta) return semesters;
+    const selected = Array.from({ length: 8 }, (_, index) => index + 1).map((conceptualSemester) => {
+        const expectedYear = expectedYearForSemester(cohortMeta.startYear, conceptualSemester);
+        const match = semesters.filter((semester) => parseConceptualSemester(semester) === conceptualSemester).sort((left, right) => {
+            const leftYearDiff = Math.abs(getSemesterStartYear(left) - expectedYear);
+            const rightYearDiff = Math.abs(getSemesterStartYear(right) - expectedYear);
+            if (leftYearDiff !== rightYearDiff) return leftYearDiff - rightYearDiff;
+            return (getSemesterHalfMatch(right, conceptualSemester) - getSemesterHalfMatch(left, conceptualSemester)) || (new Date(left?.startDate || 0).getTime() - new Date(right?.startDate || 0).getTime());
+        })[0];
 
-    const selected = Array.from({ length: 8 }, (_, index) => index + 1)
-        .map((conceptualSemester) => {
-            const expectedYear = expectedYearForSemester(
-                cohortMeta.startYear,
-                conceptualSemester,
-            );
-
-            return semesters
-                .filter((semester) => parseConceptualSemester(semester) === conceptualSemester)
-                .sort((left, right) => {
-                    const leftYearDiff = Math.abs(getSemesterStartYear(left) - expectedYear);
-                    const rightYearDiff = Math.abs(getSemesterStartYear(right) - expectedYear);
-                    if (leftYearDiff !== rightYearDiff) {
-                        return leftYearDiff - rightYearDiff;
-                    }
-
-                    const halfMatchDiff =
-                        getSemesterHalfMatch(right, conceptualSemester) -
-                        getSemesterHalfMatch(left, conceptualSemester);
-                    if (halfMatchDiff !== 0) {
-                        return halfMatchDiff;
-                    }
-
-                    return (
-                        new Date(left?.startDate || 0).getTime() -
-                        new Date(right?.startDate || 0).getTime()
-                    );
-                })[0];
-        })
-        .filter(Boolean);
-
-    return selected.length > 0 ? selected : semesters;
-}
-
-function getCurrentOrLatestStartedSemester(semesters: any[]) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const exactCurrent = semesters.find((semester) => {
-        if (!semester?.startDate || !semester?.endDate) return false;
-        const startDate = new Date(semester.startDate);
-        const endDate = new Date(semester.endDate);
-        startDate.setHours(0, 0, 0, 0);
-        endDate.setHours(0, 0, 0, 0);
-        return today >= startDate && today <= endDate;
+        return match || {
+            id: `virtual-hk-${conceptualSemester}`,
+            code: `HK${conceptualSemester}`,
+            name: `Học kỳ ${conceptualSemester}`,
+            startDate: new Date(expectedYear, conceptualSemester % 2 === 1 ? 8 : 1, 1),
+            endDate: new Date(expectedYear + (conceptualSemester % 2 === 0 ? 0 : 1), conceptualSemester % 2 === 1 ? 1 : 5, 30),
+            isVirtual: true
+        };
     });
-    if (exactCurrent) return exactCurrent;
-
-    return (
-        [...semesters]
-            .filter((semester) => {
-                if (!semester?.startDate) return false;
-                const startDate = new Date(semester.startDate);
-                startDate.setHours(0, 0, 0, 0);
-                return startDate <= today;
-            })
-            .sort(
-                (left, right) =>
-                    new Date(right?.startDate || 0).getTime() -
-                    new Date(left?.startDate || 0).getTime(),
-            )[0] ||
-        semesters[0] ||
-        null
-    );
+    return selected;
 }
 
 function limitToPastAndCurrentSemesters(semesters: any[]) {
-    const boundarySemester = getCurrentOrLatestStartedSemester(semesters);
-    if (!boundarySemester) return semesters;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-    const boundaryStart = boundarySemester?.startDate
-        ? new Date(boundarySemester.startDate)
-        : null;
-    if (boundaryStart) {
-        boundaryStart.setHours(0, 0, 0, 0);
-    }
+    // Find the latest semester that has started
+    const started = semesters.filter(s => s.startDate && new Date(s.startDate) <= today);
+    if (started.length === 0) return semesters.length > 0 ? [semesters[0]] : [];
 
-    return semesters.filter((semester) => {
-        if (!semester?.startDate || !boundaryStart) return true;
-        const startDate = new Date(semester.startDate);
-        startDate.setHours(0, 0, 0, 0);
-        return startDate <= boundaryStart;
-    });
-}
+    const latestStarted = started.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())[0];
+    const latestStartedIdx = semesters.findIndex(s => s.id === latestStarted.id);
 
-function calculateCurrentConceptualSemester(startYear: number, targetDate: Date) {
-    const date = new Date(targetDate);
-    const year = date.getFullYear();
-    const month = date.getMonth() + 1;
-    const academicHalf = month >= 7 ? 1 : 0;
-    const conceptualSemester = (year - startYear) * 2 + academicHalf;
-    return Math.min(8, Math.max(1, conceptualSemester));
-}
-
-function matchesSemesterReference(
-    targetSemester: any,
-    targetSemesterId: string | null | undefined,
-    referenceSemester: any | null,
-) {
-    if (!referenceSemester) return false;
-
-    const referenceKeys = new Set(
-        [
-            referenceSemester?.id,
-            referenceSemester?.code,
-            referenceSemester?.name,
-        ]
-            .map((value) => `${value || ""}`.trim())
-            .filter(Boolean),
-    );
-
-    const targetKeys = [
-        targetSemester?.id,
-        targetSemester?.code,
-        targetSemester?.name,
-        targetSemesterId,
-    ]
-        .map((value) => `${value || ""}`.trim())
-        .filter(Boolean);
-
-    if (targetKeys.some((value) => referenceKeys.has(value))) {
-        return true;
-    }
-
-    if (
-        targetSemester?.startDate &&
-        targetSemester?.endDate &&
-        referenceSemester?.startDate &&
-        referenceSemester?.endDate
-    ) {
-        const targetStart = new Date(targetSemester.startDate);
-        const targetEnd = new Date(targetSemester.endDate);
-        const referenceStart = new Date(referenceSemester.startDate);
-        const referenceEnd = new Date(referenceSemester.endDate);
-
-        targetStart.setHours(0, 0, 0, 0);
-        targetEnd.setHours(0, 0, 0, 0);
-        referenceStart.setHours(0, 0, 0, 0);
-        referenceEnd.setHours(0, 0, 0, 0);
-
-        return (
-            targetStart.getTime() === referenceStart.getTime() &&
-            targetEnd.getTime() === referenceEnd.getTime()
-        );
-    }
-
-    return false;
+    return semesters.slice(0, latestStartedIdx + 1);
 }
 
 export default function ResultsPage() {
@@ -282,320 +121,218 @@ export default function ResultsPage() {
     const [curriculumProgress, setCurriculumProgress] = useState<any>(null);
     const [student, setStudent] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [searchTerm, setSearchTerm] = useState("");
 
     useEffect(() => {
         const fetchData = async () => {
             try {
                 const context = await resolveCurrentStudentContext();
                 if (!context.studentId) return;
-
-                const [gradesData, semestersData, cohortsData, profileData, curriculumData] = await Promise.all([
+                const [gs, ss, cs, ps, cp] = await Promise.all([
                     StudentService.getGrades(context.studentId),
                     StudentService.getSemesters(),
                     StudentService.getCohorts(),
-                    StudentService.getProfileByStudentId(context.studentId),
+                    context.profile || StudentService.getProfileSummary(context.studentId),
                     StudentService.getCurriculumProgress(context.studentId)
                 ]);
-
-                setGrades(gradesData || []);
-                setSemesters(semestersData || []);
-                setCohorts(cohortsData || []);
-                setStudent(profileData);
-                setCurriculumProgress(curriculumData || null);
-            } catch (error) {
-                console.error("Failed to fetch data:", error);
-            } finally {
-                setLoading(false);
-            }
+                setGrades(gs || []); setSemesters(ss || []); setCohorts(cs || []); setStudent(ps); setCurriculumProgress(cp || null);
+            } catch (error) { console.error(error); } finally { setLoading(false); }
         };
-
         fetchData();
     }, []);
 
-    const curriculumSemesters = useMemo(
-        () => (Array.isArray(curriculumProgress?.semesters) ? curriculumProgress.semesters : []),
-        [curriculumProgress],
-    );
-
     const startYear = useMemo(() => {
         const cohortCode = `${student?.adminClass?.cohort || student?.intake || ""}`.trim();
-        if (!cohortCode) return 2024;
-
-        const cohort = cohorts.find(c => c.code === cohortCode);
-        if (cohort?.startYear) return cohort.startYear;
-
         const kMatch = cohortCode.match(/K(\d+)/i);
-        if (kMatch) {
-            const kNum = parseInt(kMatch[1]);
-            return 2006 + kNum; // Mapping: K18 = 2024
-        }
-        return 2024;
-    }, [student?.adminClass?.cohort, student?.intake, cohorts]);
+        return kMatch ? 2006 + parseInt(kMatch[1]) : 2024;
+    }, [student]);
 
-    const cohortMeta = useMemo(
-        () => inferCohortMeta(student?.adminClass?.cohort || student?.intake),
-        [student?.adminClass?.cohort, student?.intake],
-    );
+    const cohortMeta = useMemo(() => inferCohortMeta(student?.adminClass?.cohort || student?.intake), [student]);
 
     const visibleSemesters = useMemo(() => {
-        const normalizedSemesters = (Array.isArray(semesters) ? semesters : []).map((semester) => ({
-            ...semester,
-            startDate: toDate(semester?.startDate),
-            endDate: toDate(semester?.endDate),
-        }));
-
-        const scoped = getVisibleSemestersForCohort(normalizedSemesters, cohortMeta);
-        const limited = limitToPastAndCurrentSemesters(scoped);
-        const visible = limited.length > 0 ? limited : scoped;
-
-        if (visible.length > 0) {
-            return [...visible].sort((left, right) => {
-                const leftSemester = parseConceptualSemester(left) || 99;
-                const rightSemester = parseConceptualSemester(right) || 99;
-                if (leftSemester !== rightSemester) {
-                    return leftSemester - rightSemester;
-                }
-                return (
-                    new Date(left?.startDate || 0).getTime() -
-                    new Date(right?.startDate || 0).getTime()
-                );
-            });
-        }
-
-        const fallbackCount = calculateCurrentConceptualSemester(startYear, new Date());
-        return Array.from({ length: fallbackCount }, (_, index) => {
-            const conceptualSemester = index + 1;
-            const academicStartYear = expectedYearForSemester(startYear, conceptualSemester);
-            return {
-                id: `fallback-hk-${conceptualSemester}`,
-                code: `HK${conceptualSemester}`,
-                name: `Học kỳ ${conceptualSemester}`,
-                startDate: null,
-                endDate: null,
-                conceptualSemester,
-                academicStartYear,
-            };
-        });
-    }, [cohortMeta, semesters, startYear]);
+        const normalized = semesters.map(s => ({ ...s, startDate: toDate(s.startDate), endDate: toDate(s.endDate) }));
+        const scoped = getVisibleSemestersForCohort(normalized, cohortMeta);
+        return limitToPastAndCurrentSemesters(scoped);
+    }, [cohortMeta, semesters]);
 
     const fullHistory = useMemo(() => {
-        const timeline = [];
-        const cumulativeBestBySubject = new Map<string, any>();
+        const timeline: any[] = [];
+        const cumulativeBest = new Map();
 
-        visibleSemesters.forEach((systemSemester, index) => {
-            const sequentialNumber =
-                Number(systemSemester?.conceptualSemester) ||
-                parseConceptualSemester(systemSemester) ||
-                index + 1;
-            const academicStartYear =
-                systemSemester?.academicStartYear ||
-                (systemSemester?.startDate
-                    ? new Date(systemSemester.startDate).getFullYear()
-                    : expectedYearForSemester(startYear, sequentialNumber));
+        visibleSemesters.forEach((sysSem, idx) => {
+            const seqNum = parseConceptualSemester(sysSem) || (idx + 1);
+            const plannedSem = curriculumProgress?.semesters?.find((s: any) => Number(s.semester) === seqNum);
+            const plannedSubjects = plannedSem?.items || [];
+            const plannedKeys = new Set(plannedSubjects.flatMap((p: any) => [p.subjectId, p.id, p.code].map(v => `${v || ""}`.trim()).filter(Boolean)));
 
-            const plannedSemester = curriculumSemesters.find(
-                (item) => Number(item?.semester || 0) === sequentialNumber,
-            );
-            const plannedSubjects = Array.isArray(plannedSemester?.items)
-                ? plannedSemester.items
-                : [];
-            const plannedSubjectKeys = new Set(
-                plannedSubjects.flatMap((item: any) =>
-                    [item?.subjectId, item?.id, item?.code]
-                        .map((value) => `${value || ""}`.trim())
-                        .filter(Boolean),
-                ),
-            );
+            const actualGrades = grades.filter(g => matchesSemesterReference(g?.courseClass?.semester, g?.courseClass?.semesterId, sysSem));
 
-            const actualGradesInSemester = grades.filter((grade) =>
-                matchesSemesterReference(
-                    grade?.courseClass?.semester,
-                    grade?.courseClass?.semesterId,
-                    systemSemester,
-                ),
-            );
-            const semesterGrades =
-                plannedSubjectKeys.size > 0
-                    ? actualGradesInSemester.filter((grade) =>
-                        plannedSubjectKeys.has(`${grade?.subjectId || grade?.subject?.id || grade?.subject?.code || ""}`.trim()),
-                    )
-                    : actualGradesInSemester;
-
-            const mergedRows: any[] = [];
-
-            plannedSubjects.forEach((planItem) => {
-                const matchingGrade = semesterGrades.find(
-                    (grade) =>
-                        `${grade?.subjectId || grade?.subject?.id || grade?.subject?.code || ""}`.trim() ===
-                        `${planItem?.subjectId || planItem?.id || planItem?.code || ""}`.trim(),
-                );
-
-                if (matchingGrade) {
-                    mergedRows.push({ ...matchingGrade, isPlanned: true });
-                    return;
-                }
-
-                const passedGradeInAnySemester = grades.find(
-                    (grade) => grade.subjectId === planItem.subjectId && grade.isPassed,
-                );
-
-                mergedRows.push({
-                    subject: planItem,
-                    subjectId: planItem.subjectId,
-                    isPlanned: true,
-                    isPlaceholder: true,
-                    existingGrade: passedGradeInAnySemester,
-                });
+            // Map planned subjects first, then extra grades
+            const rows: any[] = [];
+            plannedSubjects.forEach((p: any) => {
+                const match = actualGrades.find(g => `${g.subjectId || g.subject?.id || ""}`.trim() === `${p.subjectId || p.id || ""}`.trim());
+                if (match) rows.push({ ...match, isPlanned: true });
+                else rows.push({ subject: p, subjectId: p.subjectId, isPlanned: true, isPlaceholder: true });
             });
 
-            if (plannedSubjects.length === 0) {
-                semesterGrades.forEach((grade) => {
-                    mergedRows.push({ ...grade, isPlanned: false });
-                });
-            }
-
-            const filteredRows = mergedRows.filter((row) => {
-                const name = row.subject?.name || "";
-                const code = row.subject?.code || "";
-                return (
-                    name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                    code.toLowerCase().includes(searchTerm.toLowerCase())
-                );
+            // Add actual grades that weren't in the plan for this semester
+            actualGrades.forEach(g => {
+                const alreadyAdded = rows.some(r => `${r.id || ""}` === `${g.id || ""}` && !r.isPlaceholder);
+                if (!alreadyAdded) rows.push({ ...g, isPlanned: false });
             });
 
-            const actualRows = mergedRows.filter(
-                (row) => !row.isPlaceholder && toNumberOrNull(row?.totalScore4) !== null,
-            );
-            const attemptedCredits = actualRows.reduce(
-                (sum, row) => sum + getRowCredits(row),
-                0,
-            );
-
-            actualRows.forEach((row) => {
-                const subjectKey = getRowSubjectKey(row);
-                if (!subjectKey) return;
-
-                const existing = cumulativeBestBySubject.get(subjectKey);
-                if (!existing || getRowPriority(row) > getRowPriority(existing)) {
-                    cumulativeBestBySubject.set(subjectKey, row);
-                }
+            // Stats
+            const actualRows = rows.filter(r => !r.isPlaceholder && toNumberOrNull(r.totalScore10) !== null);
+            actualRows.forEach(r => {
+                const key = getRowSubjectKey(r);
+                if (key && (!cumulativeBest.get(key) || getRowPriority(r) > getRowPriority(cumulativeBest.get(key)))) cumulativeBest.set(key, r);
             });
+            const allBest = [...cumulativeBest.values()];
+            const totalCreds = allBest.reduce((s, r) => s + getRowCredits(r), 0);
+            const cpa = totalCreds > 0 ? allBest.reduce((s, r) => s + (Number(r.totalScore4 || 0) * getRowCredits(r)), 0) / totalCreds : null;
 
-            const cumulativeRows = [...cumulativeBestBySubject.values()].filter(
-                (row) => toNumberOrNull(row?.totalScore4) !== null,
-            );
-            const cumulativeCredits = cumulativeRows.reduce(
-                (sum, row) => sum + getRowCredits(row),
-                0,
-            );
-            const cpa =
-                cumulativeCredits > 0
-                    ? cumulativeRows.reduce(
-                        (sum, row) =>
-                            sum + Number(row.totalScore4 || 0) * getRowCredits(row),
-                        0,
-                    ) / cumulativeCredits
-                    : null;
+            const semCreds = actualRows.reduce((s, r) => s + getRowCredits(r), 0);
+            const gpa = semCreds > 0 ? actualRows.reduce((s, r) => s + (Number(r.totalScore4 || 0) * getRowCredits(r)), 0) / semCreds : null;
 
             timeline.push({
-                label: `HK${sequentialNumber}`,
-                yearLabel: `Năm ${Math.ceil(sequentialNumber / 2)}`,
-                academicYear: `${academicStartYear} - ${academicStartYear + 1}`,
-                systemSemester,
-                grades: filteredRows,
-                totalRows: mergedRows.length,
-                summary: {
-                    cpa,
-                    hasActualGrades: actualRows.length > 0,
-                },
+                label: `HK${seqNum}`,
+                title: sysSem.name || `Học kỳ ${seqNum}`,
+                academicYear: sysSem.startDate ? `${new Date(sysSem.startDate).getFullYear()} - ${new Date(sysSem.startDate).getFullYear() + 1}` : `${expectedYearForSemester(startYear, seqNum)} - ${expectedYearForSemester(startYear, seqNum) + 1}`,
+                grades: rows,
+                summary: { gpa, cpa }
             });
         });
-
         return timeline;
-    }, [curriculumSemesters, grades, searchTerm, startYear, visibleSemesters]);
+    }, [curriculumProgress, grades, startYear, visibleSemesters]);
 
-    const allSheetRows = useMemo((): GradeSheetRow[] => {
-        return fullHistory.flatMap((group) => {
-            return group.grades.map((g: any) => ({
-                id: `${group.label}-${g.id || g.subjectId || g.subject?.id || g.subject?.code}`,
-                semesterLabel: group.label,
-                primaryText: g.subject?.name || "Học phần",
-                secondaryText: g.subject?.code || "",
-                credits: Number(g.subject?.credits || g.credits || 0),
-                attendanceScore: g.isPlaceholder ? null : g.attendanceScore ?? null,
-                regularScores: g.isPlaceholder ? [] : parseScoreArray(g.regularScores),
-                coef1Scores: g.isPlaceholder ? [] : parseScoreArray(g.coef1Scores),
-                coef2Scores: g.isPlaceholder ? [] : parseScoreArray(g.coef2Scores),
-                practiceScores: g.isPlaceholder ? [] : parseScoreArray(g.practiceScores),
-                tbThuongKy: g.isPlaceholder ? null : g.tbThuongKy ?? null,
-                isEligibleForExam:
-                    g.isPlaceholder || g.attendanceScore === null || g.attendanceScore === undefined
-                        ? null
-                        : g.isEligibleForExam,
-                isAbsentFromExam: Boolean(g.isAbsentFromExam),
-                examScore1: g.isPlaceholder ? null : g.examScore1 ?? null,
-                examScore2: g.isPlaceholder ? null : g.examScore2 ?? null,
-                finalScore1: g.isPlaceholder ? null : g.finalScore1 ?? null,
-                finalScore2: g.isPlaceholder ? null : g.finalScore2 ?? null,
-                totalScore10: g.isPlaceholder ? null : g.totalScore10 ?? null,
-                totalScore4: g.isPlaceholder ? null : g.totalScore4 ?? null,
-                letterGrade: g.isPlaceholder ? null : g.letterGrade ?? null,
-                isPassed: Boolean(g.isPassed),
-                cpa: group.summary?.cpa,
-                notes: g.notes || (g.existingGrade ? "Hoàn thành ở kỳ khác" : ""),
-                isPlaceholder: Boolean(g.isPlaceholder),
-            }));
-        });
-    }, [fullHistory]);
+    const formatVal = (val: any) => {
+        if (val === null || val === undefined || val === "") return "";
+        const n = Number(val);
+        return isNaN(n) ? val : n.toLocaleString("vi-VN", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    };
 
-    const maxCoef = useMemo(() => Math.max(3, getMaxScoreLength(allSheetRows, "coef1Scores"), getMaxScoreLength(allSheetRows, "coef2Scores")), [allSheetRows]);
-    const maxPractice = useMemo(() => Math.max(2, getMaxScoreLength(allSheetRows, "practiceScores")), [allSheetRows]);
+    const getRank = (gpa: number | null) => {
+        if (gpa === null || gpa === 0) return "";
+        if (gpa >= 3.6) return "Xuất sắc";
+        if (gpa >= 3.2) return "Giỏi";
+        if (gpa >= 2.5) return "Khá";
+        if (gpa >= 2.0) return "Trung bình";
+        return "Yếu";
+    };
 
-    if (loading) {
-        return (
-            <div className="flex h-screen items-center justify-center bg-white">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-100 border-t-blue-600"></div>
-                    <p className="text-xs font-black uppercase tracking-widest text-slate-400">Đang tải bảng điểm...</p>
-                </div>
-            </div>
-        );
-    }
+    if (loading) return <div className="flex h-screen items-center justify-center bg-white"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>;
 
     return (
-        <div className="flex h-full flex-col bg-white overflow-hidden">
+        <div className="w-full flex flex-col min-h-screen bg-white">
 
 
-            {/* Main Sheet Area */}
-            <div className="flex-1 overflow-hidden p-0">
-                <GradeSheetTable
-                    rows={allSheetRows}
-                    showSemester={true}
-                    labelHeader="Tên học phần"
-                    coefColumns={maxCoef}
-                    practiceColumns={maxPractice}
-                    showNotes={true}
-                    emptyMessage="Không tìm thấy môn học nào."
-                />
+            {/* Excel-style Table Body */}
+            <div className="flex-1 overflow-auto bg-slate-50 scrollbar-thin scrollbar-thumb-slate-200">
+                <table className="w-full border-separate border-spacing-0 text-[11px] text-slate-700 bg-white">
+                    <thead className="sticky top-0 z-40">
+                        {/* Headers */}
+                        <tr className="h-10 bg-slate-50 text-slate-600 font-bold">
+                            <th rowSpan={2} className="sticky left-0 z-50 bg-[#f8fafc] border-r border-b border-slate-200 px-3 text-center min-w-[45px]">STT</th>
+                            <th rowSpan={2} className="sticky left-[45px] z-50 bg-[#f8fafc] border-r border-b border-slate-200 px-3 text-left min-w-[110px]">Mã HP</th>
+                            <th rowSpan={2} className="sticky left-[155px] z-50 bg-[#f8fafc] border-r border-b border-slate-200 px-3 text-left min-w-[240px]">Tên học phần</th>
+                            <th rowSpan={2} className="border-r border-b border-slate-200 px-2 min-w-[35px]">TC</th>
+                            <th rowSpan={2} className="border-r border-b border-slate-200 px-2 min-w-[40px]">CC</th>
+                            <th colSpan={3} className="border-r border-b border-slate-200 px-2">Thường kỳ</th>
+                            <th colSpan={4} className="border-r border-b border-slate-200 px-2">LT Hệ số 1</th>
+                            <th colSpan={4} className="border-r border-b border-slate-200 px-2">LT Hệ số 2</th>
+                            <th colSpan={2} className="bg-[#e2f3e8] border-r border-b border-slate-200 px-2">Thực hành</th>
+                            <th rowSpan={2} className="border-r border-b border-slate-200 px-2 min-w-[45px]">TBTK</th>
+                            <th rowSpan={2} className="border-r border-b border-slate-200 px-2 min-w-[45px]">Dự thi</th>
+                            <th rowSpan={2} className="border-r border-b border-slate-200 px-2 min-w-[45px]">Điểm 1</th>
+                            <th rowSpan={2} className="border-r border-b border-slate-200 px-2 min-w-[35px]">Vắng</th>
+                            <th rowSpan={2} className="border-r border-b border-slate-200 px-2 min-w-[45px]">Điểm 2</th>
+                            <th rowSpan={2} className="border-r border-b border-slate-200 px-2 min-w-[45px]">TK 1</th>
+                            <th rowSpan={2} className="border-r border-b border-slate-200 px-2 min-w-[45px]">TK 2</th>
+                            <th rowSpan={2} className="border-r border-b border-slate-200 px-2 min-w-[45px]">TK 10</th>
+                            <th rowSpan={2} className="border-r border-b border-slate-200 px-2 min-w-[35px]">Hệ 4</th>
+                            <th rowSpan={2} className="border-r border-b border-slate-200 px-2 min-w-[35px]">Chữ</th>
+                            <th rowSpan={2} className="border-r border-b border-slate-200 px-2 min-w-[45px]">GPA</th>
+                            <th rowSpan={2} className="border-r border-b border-slate-200 px-2 min-w-[45px]">CPA</th>
+                            <th rowSpan={2} className="border-r border-b border-slate-200 px-2 min-w-[70px]">Xếp loại</th>
+                            <th rowSpan={2} className="border-r border-b border-slate-200 px-3 min-w-[80px]">Kết quả</th>
+                            <th rowSpan={2} className="border-b border-slate-200 px-3 min-w-[100px]">Ghi chú</th>
+                        </tr>
+                        <tr className="h-6 bg-slate-50 text-[9px] text-slate-400">
+                            {[1, 2, 3].map(i => <th key={`tx-${i}`} className="border-r border-b border-slate-200 px-1 min-w-[40px]">TX{i}</th>)}
+                            {[11, 12, 13, 14].map(i => <th key={`hs1-${i}`} className="border-r border-b border-slate-200 px-1 min-w-[40px]">HS{i}</th>)}
+                            {[21, 22, 23, 24].map(i => <th key={`hs2-${i}`} className="border-r border-b border-slate-200 px-1 min-w-[40px]">HS{i}</th>)}
+                            {[1, 2].map(i => <th key={`th-${i}`} className="bg-[#e2f3e8] border-r border-b border-slate-200 px-1 min-w-[40px]">TH{i}</th>)}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {fullHistory.map((group) => (
+                            <React.Fragment key={group.label}>
+                                <tr className="h-7 bg-slate-100 group">
+                                    <td colSpan={36} className="sticky left-0 z-10 border-b border-slate-200 px-3 font-bold text-slate-600 uppercase tracking-widest text-[10px] bg-slate-100">
+                                        {group.title} — {group.academicYear}
+                                    </td>
+                                </tr>
+                                {group.grades.length === 0 ? (
+                                    <tr className="h-9"><td colSpan={36} className="border-b border-slate-100 px-6 text-slate-300 italic">Chưa có dữ liệu học phần cho học kỳ này</td></tr>
+                                ) : (
+                                    group.grades.map((g: any, idx: number) => {
+                                        const tx = parseScoreArray(g.regularScores);
+                                        const hs1 = parseScoreArray(g.coef1Scores);
+                                        const hs2 = parseScoreArray(g.coef2Scores);
+                                        const th = parseScoreArray(g.practiceScores);
+                                        const isAbsent = Boolean(g.isAbsentFromExam);
+                                        const total10 = toNumberOrNull(g.totalScore10);
+
+                                        return (
+                                            <tr key={idx} className="h-9 hover:bg-slate-50 group border-b border-slate-100">
+                                                <td className="sticky left-0 bg-white group-hover:bg-slate-50 border-r border-slate-100 px-3 text-center text-slate-400 tabular-nums">{idx + 1}</td>
+                                                <td className="sticky left-[45px] bg-white group-hover:bg-slate-50 border-r border-slate-100 px-3 font-medium text-slate-500 tabular-nums">{g.subject?.code || g.courseClass?.subject?.code || ""}</td>
+                                                <td className="sticky left-[155px] bg-white group-hover:bg-slate-50 border-r border-slate-100 px-3 font-medium text-slate-800 truncate">{g.subject?.name || g.courseClass?.subject?.name || ""}</td>
+                                                <td className="border-r border-slate-100 px-2 text-center text-slate-500">{getRowCredits(g)}</td>
+                                                <td className="border-r border-slate-100 px-2 text-center tabular-nums text-slate-500">{formatVal(g.attendanceScore)}</td>
+                                                {[0, 1, 2].map(i => <td key={i} className="border-r border-slate-50 px-1 text-center tabular-nums text-slate-400">{formatVal(tx[i])}</td>)}
+                                                {[0, 1, 2, 3].map(i => <td key={i} className="border-r border-slate-50 px-1 text-center tabular-nums text-slate-400">{formatVal(hs1[i])}</td>)}
+                                                {[0, 1, 2, 3].map(i => <td key={i} className="border-r border-slate-50 px-1 text-center tabular-nums text-slate-400">{formatVal(hs2[i])}</td>)}
+                                                {[0, 1].map(i => <td key={i} className="bg-[#e2f3e8]/20 border-r border-slate-50 px-1 text-center tabular-nums text-slate-400">{formatVal(th[i])}</td>)}
+                                                <td className="border-r border-slate-100 px-2 text-center tabular-nums font-bold text-slate-700">{formatVal(g.tbThuongKy)}</td>
+                                                <td className="border-r border-slate-100 px-2 text-center font-bold text-[9px] uppercase">{g.isEligibleForExam === false ? "Cấm" : (g.isEligibleForExam === true ? "Đạt" : "")}</td>
+                                                <td className="border-r border-slate-100 px-2 text-center tabular-nums font-bold text-slate-700">{formatVal(g.examScore1)}</td>
+                                                <td className="border-r border-slate-100 px-2 text-center">{isAbsent ? <span className="text-rose-500 font-bold">X</span> : ""}</td>
+                                                <td className="border-r border-slate-100 px-2 text-center tabular-nums">{formatVal(g.examScore2)}</td>
+                                                <td className="border-r border-slate-100 px-2 text-center tabular-nums">{formatVal(g.finalScore1)}</td>
+                                                <td className="border-r border-slate-100 px-2 text-center tabular-nums">{formatVal(g.finalScore2)}</td>
+                                                <td className="border-r border-slate-100 px-2 text-center tabular-nums font-bold text-slate-800">{formatVal(total10)}</td>
+                                                <td className="border-r border-slate-100 px-2 text-center tabular-nums font-bold text-slate-800">{formatVal(g.totalScore4)}</td>
+                                                <td className="border-r border-slate-100 px-2 text-center font-bold text-slate-900">{g.letterGrade}</td>
+                                                <td className="border-r border-slate-100 px-2 text-center tabular-nums text-blue-600 font-bold">{idx === 0 ? formatVal(group.summary.gpa) : ""}</td>
+                                                <td className="border-r border-slate-100 px-2 text-center tabular-nums text-slate-800 font-bold">{idx === 0 ? formatVal(group.summary.cpa) : ""}</td>
+                                                <td className="border-r border-slate-100 px-2 text-center font-medium text-slate-500">{idx === 0 ? getRank(group.summary.gpa) : ""}</td>
+                                                <td className="border-r border-slate-100 px-3 text-center">
+                                                    <span className={cn("text-[8px] font-bold uppercase", g.isPassed ? "text-emerald-600" : (g.letterGrade ? "text-rose-600" : "text-slate-300"))}>
+                                                        {g.isPassed ? "Đạt" : (g.letterGrade ? "Học lại" : "")}
+                                                    </span>
+                                                </td>
+                                                <td className="px-3 text-slate-400 italic text-[9px]">{g.notes}</td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+                            </React.Fragment>
+                        ))}
+                    </tbody>
+                </table>
             </div>
 
-            {/* Footer / Status Bar Area */}
-            <div className="h-8 shrink-0 border-t border-slate-200 bg-slate-50 px-4 flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                <div className="flex items-center gap-6">
-                    <span className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-blue-500" />
-                        Tổng số: {allSheetRows.length} môn
-                    </span>
-                    <span className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                        TC tích lũy: {curriculumProgress?.stats?.passed || 0}/{curriculumProgress?.stats?.totalCredits || "—"}
-                    </span>
-                </div>
-                <div>
-                    Sinh viên: {student?.fullName} ({student?.studentCode})
-                </div>
+            <div className="h-6 shrink-0 bg-white px-6 border-t border-slate-200 flex items-center justify-between text-[8px] font-black text-slate-300 uppercase tracking-widest">
+                <span>© Student Academic Record — Spreadsheet View</span>
+                <span>Ngày kết xuất: {new Date().toLocaleDateString('vi-VN')}</span>
             </div>
         </div>
     );
+}
+
+function matchesSemesterReference(tSem: any, tId: any, rSem: any) {
+    if (!rSem) return false;
+    const rKeys = new Set([rSem.id, rSem.code, rSem.name].map(v => `${v || ""}`.trim()).filter(Boolean));
+    const tKeys = [tSem?.id, tSem?.code, tSem?.name, tId].map(v => `${v || ""}`.trim()).filter(Boolean);
+    return tKeys.some(v => rKeys.has(v));
 }

@@ -61,16 +61,6 @@ const toDate = (value: any) => {
     return Number.isNaN(date.getTime()) ? null : date;
 };
 
-const formatSemesterLabel = (semester: any) => {
-    if (!semester) return "Chưa xác định";
-    const code = `${semester.code || ""}`.trim();
-    const name = `${semester.name || ""}`.trim();
-    if (!code) return name || "Học kỳ";
-    if (!name) return code;
-    if (name.toUpperCase().includes(code.toUpperCase())) return name;
-    return `${code} - ${name}`;
-};
-
 const getSemesterKey = (semester: any, fallbackId?: string | null) =>
     `${semester?.id || fallbackId || semester?.code || semester?.name || ""}`.trim();
 
@@ -80,6 +70,14 @@ const matchesSelectedSemester = (
     selectedSemester: any | null,
 ) => {
     if (!selectedSemester) return false;
+
+    // Direct ID match
+    if (targetSemester?.id === selectedSemester.id || targetSemesterId === selectedSemester.id) return true;
+
+    // Direct Key match
+    const targetKey = getSemesterKey(targetSemester, targetSemesterId || targetSemester?.id);
+    const selectedKey = getSemesterKey(selectedSemester, selectedSemester.id);
+    if (targetKey && selectedKey && targetKey === selectedKey) return true;
 
     const selectedKeys = new Set(
         [
@@ -101,6 +99,16 @@ const matchesSelectedSemester = (
         .filter(Boolean);
 
     if (targetKeys.some((value) => selectedKeys.has(value))) {
+        return true;
+    }
+
+    const selectedConceptualSemester = parseConceptualSemester(selectedSemester);
+    const targetConceptualSemester = parseConceptualSemester(targetSemester);
+    if (
+        selectedConceptualSemester &&
+        targetConceptualSemester &&
+        selectedConceptualSemester === targetConceptualSemester
+    ) {
         return true;
     }
 
@@ -128,6 +136,17 @@ const matchesSelectedSemester = (
 
     return false;
 };
+
+const formatSemesterLabel = (semester: any) => {
+    if (!semester) return "Chưa xác định";
+    const code = `${semester.code || ""}`.trim();
+    const name = `${semester.name || ""}`.trim();
+    if (!code) return name || "Học kỳ";
+    if (!name) return code;
+    if (name.toUpperCase().includes(code.toUpperCase())) return name;
+    return `${code} - ${name}`;
+};
+
 
 const getCourseClassSchedules = (courseClass: any) =>
     Array.isArray(courseClass?.schedules) && courseClass.schedules.length > 0
@@ -181,7 +200,35 @@ const inferCohortMeta = (cohortCode?: string | null): StudentCohortMeta | null =
 };
 
 const expectedYearForSemester = (startYear: number, conceptualSemester: number) =>
-    startYear + Math.floor(conceptualSemester / 2);
+    startYear + Math.floor((conceptualSemester - 1) / 2);
+
+const normalizeSemesterForCohort = (
+    semester: any,
+    cohortMeta: StudentCohortMeta,
+    conceptualSemester: number,
+) => {
+    const studyYear = Math.ceil(conceptualSemester / 2);
+    const academicStartYear = cohortMeta.startYear + studyYear - 1;
+    const academicYearLabel = `${academicStartYear}-${academicStartYear + 1}`;
+    const isOddSemester = conceptualSemester % 2 === 1;
+
+    return {
+        ...semester,
+        code: `${cohortMeta.code}_HK${conceptualSemester}`,
+        name: `HK${conceptualSemester} - Năm ${studyYear} (${academicYearLabel})`,
+        year: isOddSemester ? academicStartYear : academicStartYear + 1,
+        startDate: isOddSemester
+            ? new Date(academicStartYear, 8, 1)
+            : new Date(academicStartYear + 1, 1, 1),
+        endDate: isOddSemester
+            ? new Date(academicStartYear + 1, 0, 20)
+            : new Date(academicStartYear + 1, 5, 30),
+        semesterNumber: conceptualSemester,
+        cohortSemesterNumber: conceptualSemester,
+        cohortStudyYear: studyYear,
+        cohortAcademicYear: academicYearLabel,
+    };
+};
 
 const getSemesterStartYear = (semester: any) => {
     const startDate = semester?.startDate ? new Date(semester.startDate) : null;
@@ -226,7 +273,7 @@ const getVisibleSemestersForCohort = (semesters: any[], cohortMeta: StudentCohor
                 conceptualSemester,
             );
 
-            return semesters
+            const matchedSemester = semesters
                 .filter((semester) => parseConceptualSemester(semester) === conceptualSemester)
                 .sort((left, right) => {
                     const leftYearDiff = Math.abs(getSemesterStartYear(left) - expectedYear);
@@ -247,6 +294,12 @@ const getVisibleSemestersForCohort = (semesters: any[], cohortMeta: StudentCohor
                         new Date(right?.startDate || 0).getTime()
                     );
                 })[0];
+
+            return normalizeSemesterForCohort(
+                matchedSemester || { id: `${cohortMeta.code}_HK${conceptualSemester}` },
+                cohortMeta,
+                conceptualSemester,
+            );
         })
         .filter(Boolean);
 
@@ -327,21 +380,19 @@ export default function StudentDashboard() {
             if (!resolvedStudentId) return;
 
             const profileData =
-                (await StudentService.getProfileByStudentId(resolvedStudentId).catch(() => null)) ||
                 context.profile ||
-                (context.userId ? await StudentService.getProfile(context.userId).catch(() => null) : null);
+                (await StudentService.getProfileSummary(resolvedStudentId).catch(() => null)) ||
+                (context.userId ? await StudentService.getProfileSummary(context.userId).catch(() => null) : null);
 
             if (!profileData) return;
 
             const studentId = profileData.id || resolvedStudentId;
             const [gradesData, trainingData, curriculumData, semesterData, fallbackEnrollments] = await Promise.all([
-                StudentService.getGrades(studentId),
-                StudentService.getTrainingResults(studentId),
+                StudentService.getGrades(studentId).catch(() => []),
+                StudentService.getTrainingResults(studentId).catch(() => []),
                 StudentService.getCurriculumProgress(studentId).catch(() => null),
                 StudentService.getSemesters().catch(() => []),
-                Array.isArray(profileData?.enrollments) && profileData.enrollments.length > 0
-                    ? Promise.resolve(profileData.enrollments)
-                    : StudentService.getEnrollments(studentId).catch(() => []),
+                StudentService.getEnrollments(studentId).catch(() => []),
             ]);
 
             setStudent(profileData);
@@ -517,17 +568,33 @@ export default function StudentDashboard() {
 
         const defaultSemesterKey = currentSemester?.id || visibleSemesterOptions[0]?.id || "";
 
-        setSelectedResultSemesterKey((current) =>
-            visibleSemesterOptions.some((semester) => semester.id === current)
-                ? current
-                : defaultSemesterKey,
-        );
+        setSelectedResultSemesterKey((current) => {
+            // If we already have a valid selection that actually has grades, keep it
+            if (current && visibleSemesterOptions.some(s => s.id === current)) {
+                const currentHasGrades = scoredGrades.some(g => matchesSelectedSemester(g.courseClass?.semester, g.courseClass?.semesterId, visibleSemesterOptions.find(sv => sv.id === current)));
+                if (currentHasGrades) return current;
+            }
+
+            // Otherwise, start with current semester, but if it has no grades, try to find the most recent one that does
+            const currentObj = visibleSemesterOptions.find(s => s.id === defaultSemesterKey);
+            const currentHasGrades = scoredGrades.some(g => matchesSelectedSemester(g.courseClass?.semester, g.courseClass?.semesterId, currentObj));
+
+            if (!currentHasGrades) {
+                const latestWithGrades = visibleSemesterOptions.find(s =>
+                    scoredGrades.some(g => matchesSelectedSemester(g.courseClass?.semester, g.courseClass?.semesterId, s))
+                );
+                if (latestWithGrades) return latestWithGrades.id;
+            }
+
+            return defaultSemesterKey;
+        });
+
         setSelectedCourseSemesterKey((current) =>
             visibleSemesterOptions.some((semester) => semester.id === current)
                 ? current
                 : defaultSemesterKey,
         );
-    }, [currentSemester?.id, visibleSemesterOptions]);
+    }, [currentSemester?.id, visibleSemesterOptions, scoredGrades.length]);
 
     const selectedResultSemester = useMemo(
         () =>
@@ -585,13 +652,26 @@ export default function StudentDashboard() {
 
     const dashboardCourseEnrollments = useMemo(() => {
         if (!selectedCourseSemester) return [];
-        return normalizedEnrollments.filter((enrollment) =>
+        const matchedEnrollments = normalizedEnrollments.filter((enrollment) =>
             matchesSelectedSemester(
                 enrollment?.courseClass?.semester,
                 enrollment?.courseClass?.semesterId,
                 selectedCourseSemester,
             ),
         );
+
+        const bySubject = new Map<string, any>();
+        matchedEnrollments.forEach((enrollment) => {
+            const subjectKey =
+                enrollment?.courseClass?.subjectId ||
+                enrollment?.courseClass?.subject?.id ||
+                enrollment?.courseClassId ||
+                enrollment?.id;
+            if (!subjectKey || bySubject.has(subjectKey)) return;
+            bySubject.set(subjectKey, enrollment);
+        });
+
+        return [...bySubject.values()];
     }, [normalizedEnrollments, selectedCourseSemester]);
 
     const weeklyScheduleSummary = useMemo(() => {
@@ -643,9 +723,20 @@ export default function StudentDashboard() {
     }, [currentSemesterEnrollments]);
 
     const earnedCredits = useMemo(() => {
+        // Source of Truth 1: The official totalEarnedCredits from the Student table
+        const officialCredits = Number(student?.totalEarnedCredits || 0);
+
+        // Source of Truth 2: The calculated mandatory credits from the curriculum
         const requiredPassedCredits = Number(
             curriculumProgress?.stats?.passedMandatory || 0,
         );
+
+        // If official credits are significantly higher than calculated mandatory (e.g. including electives),
+        // we use the official number as the primary "Earned" count.
+        if (officialCredits > requiredPassedCredits) {
+            return officialCredits;
+        }
+
         if (requiredPassedCredits > 0) {
             return requiredPassedCredits;
         }
@@ -655,8 +746,8 @@ export default function StudentDashboard() {
             return curriculumPassedCredits;
         }
 
+        // Fallback: manual calculation from grades array
         const bestPassedBySubject = new Map<string, any>();
-
         for (const grade of grades || []) {
             const subjectId = `${grade?.subjectId || grade?.subject?.id || ""}`.trim();
             if (!subjectId) continue;
@@ -676,7 +767,7 @@ export default function StudentDashboard() {
             0,
         );
 
-        return calculated || Number(student?.totalEarnedCredits || 0);
+        return calculated || officialCredits;
     }, [
         curriculumProgress?.stats?.passed,
         curriculumProgress?.stats?.passedMandatory,
@@ -710,7 +801,7 @@ export default function StudentDashboard() {
     }
 
     return (
-        <div className="min-h-screen space-y-6 pb-20 text-slate-700">
+        <div className="container mx-auto px-4 py-8 space-y-6 pb-20 text-slate-700 min-h-screen overflow-x-hidden">
             {/* Top Section: Info & Counters */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Information Box */}
@@ -987,7 +1078,7 @@ export default function StudentDashboard() {
                             dashboardCourseEnrollments.map((enr, i) => (
                                 <div key={i} className="grid grid-cols-12 items-center group">
                                     <div className="col-span-9 pr-4">
-                                        <Link href="/portal/courses">
+                                        <Link href="/portal/schedule">
                                             <p className="text-[10px] font-bold text-blue-500 hover:underline cursor-pointer tracking-tight">{enr.courseClass?.code}</p>
                                         </Link>
                                         <h4 className="text-[11px] font-bold text-slate-600 truncate">{enr.courseClass?.subject?.name}</h4>

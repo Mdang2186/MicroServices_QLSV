@@ -61,7 +61,6 @@ export function middleware(request: NextRequest) {
   const lecturerAllowedPaths = [
     "/lecturer/dashboard",
     "/lecturer/courses",
-    "/lecturer/grades",
     "/lecturer/schedule",
     "/lecturer/attendance",
   ];

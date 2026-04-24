@@ -622,6 +622,20 @@ export class SemesterPlanService {
     };
   }
 
+  private getSessionPeriodCount(session: any) {
+    const startShift = this.positive(session?.startShift);
+    const endShift = this.positive(session?.endShift);
+    if (!startShift || !endShift || endShift < startShift) return 0;
+    return endShift - startShift + 1;
+  }
+
+  private sumSessionPeriods(sessions: any[]) {
+    return sessions.reduce(
+      (total, session) => total + this.getSessionPeriodCount(session),
+      0,
+    );
+  }
+
   private async getCohort(code: string) {
     try {
       return await this.prismaCompat.academicCohort.findFirst({
@@ -1220,23 +1234,23 @@ export class SemesterPlanService {
     },
     options: { clearExisting: boolean; fallback?: any },
   ) {
-    const existingCount = await prisma.classSession.count({
+    let existingSessions = await prisma.classSession.findMany({
       where: { courseClassId: context.courseClass.id },
+      select: {
+        id: true,
+        roomId: true,
+        date: true,
+        startShift: true,
+        endShift: true,
+        type: true,
+      },
     });
-
-    if (existingCount > 0 && !options.clearExisting) {
-      return {
-        alreadyScheduled: true,
-        scheduledSessions: existingCount,
-        incomplete: false,
-        issues: [] as string[],
-      };
-    }
 
     if (options.clearExisting) {
       await prisma.classSession.deleteMany({
         where: { courseClassId: context.courseClass.id },
       });
+      existingSessions = [];
     }
 
     const isNoScheduleSubject = 
@@ -1254,7 +1268,7 @@ export class SemesterPlanService {
 
     const semesterStart = this.toDateOnly(context.semester.startDate);
     const semesterEnd = this.toDateOnly(context.semester.endDate);
-    const blocks = this.buildScheduleBlocks(
+    const allBlocks = this.buildScheduleBlocks(
       context.snapshot,
       context.subject,
       {
@@ -1265,7 +1279,49 @@ export class SemesterPlanService {
         ),
       },
     );
-    const plannedSessions: any[] = [];
+    const requiredPeriods = allBlocks.reduce(
+      (total, block) => total + this.positive(block.totalPeriods),
+      0,
+    );
+    let remainingExistingPeriods = this.sumSessionPeriods(existingSessions);
+
+    const blocks = allBlocks
+      .map((block) => {
+        const coveredPeriods = Math.min(
+          this.positive(block.totalPeriods),
+          remainingExistingPeriods,
+        );
+        remainingExistingPeriods = Math.max(
+          0,
+          remainingExistingPeriods - coveredPeriods,
+        );
+        return {
+          ...block,
+          totalPeriods: Math.max(
+            0,
+            this.positive(block.totalPeriods) - coveredPeriods,
+          ),
+        };
+      })
+      .filter((block) => block.totalPeriods > 0);
+
+    if (existingSessions.length > 0 && !options.clearExisting && blocks.length === 0) {
+      return {
+        alreadyScheduled: true,
+        scheduledSessions: existingSessions.length,
+        incomplete: false,
+        issues: [] as string[],
+      };
+    }
+
+    const plannedSessions: any[] = existingSessions.map((session: any) => ({
+      roomId: session.roomId,
+      date: session.date,
+      startShift: session.startShift,
+      endShift: session.endShift,
+      lecturerId: context.lecturerId,
+      adminClassIds: context.adminClassIds,
+    }));
     let persistedCount = 0;
     const issues: string[] = [];
     const semesterSessions = await prisma.classSession.findMany({
@@ -1571,6 +1627,30 @@ export class SemesterPlanService {
         this.logger.warn(issue);
         issues.push(issue);
       }
+    }
+
+    const finalExistingPeriods = this.sumSessionPeriods(existingSessions);
+    const finalCreatedPeriods = plannedSessions
+      .filter((session) => session.courseClassId === context.courseClass.id)
+      .reduce(
+        (total, session) =>
+          total +
+          Math.max(
+            0,
+            this.positive(session.endShift) - this.positive(session.startShift) + 1,
+          ),
+        0,
+      );
+
+    if (
+      requiredPeriods > 0 &&
+      finalExistingPeriods + finalCreatedPeriods < requiredPeriods
+    ) {
+      const issue = `Lớp ${context.courseClass.code} còn thiếu ${
+        requiredPeriods - finalExistingPeriods - finalCreatedPeriods
+      } tiết so với khung (${finalExistingPeriods + finalCreatedPeriods}/${requiredPeriods}).`;
+      this.logger.warn(issue);
+      issues.push(issue);
     }
 
     return {

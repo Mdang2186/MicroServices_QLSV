@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, BookOpen, ClipboardCheck, Calendar, GraduationCap, LogOut, Settings, GraduationCap as IconAvatar, Menu, X } from "lucide-react";
+import { LayoutDashboard, BookOpen, ClipboardCheck, Calendar, LogOut, Settings, GraduationCap as IconAvatar, Menu, X } from "lucide-react";
 
 export default function LecturerSidebar() {
     const pathname = usePathname();
@@ -14,7 +14,6 @@ export default function LecturerSidebar() {
         { href: "/lecturer/courses", icon: BookOpen, label: "Lớp học phần" },
         { href: "/lecturer/schedule", icon: Calendar, label: "Lịch giảng dạy" },
         { href: "/lecturer/attendance", icon: ClipboardCheck, label: "Điểm danh" },
-        { href: "/lecturer/grades", icon: GraduationCap, label: "Nhập điểm" },
     ];
 
     return (
