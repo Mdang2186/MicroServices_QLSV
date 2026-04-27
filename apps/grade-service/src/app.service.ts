@@ -646,7 +646,7 @@ export class AppService {
     let totalWeight = 0;
 
     for (const item of items) {
-      const score = Number(item.value);
+            if (item.value === null || item.value === undefined) continue; const score = Number(item.value);
       if (!Number.isFinite(score)) continue;
       weightedSum += score * item.weight;
       totalWeight += item.weight;

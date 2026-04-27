@@ -428,7 +428,7 @@ export default function StaffDepartmentsPage() {
                 {activeTab === "adminClasses" && (
                     <select value={filterCohortCode} onChange={e => setFilterCohortCode(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none focus:ring-2 ring-indigo-200">
                         <option value="">Tất cả Khóa</option>
-                        {cohorts.map(c => <option key={c.id} value={c.code}>{c.name}</option>)}
+                        {cohorts.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
                     </select>
                 )}
                 <span className="ml-auto text-[10px] text-slate-400 font-bold">{visibleCount} bản ghi</span>
@@ -653,7 +653,7 @@ export default function StaffDepartmentsPage() {
             <Drawer open={drawer === "adminClass"} onClose={() => setDrawer(null)} title={editTarget ? "Chỉnh sửa Lớp" : "Thêm Lớp mới"} onSubmit={submitAdminClass} loading={actionLoading} error={drawerError}>
                 <div className="grid grid-cols-2 gap-3">
                     <InputField label="Mã Lớp" placeholder="VD: K14DCNTT1" value={adminClassForm.code} onChange={(e: any) => setAdminClassForm(f => ({ ...f, code: e.target.value }))} />
-                    <SelectField label="Khóa học" options={cohorts.map(c => ({ value: c.code, label: c.name }))} value={adminClassForm.cohort} onChange={(e: any) => setAdminClassForm(f => ({ ...f, cohort: e.target.value }))} />
+                    <SelectField label="Khóa học" options={cohorts.map(c => ({ value: c.code, label: c.code }))} value={adminClassForm.cohort} onChange={(e: any) => setAdminClassForm(f => ({ ...f, cohort: e.target.value }))} />
                 </div>
                 <InputField label="Tên lớp tham khảo (Không bắt buộc)" placeholder="VD: Cử nhân CNTT 1" value={adminClassForm.name} onChange={(e: any) => setAdminClassForm(f => ({ ...f, name: e.target.value }))} />
                 <SelectField label="Ngành học" options={majorOptions} value={adminClassForm.majorId} onChange={(e: any) => setAdminClassForm(f => ({ ...f, majorId: e.target.value }))} />

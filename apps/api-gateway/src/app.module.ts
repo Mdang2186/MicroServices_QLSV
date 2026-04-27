@@ -39,9 +39,9 @@ export class AppModule {
       )
       .forRoutes(
         { path: "/api/auth", method: RequestMethod.ALL },
-        { path: "/api/auth/*path", method: RequestMethod.ALL },
+        { path: "/api/auth/*", method: RequestMethod.ALL },
         { path: "/api/notifications", method: RequestMethod.ALL },
-        { path: "/api/notifications/*path", method: RequestMethod.ALL },
+        { path: "/api/notifications/*", method: RequestMethod.ALL },
       );
 
     // Proxy student requests
@@ -61,11 +61,11 @@ export class AppModule {
       )
       .forRoutes(
         { path: "/api/students", method: RequestMethod.ALL },
-        { path: "/api/students/*path", method: RequestMethod.ALL },
+        { path: "/api/students/*", method: RequestMethod.ALL },
         { path: "/api/student-fees", method: RequestMethod.ALL },
-        { path: "/api/student-fees/*path", method: RequestMethod.ALL },
+        { path: "/api/student-fees/*", method: RequestMethod.ALL },
         { path: "/api/training-results", method: RequestMethod.ALL },
-        { path: "/api/training-results/*path", method: RequestMethod.ALL },
+        { path: "/api/training-results/*", method: RequestMethod.ALL },
       );
 
     // Proxy enrollment requests
@@ -83,7 +83,7 @@ export class AppModule {
       )
       .forRoutes(
         { path: "/api/enrollments", method: RequestMethod.ALL },
-        { path: "/api/enrollments/*path", method: RequestMethod.ALL },
+        { path: "/api/enrollments/*", method: RequestMethod.ALL },
       );
 
     // Proxy course requests
@@ -152,7 +152,7 @@ export class AppModule {
       )
       .forRoutes(
         { path: "/api/grades", method: RequestMethod.ALL },
-        { path: "/api/grades/*path", method: RequestMethod.ALL },
+        { path: "/api/grades/*", method: RequestMethod.ALL },
       );
   }
 }

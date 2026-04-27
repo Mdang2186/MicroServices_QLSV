@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { CalendarCheck, CalendarDays, ChevronLeft, ChevronRight, Clock3, Filter, Info, MapPin, Printer, UserSquare2 } from "lucide-react";
 import { StudentService } from "@/services/student.service";
 import { resolveCurrentStudentContext } from "@/lib/current-student";
+import * as SemUtils from "@/lib/semester-utils";
+
 
 type SemesterOption = {
   id: string;
@@ -176,93 +178,13 @@ const isCurrentSemester = (semester: Partial<SemesterOption>) => {
   return today >= startDate && today <= endDate;
 };
 
-const calculateAcademicSemester = (intakeYear: number, startDate: Date | null) => {
-  if (!startDate || !intakeYear) return null;
-  const startYear = startDate.getFullYear();
-  const startMonth = startDate.getMonth() + 1;
-  // Sep - Jan (Semester 1, 3, 5, 7) starts in month >= 8 usually
-  // Feb - Jun (Semester 2, 4, 6, 8) starts in month < 8
-  const isSecondHalfOfYear = startMonth >= 7;
-  const academicSem = (startYear - intakeYear) * 2 + (isSecondHalfOfYear ? 1 : 0);
-  return academicSem >= 1 && academicSem <= 10 ? academicSem : null;
-};
-
-const parseConceptualSemester = (semester: Partial<SemesterOption>) => {
-  const source = `${semester.code || ""} ${semester.name || ""}`;
-  const match =
-    source.match(/HK\s*([1-8])/i) ||
-    source.match(/H[OỌ]C\s*K[YỲ]\s*([1-8])/i) ||
-    source.match(/SEMESTER\s*([1-8])/i);
-  return match ? Number(match[1]) : null;
-};
-
-const inferCohortMeta = (cohortCode?: string | null): StudentCohortMeta | null => {
-  const normalized = `${cohortCode || ""}`.trim().toUpperCase();
-  const match = normalized.match(/^K(\d{2,})$/i);
-  if (!match) return null;
-
-  const cohortNumber = Number(match[1]);
-  if (!Number.isFinite(cohortNumber)) return null;
-
-  const startYear = 2006 + cohortNumber;
-  return {
-    code: normalized,
-    startYear,
-    endYear: startYear + 4,
-  };
-};
-
-const expectedYearForSemester = (startYear: number, conceptualSemester: number) =>
-  startYear + Math.floor((conceptualSemester - 1) / 2);
-
-const normalizeSemesterForCohort = (
-  semester: Partial<SemesterOption> & { year?: number },
-  cohortMeta: StudentCohortMeta,
-  conceptualSemester: number,
-): SemesterOption & { year?: number } => {
-  const studyYear = Math.ceil(conceptualSemester / 2);
-  const academicStartYear = cohortMeta.startYear + studyYear - 1;
-  const academicYearLabel = `${academicStartYear}-${academicStartYear + 1}`;
-  const isOddSemester = conceptualSemester % 2 === 1;
-  const startDate = isOddSemester
-    ? new Date(academicStartYear, 8, 1)
-    : new Date(academicStartYear + 1, 1, 1);
-  const endDate = isOddSemester
-    ? new Date(academicStartYear + 1, 0, 20)
-    : new Date(academicStartYear + 1, 5, 30);
-
-  return {
-    id: semester.id || `${cohortMeta.code}_HK${conceptualSemester}`,
-    selectionKey: semester.selectionKey || `${cohortMeta.code}_HK${conceptualSemester}`,
-    code: `${cohortMeta.code}_HK${conceptualSemester}`,
-    name: `HK${conceptualSemester} - Năm ${studyYear} (${academicYearLabel})`,
-    startDate,
-    endDate,
-    isCurrent: Boolean(semester.isCurrent),
-    isRegistering: Boolean(semester.isRegistering),
-    sessionDates: semester.sessionDates || [],
-    year: isOddSemester ? academicStartYear : academicStartYear + 1,
-  };
-};
-
-const getSemesterStartYear = (semester: Partial<SemesterOption> & { year?: number }) => {
-  const startDate = semester.startDate ? new Date(semester.startDate) : null;
-  if (startDate && !Number.isNaN(startDate.getTime())) {
-    return startDate.getFullYear();
-  }
-
-  const codeMatch = `${semester.code || ""}`.match(/(20\d{2})/);
-  if (codeMatch) {
-    return Number(codeMatch[1]);
-  }
-
-  const nameMatch = `${semester.name || ""}`.match(/(20\d{2})\s*-\s*20\d{2}/);
-  if (nameMatch) {
-    return Number(nameMatch[1]);
-  }
-
-  return Number(semester.year || 0);
-};
+const parseConceptualSemester = SemUtils.parseConceptualSemester;
+const inferCohortMeta = SemUtils.inferCohortMeta;
+const expectedYearForSemester = SemUtils.expectedYearForSemester;
+const getSemesterStartYear = SemUtils.getSemesterStartYear;
+const getSemesterHalfMatch = SemUtils.getSemesterHalfMatch;
+const calculateAcademicSemester = SemUtils.calculateAcademicSemester;
+const normalizeSemesterForCohort = SemUtils.normalizeSemesterForCohort;
 
 const getSemesterFingerprint = (
   semester?: Partial<SemesterOption> & { year?: number },
@@ -293,22 +215,7 @@ const getSemesterMatchTokens = (
       .filter(Boolean),
   );
 
-const getSemesterHalfMatch = (
-  semester: Partial<SemesterOption> & { year?: number },
-  conceptualSemester: number,
-) => {
-  const startDate = semester.startDate ? new Date(semester.startDate) : null;
-  if (!startDate || Number.isNaN(startDate.getTime())) {
-    return 0;
-  }
 
-  const startMonth = startDate.getMonth() + 1;
-  if (conceptualSemester % 2 === 1) {
-    return startMonth >= 7 ? 1 : 0;
-  }
-
-  return startMonth >= 1 && startMonth <= 6 ? 1 : 0;
-};
 
 const getVisibleSemestersForCohort = (
   semesters: (SemesterOption & { year?: number })[],
@@ -633,51 +540,14 @@ const dedupeSemesterEnrollments = (enrollments: any[]) => {
   return [...deduped.values()];
 };
 
-const enrollmentMatchesSemester = (
-  enrollment: any,
-  selectedSemester: SemesterOption | null,
-  selectedSemesterKeys: Set<string>,
-) => {
-  if (!selectedSemester) return true;
-
-  const semester = enrollment?.courseClass?.semester;
-  const explicitSemesterKeys = getSemesterMatchTokens(
-    {
-      id: semester?.id,
-      code: semester?.code,
-      name: semester?.name,
-      startDate: semester?.startDate,
-      endDate: semester?.endDate,
-    },
+const enrollmentMatchesSemester = (enrollment, selectedSemester) => {
+  return SemUtils.matchesSemester(
+    enrollment?.courseClass?.semester,
     enrollment?.courseClass?.semesterId,
-    [getEnrollmentSemesterSelectionKey(enrollment)],
+    selectedSemester
   );
-
-  // If the class already has semester metadata, it must match that semester exactly.
-  if (explicitSemesterKeys.size > 0) {
-    return [...explicitSemesterKeys].some((value) => selectedSemesterKeys.has(value));
-  }
-
-  // Records missing ID/code can still match by the semester date window itself.
-  if (
-    semester?.startDate &&
-    semester?.endDate &&
-    sameDateValue(semester?.startDate, selectedSemester.startDate) &&
-    sameDateValue(semester?.endDate, selectedSemester.endDate)
-  ) {
-    return true;
-  }
-
-  // Only legacy records without semester metadata fall back to session dates.
-  const sessions = getCourseClassSessions(enrollment?.courseClass);
-  if (sessions.length > 0 && selectedSemester.startDate && selectedSemester.endDate) {
-    return sessions.some((session: any) =>
-      isDateInRange(session.date, selectedSemester.startDate, selectedSemester.endDate)
-    );
-  }
-
-  return false;
 };
+
 
 export default function ScheduleListView() {
   const [enrollments, setEnrollments] = useState<any[]>([]);
@@ -898,7 +768,7 @@ export default function ScheduleListView() {
     return normalizedEnrollments.filter((enrollment) => {
       // 1. MUST belong to the selected semester
       const belongsToSemester = selectedSemester
-        ? enrollmentMatchesSemester(enrollment, selectedSemester, selectedSemesterKeys)
+        ? enrollmentMatchesSemester(enrollment, selectedSemester)
         : true;
       if (!belongsToSemester) return false;
 

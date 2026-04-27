@@ -8,74 +8,14 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { resolveCurrentStudentContext } from "@/lib/current-student";
+import * as SemUtils from "@/lib/semester-utils";
 
-// ===== UTILITY FUNCTIONS =====
-
-function toDate(value: any): Date | null {
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function toNumberOrNull(value: any) {
-    const num = Number(value);
-    return Number.isFinite(num) ? num : null;
-}
-
-function getRowCredits(row: any) {
-    return Number(row?.subject?.credits || row?.credits || 0);
-}
-
-function getRowSubjectKey(row: any) {
-    return `${row?.subjectId || row?.subject?.id || row?.subject?.code || row?.courseClass?.subjectId || ""}`.trim();
-}
-
-function getRowPriority(row: any) {
-    let score = 0;
-    if (`${row?.status || ""}`.toUpperCase() === "APPROVED") score += 100;
-    if (row?.isLocked) score += 20;
-    const totalScore10 = toNumberOrNull(row?.totalScore10);
-    if (totalScore10 !== null) score += 10 + totalScore10;
-    const totalScore4 = toNumberOrNull(row?.totalScore4);
-    if (totalScore4 !== null) score += totalScore4;
-    return score;
-}
-
-function inferCohortMeta(cohortCode?: string | null) {
-    const normalized = `${cohortCode || ""}`.trim().toUpperCase();
-    const match = normalized.match(/^K(\d{2,})$/i);
-    if (!match) return null;
-    const cohortNumber = Number(match[1]);
-    const startYear = 2006 + cohortNumber;
-    return { code: normalized, startYear, endYear: startYear + 4 };
-}
-
-function parseConceptualSemester(semester: any) {
-    const source = `${semester?.code || ""} ${semester?.name || ""}`;
-    const match = source.match(/HK\s*([1-8])/i) || source.match(/H[OỌ]C\s*K[YỲ]\s*([1-8])/i) || source.match(/SEMESTER\s*([1-8])/i);
-    return match ? Number(match[1]) : null;
-}
-
-function expectedYearForSemester(startYear: number, conceptualSemester: number) {
-    return startYear + Math.floor((conceptualSemester - 1) / 2);
-}
-
-function getSemesterStartYear(semester: any) {
-    const startDate = semester?.startDate ? new Date(semester.startDate) : null;
-    if (startDate && !Number.isNaN(startDate.getTime())) return startDate.getFullYear();
-    const codeMatch = `${semester?.code || ""}`.match(/(20\d{2})/);
-    if (codeMatch) return Number(codeMatch[1]);
-    const nameMatch = `${semester?.name || ""}`.match(/(20\d{2})\s*-\s*20\d{2}/);
-    if (nameMatch) return Number(nameMatch[1]);
-    return Number(semester?.year || 0);
-}
-
-function getSemesterHalfMatch(semester: any, conceptualSemester: number) {
-    const startDate = semester?.startDate ? new Date(semester.startDate) : null;
-    if (!startDate || Number.isNaN(startDate.getTime())) return 0;
-    const startMonth = startDate.getMonth() + 1;
-    if (conceptualSemester % 2 === 1) return startMonth >= 7 ? 1 : 0;
-    return startMonth >= 1 && startMonth <= 6 ? 1 : 0;
-}
+const toDate = SemUtils.toDate;
+const parseConceptualSemester = SemUtils.parseConceptualSemester;
+const expectedYearForSemester = SemUtils.expectedYearForSemester;
+const getSemesterStartYear = SemUtils.getSemesterStartYear;
+const getSemesterHalfMatch = SemUtils.getSemesterHalfMatch;
+const inferCohortMeta = SemUtils.inferCohortMeta;
 
 function getVisibleSemestersForCohort(semesters: any[], cohortMeta: any) {
     if (!cohortMeta) return semesters;
@@ -157,14 +97,15 @@ export default function ResultsPage() {
     const fullHistory = useMemo(() => {
         const timeline: any[] = [];
         const cumulativeBest = new Map();
+        const matchedGradeIds = new Set();
 
         visibleSemesters.forEach((sysSem, idx) => {
             const seqNum = parseConceptualSemester(sysSem) || (idx + 1);
             const plannedSem = curriculumProgress?.semesters?.find((s: any) => Number(s.semester) === seqNum);
             const plannedSubjects = plannedSem?.items || [];
-            const plannedKeys = new Set(plannedSubjects.flatMap((p: any) => [p.subjectId, p.id, p.code].map(v => `${v || ""}`.trim()).filter(Boolean)));
-
+            
             const actualGrades = grades.filter(g => matchesSemesterReference(g?.courseClass?.semester, g?.courseClass?.semesterId, sysSem));
+            actualGrades.forEach(g => matchedGradeIds.add(`${g.id || ""}`));
 
             // Map planned subjects first, then extra grades
             const rows: any[] = [];
@@ -196,11 +137,28 @@ export default function ResultsPage() {
             timeline.push({
                 label: `HK${seqNum}`,
                 title: sysSem.name || `Học kỳ ${seqNum}`,
-                academicYear: sysSem.startDate ? `${new Date(sysSem.startDate).getFullYear()} - ${new Date(sysSem.startDate).getFullYear() + 1}` : `${expectedYearForSemester(startYear, seqNum)} - ${expectedYearForSemester(startYear, seqNum) + 1}`,
+                academicYear: (function() {
+                    const year = getSemesterStartYear(sysSem) || expectedYearForSemester(startYear, seqNum);
+                    const isEven = seqNum % 2 === 0;
+                    return isEven ? `${year - 1} - ${year}` : `${year} - ${year + 1}`;
+                })(),
                 grades: rows,
                 summary: { gpa, cpa }
             });
         });
+
+        // Add Orphaned Grades (Retakes or Extra semesters)
+        const orphaned = grades.filter(g => !matchedGradeIds.has(`${g.id || ""}`));
+        if (orphaned.length > 0) {
+            timeline.push({
+                label: "EXTRA",
+                title: "Học phần bổ sung / Học lại / Cải thiện",
+                academicYear: "Tất cả các năm",
+                grades: orphaned,
+                summary: { gpa: null, cpa: null }
+            });
+        }
+
         return timeline;
     }, [curriculumProgress, grades, startYear, visibleSemesters]);
 
@@ -330,9 +288,30 @@ export default function ResultsPage() {
     );
 }
 
+function toNumberOrNull(value: any) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+}
+
+function getRowCredits(row: any) {
+    return Number(row?.subject?.credits || row?.credits || 0);
+}
+
+function getRowSubjectKey(row: any) {
+    return `${row?.subjectId || row?.subject?.id || row?.subject?.code || row?.courseClass?.subjectId || ""}`.trim();
+}
+
+function getRowPriority(row: any) {
+    let score = 0;
+    if (`${row?.status || ""}`.toUpperCase() === "APPROVED") score += 100;
+    if (row?.isLocked) score += 20;
+    const totalScore10 = toNumberOrNull(row?.totalScore10);
+    if (totalScore10 !== null) score += 10 + totalScore10;
+    const totalScore4 = toNumberOrNull(row?.totalScore4);
+    if (totalScore4 !== null) score += totalScore4;
+    return score;
+}
+
 function matchesSemesterReference(tSem: any, tId: any, rSem: any) {
-    if (!rSem) return false;
-    const rKeys = new Set([rSem.id, rSem.code, rSem.name].map(v => `${v || ""}`.trim()).filter(Boolean));
-    const tKeys = [tSem?.id, tSem?.code, tSem?.name, tId].map(v => `${v || ""}`.trim()).filter(Boolean);
-    return tKeys.some(v => rKeys.has(v));
+    return SemUtils.matchesSemester(tSem, tId, rSem);
 }

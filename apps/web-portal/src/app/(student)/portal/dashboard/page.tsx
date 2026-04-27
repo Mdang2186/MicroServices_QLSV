@@ -24,8 +24,10 @@ import {
     CreditCard,
     ClipboardList,
     AlertCircle,
-    Camera
+    Camera,
+    Search
 } from "lucide-react";
+import * as SemUtils from "@/lib/semester-utils";
 
 // ... (Rest of imports)
 import { motion } from "framer-motion";
@@ -64,78 +66,7 @@ const toDate = (value: any) => {
 const getSemesterKey = (semester: any, fallbackId?: string | null) =>
     `${semester?.id || fallbackId || semester?.code || semester?.name || ""}`.trim();
 
-const matchesSelectedSemester = (
-    targetSemester: any,
-    targetSemesterId: string | null | undefined,
-    selectedSemester: any | null,
-) => {
-    if (!selectedSemester) return false;
-
-    // Direct ID match
-    if (targetSemester?.id === selectedSemester.id || targetSemesterId === selectedSemester.id) return true;
-
-    // Direct Key match
-    const targetKey = getSemesterKey(targetSemester, targetSemesterId || targetSemester?.id);
-    const selectedKey = getSemesterKey(selectedSemester, selectedSemester.id);
-    if (targetKey && selectedKey && targetKey === selectedKey) return true;
-
-    const selectedKeys = new Set(
-        [
-            selectedSemester?.id,
-            selectedSemester?.code,
-            selectedSemester?.name,
-        ]
-            .map((value) => `${value || ""}`.trim())
-            .filter(Boolean),
-    );
-
-    const targetKeys = [
-        targetSemester?.id,
-        targetSemester?.code,
-        targetSemester?.name,
-        targetSemesterId,
-    ]
-        .map((value) => `${value || ""}`.trim())
-        .filter(Boolean);
-
-    if (targetKeys.some((value) => selectedKeys.has(value))) {
-        return true;
-    }
-
-    const selectedConceptualSemester = parseConceptualSemester(selectedSemester);
-    const targetConceptualSemester = parseConceptualSemester(targetSemester);
-    if (
-        selectedConceptualSemester &&
-        targetConceptualSemester &&
-        selectedConceptualSemester === targetConceptualSemester
-    ) {
-        return true;
-    }
-
-    if (
-        targetSemester?.startDate &&
-        targetSemester?.endDate &&
-        selectedSemester?.startDate &&
-        selectedSemester?.endDate
-    ) {
-        const targetStart = new Date(targetSemester.startDate);
-        const targetEnd = new Date(targetSemester.endDate);
-        const selectedStart = new Date(selectedSemester.startDate);
-        const selectedEnd = new Date(selectedSemester.endDate);
-
-        targetStart.setHours(0, 0, 0, 0);
-        targetEnd.setHours(0, 0, 0, 0);
-        selectedStart.setHours(0, 0, 0, 0);
-        selectedEnd.setHours(0, 0, 0, 0);
-
-        return (
-            targetStart.getTime() === selectedStart.getTime() &&
-            targetEnd.getTime() === selectedEnd.getTime()
-        );
-    }
-
-    return false;
-};
+const matchesSelectedSemester = SemUtils.matchesSemester;
 
 const formatSemesterLabel = (semester: any) => {
     if (!semester) return "Chưa xác định";
@@ -174,37 +105,15 @@ type StudentCohortMeta = {
     endYear: number;
 };
 
-const parseConceptualSemester = (semester: any) => {
-    const source = `${semester?.code || ""} ${semester?.name || ""}`;
-    const match =
-        source.match(/HK\s*([1-8])/i) ||
-        source.match(/H[OỌ]C\s*K[YỲ]\s*([1-8])/i) ||
-        source.match(/SEMESTER\s*([1-8])/i);
-    return match ? Number(match[1]) : null;
-};
-
-const inferCohortMeta = (cohortCode?: string | null): StudentCohortMeta | null => {
-    const normalized = `${cohortCode || ""}`.trim().toUpperCase();
-    const match = normalized.match(/^K(\d{2,})$/i);
-    if (!match) return null;
-
-    const cohortNumber = Number(match[1]);
-    if (!Number.isFinite(cohortNumber)) return null;
-
-    const startYear = 2006 + cohortNumber;
-    return {
-        code: normalized,
-        startYear,
-        endYear: startYear + 4,
-    };
-};
-
-const expectedYearForSemester = (startYear: number, conceptualSemester: number) =>
-    startYear + Math.floor((conceptualSemester - 1) / 2);
+const parseConceptualSemester = SemUtils.parseConceptualSemester;
+const inferCohortMeta = SemUtils.inferCohortMeta;
+const expectedYearForSemester = SemUtils.expectedYearForSemester;
+const getSemesterStartYear = SemUtils.getSemesterStartYear;
+const getSemesterHalfMatch = SemUtils.getSemesterHalfMatch;
 
 const normalizeSemesterForCohort = (
     semester: any,
-    cohortMeta: StudentCohortMeta,
+    cohortMeta: any,
     conceptualSemester: number,
 ) => {
     const studyYear = Math.ceil(conceptualSemester / 2);
@@ -228,39 +137,6 @@ const normalizeSemesterForCohort = (
         cohortStudyYear: studyYear,
         cohortAcademicYear: academicYearLabel,
     };
-};
-
-const getSemesterStartYear = (semester: any) => {
-    const startDate = semester?.startDate ? new Date(semester.startDate) : null;
-    if (startDate && !Number.isNaN(startDate.getTime())) {
-        return startDate.getFullYear();
-    }
-
-    const codeMatch = `${semester?.code || ""}`.match(/(20\d{2})/);
-    if (codeMatch) {
-        return Number(codeMatch[1]);
-    }
-
-    const nameMatch = `${semester?.name || ""}`.match(/(20\d{2})\s*-\s*20\d{2}/);
-    if (nameMatch) {
-        return Number(nameMatch[1]);
-    }
-
-    return Number(semester?.year || 0);
-};
-
-const getSemesterHalfMatch = (semester: any, conceptualSemester: number) => {
-    const startDate = semester?.startDate ? new Date(semester.startDate) : null;
-    if (!startDate || Number.isNaN(startDate.getTime())) {
-        return 0;
-    }
-
-    const startMonth = startDate.getMonth() + 1;
-    if (conceptualSemester % 2 === 1) {
-        return startMonth >= 7 ? 1 : 0;
-    }
-
-    return startMonth >= 1 && startMonth <= 6 ? 1 : 0;
 };
 
 const getVisibleSemestersForCohort = (semesters: any[], cohortMeta: StudentCohortMeta | null) => {
@@ -671,8 +547,35 @@ export default function StudentDashboard() {
             bySubject.set(subjectKey, enrollment);
         });
 
-        return [...bySubject.values()];
-    }, [normalizedEnrollments, selectedCourseSemester]);
+        // Add planned subjects from curriculum that are NOT yet enrolled
+        const conceptualNum = parseConceptualSemester(selectedCourseSemester);
+        if (conceptualNum && curriculumProgress?.semesters) {
+            const plannedSem = curriculumProgress.semesters.find(
+                (s: any) => Number(s.semester) === conceptualNum
+            );
+            if (plannedSem?.items) {
+                plannedSem.items.forEach((p: any) => {
+                    const subjectId = `${p.subjectId || p.id || ""}`.trim();
+                    if (subjectId && !bySubject.has(subjectId)) {
+                        bySubject.set(subjectId, {
+                            isPlanned: true,
+                            isPlaceholder: true,
+                            courseClass: {
+                                subject: p,
+                                code: p.code || "N/A"
+                            }
+                        });
+                    }
+                });
+            }
+        }
+
+        return [...bySubject.values()].sort((a, b) => {
+            if (a.isPlaceholder && !b.isPlaceholder) return 1;
+            if (!a.isPlaceholder && b.isPlaceholder) return -1;
+            return 0;
+        });
+    }, [curriculumProgress, normalizedEnrollments, selectedCourseSemester]);
 
     const weeklyScheduleSummary = useMemo(() => {
         const { start, end } = getWeekRange(new Date());

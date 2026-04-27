@@ -19,22 +19,22 @@
     "db:seed": "prisma db seed"
   },
   "devDependencies": {
-    "@nestjs/platform-express": "^10.0.0",
+    "@nestjs/platform-express": "^11.1.17",
     "@prisma/client": "^5.22.0",
     "@prisma/engines": "^7.6.0",
     "@types/ejs": "^3.1.5",
     "@types/mjml": "^4.7.4",
-    "@types/node": "^20.3.1",
+    "@types/node": "^25.3.5",
     "@types/pug": "^2.0.10",
     "@types/superagent": "^8.1.9",
-    "express": "^4.22.1",
+    "express": "^5.2.1",
     "glob": "^13.0.6",
     "path-scurry": "^2.0.2",
     "prettier": "^3.2.5",
     "prisma": "^5.22.0",
     "ts-node": "^10.9.2",
     "turbo": "^1.11.3",
-    "typescript": "^5.3.3"
+    "typescript": "^5.9.3"
   },
   "packageManager": "npm@10.0.0",
   "engines": {
@@ -46,13 +46,13 @@
   },
   "dependencies": {
     "@nestjs-modules/mailer": "^2.3.0",
-    "@nestjs/jwt": "^10.2.0",
-    "@nestjs/passport": "^10.0.3",
+    "@nestjs/jwt": "^11.0.2",
+    "@nestjs/passport": "^11.0.5",
     "@nestjs/swagger": "^7.4.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.4",
-    "next": "14.1.0",
-    "react": "18.2.0",
-    "react-dom": "18.2.0"
+    "next": "^14.1.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   }
 }

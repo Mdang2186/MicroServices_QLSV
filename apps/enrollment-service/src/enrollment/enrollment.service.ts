@@ -367,13 +367,16 @@ export class EnrollmentService {
         const cohort = `${cohortCode || ''}`.trim().toUpperCase();
         if (!code || code.startsWith('K')) return null;
 
-        const match = code.match(/^(\d{2})A([12])-([A-Z0-9]+)$/);
+        // Support: 18A1-CNTT, 18A1_CNTT, 18CNTT101, etc.
+        const match = code.match(
+            /^(\d{2})([A-Z]?)(\d{1,2})[-_]?([A-Z0-9]+)([-_]?\d*)?$/,
+        );
         if (!match) return null;
 
         return {
             cohort: cohort || `K${match[1]}`,
-            section: match[2].padStart(2, '0'),
-            majorCode: match[3],
+            section: match[3]?.padStart(2, '0'),
+            majorCode: match[4],
         };
     }
 
@@ -1776,6 +1779,25 @@ export class EnrollmentService {
 
         if (mirrorStudent?.id) {
             linkedStudentIds.push(mirrorStudent.id);
+        } else {
+            // Final attempt: check by name and major in the cohort
+            try {
+                const anotherStudent = await this.prisma.student.findFirst({
+                    where: {
+                        fullName: student.fullName,
+                        majorId: student.majorId,
+                        intake: legacyMeta.cohort,
+                        status: 'STUDYING',
+                        id: { not: student.id },
+                    },
+                    select: { id: true },
+                });
+                if (anotherStudent?.id) {
+                    linkedStudentIds.push(anotherStudent.id);
+                }
+            } catch (err) {
+                // Ignore if fallback search fails
+            }
         }
 
         return [...new Set(linkedStudentIds)];
