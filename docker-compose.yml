@@ -1,16 +1,271 @@
-version: '3.8'
+x-backend-env: &backend-env
+  NODE_ENV: production
+  DATABASE_URL: "sqlserver://mssql:1433;database=${MSSQL_DB:-student_db};user=sa;password=${MSSQL_SA_PASSWORD:-Mdang2186};encrypt=DANGER_PLAINTEXT;trustServerCertificate=true;"
+  REDIS_URL: redis://redis:6379
+  JWT_SECRET: ${JWT_SECRET:-supersecretkey}
+  CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:4000,http://localhost:4005}
+  RESET_PASSWORD_BASE_URL: ${RESET_PASSWORD_BASE_URL:-http://localhost:4005}
+  SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASS: ${SMTP_PASS:-}
+  MAIL_FROM: ${MAIL_FROM:-no-reply@localhost}
+
+x-nest-build: &nest-build
+  context: .
+  dockerfile: Dockerfile
+  target: nest
+
+x-next-build: &next-build
+  context: .
+  dockerfile: Dockerfile
+  target: next
+
+x-backend-healthcheck: &backend-healthcheck
+  test:
+    [
+      "CMD-SHELL",
+      "node -e \"const net=require('net');const port=Number(process.env.SERVICE_PORT||process.env.PORT||3000);const s=net.connect(port,'127.0.0.1',()=>process.exit(0));s.on('error',()=>process.exit(1));setTimeout(()=>process.exit(1),2000);\"",
+    ]
+  interval: 10s
+  timeout: 3s
+  retries: 12
+  start_period: 20s
 
 services:
-
-  redis:
-    image: redis:7-alpine
-    container_name: sms_redis
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-CU18-ubuntu-22.04
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-Mdang2186}
     ports:
-      - "6379:6379"
+      - "1433:1433"
+    volumes:
+      - mssql_data:/var/opt/mssql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "bash -c '</dev/tcp/localhost/1433'",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
     networks:
       - sms_network
 
-volumes: {}
+  mssql-init:
+    image: mcr.microsoft.com/mssql-tools:latest
+    depends_on:
+      mssql:
+        condition: service_healthy
+    environment:
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-Mdang2186}
+      MSSQL_DB: ${MSSQL_DB:-student_db}
+    volumes:
+      - ./docker/mssql/init-db.sh:/init-db.sh:ro
+    entrypoint: ["/bin/bash", "/init-db.sh"]
+    restart: "no"
+    networks:
+      - sms_network
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    networks:
+      - sms_network
+
+  db-push:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prisma
+    environment:
+      <<: *backend-env
+    depends_on:
+      mssql-init:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - sms_network
+
+  auth-service:
+    build:
+      <<: *nest-build
+      args:
+        APP: auth-service
+    environment:
+      <<: *backend-env
+      SERVICE_PORT: 3001
+    ports:
+      - "3001:3001"
+    depends_on:
+      db-push:
+        condition: service_completed_successfully
+    healthcheck: *backend-healthcheck
+    init: true
+    networks:
+      - sms_network
+
+  student-service:
+    build:
+      <<: *nest-build
+      args:
+        APP: student-service
+    environment:
+      <<: *backend-env
+      SERVICE_PORT: 3002
+    ports:
+      - "3002:3002"
+    depends_on:
+      db-push:
+        condition: service_completed_successfully
+    healthcheck: *backend-healthcheck
+    init: true
+    networks:
+      - sms_network
+
+  course-service:
+    build:
+      <<: *nest-build
+      args:
+        APP: course-service
+    environment:
+      <<: *backend-env
+      PORT: 3003
+      SERVICE_PORT: 3003
+    ports:
+      - "3003:3003"
+    depends_on:
+      db-push:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck: *backend-healthcheck
+    init: true
+    networks:
+      - sms_network
+
+  enrollment-service:
+    build:
+      <<: *nest-build
+      args:
+        APP: enrollment-service
+    environment:
+      <<: *backend-env
+      SERVICE_PORT: 3004
+    ports:
+      - "3004:3004"
+    depends_on:
+      db-push:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck: *backend-healthcheck
+    init: true
+    networks:
+      - sms_network
+
+  grade-service:
+    build:
+      <<: *nest-build
+      args:
+        APP: grade-service
+    environment:
+      <<: *backend-env
+      PORT: 3005
+      SERVICE_PORT: 3005
+    ports:
+      - "3005:3005"
+    depends_on:
+      db-push:
+        condition: service_completed_successfully
+    healthcheck: *backend-healthcheck
+    init: true
+    networks:
+      - sms_network
+
+  api-gateway:
+    build:
+      <<: *nest-build
+      args:
+        APP: api-gateway
+    environment:
+      <<: *backend-env
+      AUTH_SERVICE_URL: http://auth-service:3001
+      STUDENT_SERVICE_URL: http://student-service:3002
+      COURSE_SERVICE_URL: http://course-service:3003
+      ENROLLMENT_SERVICE_URL: http://enrollment-service:3004
+      GRADE_SERVICE_URL: http://grade-service:3005
+      SERVICE_PORT: 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      student-service:
+        condition: service_healthy
+      course-service:
+        condition: service_healthy
+      enrollment-service:
+        condition: service_healthy
+      grade-service:
+        condition: service_healthy
+    healthcheck: *backend-healthcheck
+    init: true
+    networks:
+      - sms_network
+
+  web-portal:
+    build:
+      <<: *next-build
+      args:
+        APP: web-portal
+    environment:
+      API_GATEWAY_INTERNAL_URL: http://api-gateway:3000
+      NEXT_PUBLIC_API_URL: http://localhost:3000
+      PORT: 3000
+    ports:
+      - "4000:3000"
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    init: true
+    networks:
+      - sms_network
+
+  web-admin:
+    build:
+      <<: *next-build
+      args:
+        APP: web-admin
+    environment:
+      API_GATEWAY_INTERNAL_URL: http://api-gateway:3000
+      NEXT_PUBLIC_API_URL: http://localhost:3000
+      PORT: 3000
+    ports:
+      - "4005:3000"
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    init: true
+    networks:
+      - sms_network
+
+volumes:
+  mssql_data:
+  redis_data:
 
 networks:
   sms_network:

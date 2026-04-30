@@ -18,6 +18,7 @@ next-env.d.ts
 
 # ===== Turborepo =====
 .turbo/
+.turbo_cache/
 
 # ===== Environment variables =====
 .env

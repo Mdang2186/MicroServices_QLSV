@@ -549,7 +549,7 @@ export class StudentService {
         return linkedStudentIds;
     }
 
-    let mirrorStudent = await this.prisma.student.findFirst({
+    const mirrorStudent = await this.prisma.student.findFirst({
         where: {
             adminClassId: mirrorAdminClass.id,
             fullName: student.fullName,
@@ -558,37 +558,8 @@ export class StudentService {
         select: { id: true },
     });
 
-    if (!mirrorStudent) {
-        const codeSuffix = `${student.studentCode || ""}`.match(/(\d{2})$/)?.[1];
-        if (codeSuffix) {
-            mirrorStudent = await this.prisma.student.findFirst({
-                where: {
-                    adminClassId: mirrorAdminClass.id,
-                    studentCode: { endsWith: codeSuffix },
-                    status: "STUDYING",
-                },
-                select: { id: true },
-            });
-        }
-    }
-
     if (mirrorStudent?.id) {
         linkedStudentIds.push(mirrorStudent.id);
-    } else {
-        // Final attempt: check by name and major in the cohort
-        const anotherStudent = await this.prisma.student.findFirst({
-            where: {
-                fullName: student.fullName,
-                majorId: student.majorId,
-                intake: legacyMeta.cohort,
-                status: "STUDYING",
-                id: { not: student.id },
-            },
-            select: { id: true },
-        });
-        if (anotherStudent?.id) {
-            linkedStudentIds.push(anotherStudent.id);
-        }
     }
 
     return [...new Set(linkedStudentIds)];
@@ -605,6 +576,75 @@ export class StudentService {
 
     const legacyMeta = this.parseLegacyAdminClass(student?.adminClass?.code);
     return legacyMeta?.cohort || null;
+  }
+
+  private getCohortStartYear(cohortCode?: string | null) {
+    const match = `${cohortCode || ""}`.trim().toUpperCase().match(/^K(\d{2,})$/);
+    return match ? 2006 + Number(match[1]) : null;
+  }
+
+  private expectedYearForSemester(cohortStartYear: number, conceptualSemester: number) {
+    return cohortStartYear + Math.floor(conceptualSemester / 2);
+  }
+
+  private parseConceptualSemester(semester?: any) {
+    const source = `${semester?.code || ""} ${semester?.name || ""}`.toUpperCase();
+    const match =
+      source.match(/HK\s*([1-8])/) ||
+      source.match(/H[OỌ]C\s*K[YỲ]\s*([1-8])/) ||
+      source.match(/SEMESTER\s*([1-8])/);
+    return match ? Number(match[1]) : null;
+  }
+
+  private getSemesterStartYear(semester?: any) {
+    if (!semester) return 0;
+    const startDate = semester.startDate ? new Date(semester.startDate) : null;
+    if (startDate && !Number.isNaN(startDate.getTime())) {
+      return startDate.getFullYear();
+    }
+    const codeMatch = `${semester.code || ""}`.match(/(20\d{2})/);
+    if (codeMatch) return Number(codeMatch[1]);
+    const nameMatch = `${semester.name || ""}`.match(/(20\d{2})\s*-\s*20\d{2}/);
+    if (nameMatch) return Number(nameMatch[1]);
+    return Number(semester.year || 0);
+  }
+
+  private isRetakeCourseClass(courseClass?: any) {
+    const source = `${courseClass?.code || ""} ${courseClass?.name || ""}`.toUpperCase();
+    return (
+      source.includes("_HL_") ||
+      source.startsWith("HL_") ||
+      source.includes("RETAKE") ||
+      source.includes("HỌC LẠI") ||
+      source.includes("HOC LAI") ||
+      source.includes("CẢI THIỆN") ||
+      source.includes("CAI THIEN")
+    );
+  }
+
+  private isOfficialCurriculumGrade(
+    grade: any,
+    plannedSemesterBySubjectId: Map<string, number>,
+    cohortCode?: string | null,
+  ) {
+    if (this.isRetakeCourseClass(grade?.courseClass)) return false;
+    if (!plannedSemesterBySubjectId.size) return true;
+
+    const subjectId = `${grade?.subjectId || grade?.courseClass?.subjectId || ""}`.trim();
+    const plannedSemester = plannedSemesterBySubjectId.get(subjectId);
+    if (!plannedSemester) return false;
+
+    const actualSemester = this.parseConceptualSemester(grade?.courseClass?.semester);
+    if (actualSemester && actualSemester !== plannedSemester) return false;
+
+    const cohortStartYear = this.getCohortStartYear(cohortCode);
+    if (cohortStartYear) {
+      const expectedYear = this.expectedYearForSemester(cohortStartYear, plannedSemester);
+      const actualYear = this.getSemesterStartYear(grade?.courseClass?.semester);
+      if (actualYear && actualYear !== expectedYear) return false;
+    }
+
+    return true;
   }
 
   private async resolveStudent(idOrCode: string) {
@@ -662,17 +702,11 @@ export class StudentService {
 
   private async mergeMirrorEnrollmentsForLegacyStudent(student: any) {
     const linkedStudentIds = student?.id ? [student.id] : [];
-    if (!student?.adminClass?.code) {
-      return {
-        student,
-        linkedStudentIds,
-      };
-    }
-
     const legacyMeta = this.parseLegacyAdminClass(
-      student.adminClass.code,
-      student.adminClass.cohort || student.intake,
+      student?.adminClass?.code,
+      student?.adminClass?.cohort || student?.intake,
     );
+
     if (!legacyMeta) {
       return {
         student,
@@ -700,7 +734,7 @@ export class StudentService {
       };
     }
 
-    let mirrorStudent = await this.prisma.student.findFirst({
+    const mirrorStudent = await this.prisma.student.findFirst({
       where: {
         adminClassId: mirrorAdminClass.id,
         fullName: student.fullName,
@@ -708,20 +742,6 @@ export class StudentService {
       },
       select: { id: true },
     });
-
-    if (!mirrorStudent) {
-      const codeSuffix = `${student.studentCode || ""}`.match(/(\d{2})$/)?.[1];
-      if (codeSuffix) {
-        mirrorStudent = await this.prisma.student.findFirst({
-          where: {
-            adminClassId: mirrorAdminClass.id,
-            studentCode: { endsWith: codeSuffix },
-            status: "STUDYING",
-          },
-          select: { id: true },
-        });
-      }
-    }
 
     if (!mirrorStudent) {
       return {
@@ -1141,6 +1161,13 @@ export class StudentService {
         finalLinkedStudentIds.push(studentId);
     }
 
+    const plannedSemesterBySubjectId = new Map<string, number>(
+      itemsData.map((item: any) => [
+        `${item.subjectId || item.id || ""}`.trim(),
+        Number(item.suggestedSemester || item.conceptualSemester || 0),
+      ] as [string, number]).filter(([subjectId, semester]) => subjectId && semester > 0),
+    );
+
     const grades = await this.prisma.grade.findMany({
       where: {
         studentId: { in: finalLinkedStudentIds },
@@ -1149,10 +1176,27 @@ export class StudentService {
         subjectId: true,
         isPassed: true,
         totalScore10: true,
+        courseClass: {
+          select: {
+            code: true,
+            name: true,
+            subjectId: true,
+            semester: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+                startDate: true,
+                year: true,
+              },
+            },
+          },
+        },
       },
     });
     const subjectGrades = new Map<string, { isPassed: boolean, score: number | null }>();
     grades.forEach(g => {
+        if (!this.isOfficialCurriculumGrade(g, plannedSemesterBySubjectId, intake)) return;
         const current = subjectGrades.get(g.subjectId);
         const isPassed = g.isPassed === true || (g.totalScore10 ?? 0) >= 4.0;
         if (!current || (isPassed && !current.isPassed) || (g.totalScore10 || 0) > (current.score || 0)) {

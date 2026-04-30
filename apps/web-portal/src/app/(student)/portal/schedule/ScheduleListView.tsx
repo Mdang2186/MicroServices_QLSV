@@ -491,9 +491,8 @@ const dedupeEnrollments = (enrollments: any[]) => {
   for (const enrollment of enrollments || []) {
     const semesterKey = getEnrollmentSemesterSelectionKey(enrollment);
     const subjectKey = getEnrollmentSubjectSelectionKey(enrollment);
-    // Include Class ID to allow multiple classes for the same subject (e.g. Theory & Practice)
     const classId = enrollment?.courseClassId || enrollment?.courseClass?.id || enrollment?.id;
-    const key = semesterKey && subjectKey ? `${semesterKey}::${subjectKey}::${classId}` : `${classId}`;
+    const key = semesterKey && subjectKey ? `${semesterKey}::${subjectKey}` : `${classId}`;
 
     const existing = deduped.get(key);
     if (!existing || getEnrollmentPriority(enrollment) > getEnrollmentPriority(existing)) {

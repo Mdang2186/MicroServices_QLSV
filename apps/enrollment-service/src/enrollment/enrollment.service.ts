@@ -973,10 +973,11 @@ export class EnrollmentService {
             // Resolve Student
             const student = await this.resolveStudent(studentIdOrUserId, tx);
             const studentId = student.id;
+            const linkedStudentIds = await this.resolveLinkedStudentIds(studentIdOrUserId);
 
             // 1. Get Enrollment
-            const enrollment = await tx.enrollment.findUnique({
-                where: { studentId_courseClassId: { studentId, courseClassId: classId } }
+            const enrollment = await tx.enrollment.findFirst({
+                where: { studentId: { in: linkedStudentIds }, courseClassId: classId }
             });
             if (!enrollment) throw new BadRequestException('Bạn chưa đăng ký lớp này');
 
@@ -1104,10 +1105,11 @@ export class EnrollmentService {
             // Resolve Student
             const student = await this.resolveStudent(studentIdOrUserId, tx);
             const studentId = student.id;
+            const linkedStudentIds = await this.resolveLinkedStudentIds(studentIdOrUserId);
 
             // 1. Check if enrolled in old class
-            const oldEnrollment = await tx.enrollment.findUnique({
-                where: { studentId_courseClassId: { studentId, courseClassId: oldClassId } }
+            const oldEnrollment = await tx.enrollment.findFirst({
+                where: { studentId: { in: linkedStudentIds }, courseClassId: oldClassId }
             });
             if (!oldEnrollment) {
                 throw new BadRequestException('Bạn không tham gia lớp cũ này');
@@ -1754,7 +1756,7 @@ export class EnrollmentService {
             return linkedStudentIds;
         }
 
-        let mirrorStudent = await this.prisma.student.findFirst({
+        const mirrorStudent = await this.prisma.student.findFirst({
             where: {
                 adminClassId: mirrorAdminClass.id,
                 fullName: student.fullName,
@@ -1763,41 +1765,8 @@ export class EnrollmentService {
             select: { id: true },
         });
 
-        if (!mirrorStudent) {
-            const codeSuffix = `${student.studentCode || ''}`.match(/(\d{2})$/)?.[1];
-            if (codeSuffix) {
-                mirrorStudent = await this.prisma.student.findFirst({
-                    where: {
-                        adminClassId: mirrorAdminClass.id,
-                        studentCode: { endsWith: codeSuffix },
-                        status: 'STUDYING',
-                    },
-                    select: { id: true },
-                });
-            }
-        }
-
         if (mirrorStudent?.id) {
             linkedStudentIds.push(mirrorStudent.id);
-        } else {
-            // Final attempt: check by name and major in the cohort
-            try {
-                const anotherStudent = await this.prisma.student.findFirst({
-                    where: {
-                        fullName: student.fullName,
-                        majorId: student.majorId,
-                        intake: legacyMeta.cohort,
-                        status: 'STUDYING',
-                        id: { not: student.id },
-                    },
-                    select: { id: true },
-                });
-                if (anotherStudent?.id) {
-                    linkedStudentIds.push(anotherStudent.id);
-                }
-            } catch (err) {
-                // Ignore if fallback search fails
-            }
         }
 
         return [...new Set(linkedStudentIds)];

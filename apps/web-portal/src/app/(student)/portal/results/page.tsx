@@ -97,7 +97,6 @@ export default function ResultsPage() {
     const fullHistory = useMemo(() => {
         const timeline: any[] = [];
         const cumulativeBest = new Map();
-        const matchedGradeIds = new Set();
 
         visibleSemesters.forEach((sysSem, idx) => {
             const seqNum = parseConceptualSemester(sysSem) || (idx + 1);
@@ -105,23 +104,32 @@ export default function ResultsPage() {
             const plannedSubjects = plannedSem?.items || [];
             
             const actualGrades = grades.filter(g => matchesSemesterReference(g?.courseClass?.semester, g?.courseClass?.semesterId, sysSem));
-            actualGrades.forEach(g => matchedGradeIds.add(`${g.id || ""}`));
+            const plannedSubjectIds = new Set(
+                plannedSubjects.map((p: any) => `${p.subjectId || p.id || ""}`.trim()).filter(Boolean)
+            );
+            const actualByPlannedSubject = new Map();
+            actualGrades.forEach(g => {
+                const subjectKey = getRowSubjectKey(g);
+                if (!subjectKey || !plannedSubjectIds.has(subjectKey)) return;
+                const current = actualByPlannedSubject.get(subjectKey);
+                if (!current || getRowPriority(g) > getRowPriority(current)) {
+                    actualByPlannedSubject.set(subjectKey, g);
+                }
+            });
 
-            // Map planned subjects first, then extra grades
             const rows: any[] = [];
             plannedSubjects.forEach((p: any) => {
-                const match = actualGrades.find(g => `${g.subjectId || g.subject?.id || ""}`.trim() === `${p.subjectId || p.id || ""}`.trim());
+                const match = actualByPlannedSubject.get(`${p.subjectId || p.id || ""}`.trim());
                 if (match) rows.push({ ...match, isPlanned: true });
                 else rows.push({ subject: p, subjectId: p.subjectId, isPlanned: true, isPlaceholder: true });
             });
 
-            // Add actual grades that weren't in the plan for this semester
-            actualGrades.forEach(g => {
-                const alreadyAdded = rows.some(r => `${r.id || ""}` === `${g.id || ""}` && !r.isPlaceholder);
-                if (!alreadyAdded) rows.push({ ...g, isPlanned: false });
-            });
+            if (plannedSubjects.length === 0) {
+                actualGrades
+                    .filter(g => !isRetakeRow(g))
+                    .forEach(g => rows.push({ ...g, isPlanned: false }));
+            }
 
-            // Stats
             const actualRows = rows.filter(r => !r.isPlaceholder && toNumberOrNull(r.totalScore10) !== null);
             actualRows.forEach(r => {
                 const key = getRowSubjectKey(r);
@@ -145,19 +153,25 @@ export default function ResultsPage() {
                 grades: rows,
                 summary: { gpa, cpa }
             });
-        });
 
-        // Add Orphaned Grades (Retakes or Extra semesters)
-        const orphaned = grades.filter(g => !matchedGradeIds.has(`${g.id || ""}`));
-        if (orphaned.length > 0) {
-            timeline.push({
-                label: "EXTRA",
-                title: "Học phần bổ sung / Học lại / Cải thiện",
-                academicYear: "Tất cả các năm",
-                grades: orphaned,
-                summary: { gpa: null, cpa: null }
+            const retakeRows = actualGrades.filter(g => {
+                const subjectKey = getRowSubjectKey(g);
+                return isRetakeRow(g) || (subjectKey && plannedSubjectIds.size > 0 && !plannedSubjectIds.has(subjectKey));
             });
-        }
+            if (retakeRows.length > 0) {
+                timeline.push({
+                    label: `HK${seqNum}-RETAKE`,
+                    title: `${sysSem.name || `Học kỳ ${seqNum}`} - Học lại / cải thiện`,
+                    academicYear: (function() {
+                        const year = getSemesterStartYear(sysSem) || expectedYearForSemester(startYear, seqNum);
+                        const isEven = seqNum % 2 === 0;
+                        return isEven ? `${year - 1} - ${year}` : `${year} - ${year + 1}`;
+                    })(),
+                    grades: retakeRows,
+                    summary: { gpa: null, cpa: null }
+                });
+            }
+        });
 
         return timeline;
     }, [curriculumProgress, grades, startYear, visibleSemesters]);
@@ -310,6 +324,16 @@ function getRowPriority(row: any) {
     const totalScore4 = toNumberOrNull(row?.totalScore4);
     if (totalScore4 !== null) score += totalScore4;
     return score;
+}
+
+function isRetakeRow(row: any) {
+    if (row?.isRetake === true || row?.enrollment?.isRetake === true || row?.courseClass?.isRetake === true) return true;
+    const source = [
+        row?.courseClass?.code,
+        row?.courseClass?.name,
+        row?.notes,
+    ].map(value => `${value || ""}`.toUpperCase()).join(" ");
+    return source.includes("RETAKE") || source.includes("HỌC LẠI") || source.includes("HOC LAI") || source.includes("CẢI THIỆN") || source.includes("CAI THIEN");
 }
 
 function matchesSemesterReference(tSem: any, tId: any, rSem: any) {

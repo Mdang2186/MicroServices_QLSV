@@ -4,9 +4,14 @@ import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
+  const corsOrigins = (process.env.CORS_ORIGIN || "http://localhost:4000,http://localhost:4005")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
   // Gateway runs on 3000
   app.enableCors({
-    origin: ["http://localhost:4000", "http://localhost:4005"],
+    origin: corsOrigins,
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
     credentials: true,
   });
@@ -38,4 +43,3 @@ async function bootstrap() {
 bootstrap();
 
 // Forced reload: 2026-04-18 02:45
-

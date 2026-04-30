@@ -238,6 +238,204 @@ const formatIntakeLabel = (student: any) => {
     return cohort || "Chưa cập nhật";
 };
 
+const normalizeKey = (value: any) => `${value || ""}`.trim();
+
+const parseSemesterFromText = (value: any) => {
+    const match = `${value || ""}`.match(/HK\s*([1-8])/i);
+    return match ? Number(match[1]) : null;
+};
+
+const getSubjectId = (record: any) =>
+    normalizeKey(
+        record?.subjectId ||
+        record?.subject?.id ||
+        record?.courseClass?.subjectId ||
+        record?.courseClass?.subject?.id ||
+        record?.id,
+    );
+
+const getSubjectCode = (record: any) =>
+    normalizeKey(
+        record?.subject?.code ||
+        record?.courseClass?.subject?.code ||
+        record?.code,
+    );
+
+const getSubjectName = (record: any) =>
+    normalizeKey(
+        record?.subject?.name ||
+        record?.courseClass?.subject?.name ||
+        record?.name,
+    );
+
+const getSubjectCredits = (record: any) =>
+    Number(
+        record?.subject?.credits ||
+        record?.courseClass?.subject?.credits ||
+        record?.credits ||
+        0,
+    );
+
+const getRecordSemesterNumber = (record: any) => {
+    const courseClass = record?.courseClass || record;
+    return (
+        parseConceptualSemester(courseClass?.semester) ||
+        parseConceptualSemester({ code: courseClass?.code, name: courseClass?.name }) ||
+        parseSemesterFromText(courseClass?.code)
+    );
+};
+
+const isRetakeOrImprovement = (record: any) => {
+    if (record?.isRetake === true || record?.enrollment?.isRetake === true || record?.courseClass?.isRetake === true) {
+        return true;
+    }
+
+    const source = [
+        record?.courseClass?.code,
+        record?.courseClass?.name,
+        record?.notes,
+    ].map((value) => `${value || ""}`.toUpperCase()).join(" ");
+
+    return (
+        source.includes("RETAKE") ||
+        source.includes("HỌC LẠI") ||
+        source.includes("HOC LAI") ||
+        source.includes("CẢI THIỆN") ||
+        source.includes("CAI THIEN")
+    );
+};
+
+const getCurriculumSemesterPlan = (progress: any, semester: any) => {
+    const conceptualSemester = parseConceptualSemester(semester);
+    if (!conceptualSemester) return null;
+    return progress?.semesters?.find((item: any) => Number(item?.semester) === conceptualSemester) || null;
+};
+
+const buildPlannedSubjectLookup = (plannedSemester: any) => {
+    const ids = new Set<string>();
+    const codes = new Set<string>();
+    const itemsByKey = new Map<string, any>();
+
+    for (const item of plannedSemester?.items || []) {
+        const subjectId = getSubjectId(item);
+        const subjectCode = getSubjectCode(item);
+
+        if (subjectId) {
+            ids.add(subjectId);
+            itemsByKey.set(subjectId, item);
+        }
+
+        if (subjectCode) {
+            codes.add(subjectCode);
+            itemsByKey.set(subjectCode, item);
+        }
+    }
+
+    return {
+        ids,
+        codes,
+        itemsByKey,
+        hasPlan: ids.size > 0 || codes.size > 0,
+    };
+};
+
+const isOfficialSemesterRecord = (
+    record: any,
+    semester: any,
+    plannedLookup: ReturnType<typeof buildPlannedSubjectLookup>,
+    cohortMeta: StudentCohortMeta | null,
+) => {
+    if (!semester || isRetakeOrImprovement(record)) return false;
+
+    const subjectId = getSubjectId(record);
+    const subjectCode = getSubjectCode(record);
+    if (
+        plannedLookup.hasPlan &&
+        !(subjectId && plannedLookup.ids.has(subjectId)) &&
+        !(subjectCode && plannedLookup.codes.has(subjectCode))
+    ) {
+        return false;
+    }
+
+    const selectedSemesterNumber = parseConceptualSemester(semester);
+    const actualSemesterNumber = getRecordSemesterNumber(record);
+    if (
+        selectedSemesterNumber &&
+        actualSemesterNumber &&
+        selectedSemesterNumber !== actualSemesterNumber
+    ) {
+        return false;
+    }
+
+    if (cohortMeta && selectedSemesterNumber) {
+        const actualYear = getSemesterStartYear(record?.courseClass?.semester || record?.semester);
+        const expectedYear = expectedYearForSemester(cohortMeta.startYear, selectedSemesterNumber);
+        if (actualYear && expectedYear && actualYear !== expectedYear) return false;
+    }
+
+    return matchesSelectedSemester(
+        record?.courseClass?.semester,
+        record?.courseClass?.semesterId,
+        semester,
+    );
+};
+
+const getGradePriority = (grade: any) => {
+    const totalScore10 = Number(grade?.totalScore10);
+    const totalScore4 = Number(grade?.totalScore4);
+    let priority = 0;
+
+    if (`${grade?.status || ""}`.toUpperCase() === "APPROVED") priority += 100;
+    if (grade?.isLocked) priority += 20;
+    if (Number.isFinite(totalScore10)) priority += 10 + totalScore10;
+    if (Number.isFinite(totalScore4)) priority += totalScore4;
+
+    return priority;
+};
+
+const dedupeGradesBySubject = (items: any[]) => {
+    const bestBySubject = new Map<string, any>();
+
+    items.forEach((grade) => {
+        const key = getSubjectId(grade) || getSubjectCode(grade);
+        if (!key) return;
+
+        const existing = bestBySubject.get(key);
+        if (!existing || getGradePriority(grade) > getGradePriority(existing)) {
+            bestBySubject.set(key, grade);
+        }
+    });
+
+    return [...bestBySubject.values()];
+};
+
+const pickBestEnrollment = (items: any[]) =>
+    [...items].sort((left, right) => {
+        const leftSchedules = getCourseClassSchedules(left?.courseClass).length;
+        const rightSchedules = getCourseClassSchedules(right?.courseClass).length;
+        if (leftSchedules !== rightSchedules) return rightSchedules - leftSchedules;
+
+        const leftAttendances = left?.attendances?.length || 0;
+        const rightAttendances = right?.attendances?.length || 0;
+        if (leftAttendances !== rightAttendances) return rightAttendances - leftAttendances;
+
+        return `${left?.courseClass?.code || ""}`.localeCompare(`${right?.courseClass?.code || ""}`);
+    })[0];
+
+const dedupeEnrollmentsBySubject = (items: any[]) => {
+    const buckets = new Map<string, any[]>();
+
+    items.forEach((enrollment) => {
+        const key = getSubjectId(enrollment) || getSubjectCode(enrollment) || enrollment?.courseClassId || enrollment?.id;
+        if (!key) return;
+        buckets.set(key, [...(buckets.get(key) || []), enrollment]);
+    });
+
+    return [...buckets.values()]
+        .map((bucket) => pickBestEnrollment(bucket))
+        .filter(Boolean);
+};
+
 export default function StudentDashboard() {
     const [student, setStudent] = useState<any>(null);
     const [enrollments, setEnrollments] = useState<any[]>([]);
@@ -443,22 +641,25 @@ export default function StudentDashboard() {
         }
 
         const defaultSemesterKey = currentSemester?.id || visibleSemesterOptions[0]?.id || "";
+        const semesterHasOfficialGrades = (semester: any) => {
+            const plannedSemester = getCurriculumSemesterPlan(curriculumProgress, semester);
+            const plannedLookup = buildPlannedSubjectLookup(plannedSemester);
+            return scoredGrades.some((grade) =>
+                isOfficialSemesterRecord(grade, semester, plannedLookup, cohortMeta),
+            );
+        };
 
         setSelectedResultSemesterKey((current) => {
-            // If we already have a valid selection that actually has grades, keep it
             if (current && visibleSemesterOptions.some(s => s.id === current)) {
-                const currentHasGrades = scoredGrades.some(g => matchesSelectedSemester(g.courseClass?.semester, g.courseClass?.semesterId, visibleSemesterOptions.find(sv => sv.id === current)));
-                if (currentHasGrades) return current;
+                const currentSemesterOption = visibleSemesterOptions.find(sv => sv.id === current);
+                if (semesterHasOfficialGrades(currentSemesterOption)) return current;
             }
 
-            // Otherwise, start with current semester, but if it has no grades, try to find the most recent one that does
             const currentObj = visibleSemesterOptions.find(s => s.id === defaultSemesterKey);
-            const currentHasGrades = scoredGrades.some(g => matchesSelectedSemester(g.courseClass?.semester, g.courseClass?.semesterId, currentObj));
+            const currentHasGrades = semesterHasOfficialGrades(currentObj);
 
             if (!currentHasGrades) {
-                const latestWithGrades = visibleSemesterOptions.find(s =>
-                    scoredGrades.some(g => matchesSelectedSemester(g.courseClass?.semester, g.courseClass?.semesterId, s))
-                );
+                const latestWithGrades = visibleSemesterOptions.find(s => semesterHasOfficialGrades(s));
                 if (latestWithGrades) return latestWithGrades.id;
             }
 
@@ -470,7 +671,7 @@ export default function StudentDashboard() {
                 ? current
                 : defaultSemesterKey,
         );
-    }, [currentSemester?.id, visibleSemesterOptions, scoredGrades.length]);
+    }, [cohortMeta, currentSemester?.id, curriculumProgress, scoredGrades, visibleSemesterOptions]);
 
     const selectedResultSemester = useMemo(
         () =>
@@ -481,31 +682,56 @@ export default function StudentDashboard() {
 
     const filteredGrades = useMemo(() => {
         if (!selectedResultSemester) return [];
-        return scoredGrades.filter((grade) =>
-            matchesSelectedSemester(
-                grade?.courseClass?.semester,
-                grade?.courseClass?.semesterId,
-                selectedResultSemester,
+        const plannedSemester = getCurriculumSemesterPlan(curriculumProgress, selectedResultSemester);
+        const plannedLookup = buildPlannedSubjectLookup(plannedSemester);
+        return dedupeGradesBySubject(
+            scoredGrades.filter((grade) =>
+                isOfficialSemesterRecord(grade, selectedResultSemester, plannedLookup, cohortMeta),
             ),
         );
-    }, [scoredGrades, selectedResultSemester]);
+    }, [cohortMeta, curriculumProgress, scoredGrades, selectedResultSemester]);
 
     const chartData = useMemo(() => {
-        return filteredGrades
-            .slice()
+        const plannedSemester = getCurriculumSemesterPlan(curriculumProgress, selectedResultSemester);
+        const plannedItems = Array.isArray(plannedSemester?.items) ? plannedSemester.items : [];
+        const gradeByKey = new Map<string, any>();
+
+        filteredGrades.forEach((grade) => {
+            const subjectId = getSubjectId(grade);
+            const subjectCode = getSubjectCode(grade);
+            if (subjectId) gradeByKey.set(subjectId, grade);
+            if (subjectCode) gradeByKey.set(subjectCode, grade);
+        });
+
+        const sourceRows = plannedItems.length > 0
+            ? plannedItems
+            : filteredGrades.map((grade) => grade?.subject || grade?.courseClass?.subject || grade);
+
+        return sourceRows
+            .map((subject, index) => {
+                const subjectId = getSubjectId(subject);
+                const subjectCode = getSubjectCode(subject);
+                const grade = (subjectId && gradeByKey.get(subjectId)) || (subjectCode && gradeByKey.get(subjectCode));
+                const rawScore = grade?.totalScore10;
+                const numericScore = Number(rawScore);
+                const hasScore = rawScore !== null && rawScore !== undefined && Number.isFinite(numericScore);
+
+                return {
+                    name: subjectCode || `HP${index + 1}`,
+                    fullName: getSubjectName(subject) || subjectCode || `Học phần ${index + 1}`,
+                    score: hasScore ? numericScore : 0.25,
+                    displayScore: hasScore ? numericScore : null,
+                    hasScore,
+                    credits: getSubjectCredits(subject),
+                };
+            })
             .sort((left, right) =>
-                `${left?.subject?.code || left?.subject?.name || ""}`.localeCompare(
-                    `${right?.subject?.code || right?.subject?.name || ""}`,
+                `${left?.name || left?.fullName || ""}`.localeCompare(
+                    `${right?.name || right?.fullName || ""}`,
                     "vi",
                 ),
-            )
-            .map((grade, index) => ({
-                name: grade?.subject?.code || `HP${index + 1}`,
-                fullName: grade?.subject?.name || grade?.subject?.code || `Học phần ${index + 1}`,
-                score: Number(grade?.totalScore10 || 0),
-                credits: Number(grade?.subject?.credits || 0),
-            }));
-    }, [filteredGrades]);
+            );
+    }, [curriculumProgress, filteredGrades, selectedResultSemester]);
 
     const selectedCourseSemester = useMemo(
         () =>
@@ -517,65 +743,59 @@ export default function StudentDashboard() {
 
     const currentSemesterEnrollments = useMemo(() => {
         if (!currentSemester) return [];
-        return normalizedEnrollments.filter((enrollment) =>
-            matchesSelectedSemester(
-                enrollment?.courseClass?.semester,
-                enrollment?.courseClass?.semesterId,
-                currentSemester,
+        const plannedSemester = getCurriculumSemesterPlan(curriculumProgress, currentSemester);
+        const plannedLookup = buildPlannedSubjectLookup(plannedSemester);
+        return dedupeEnrollmentsBySubject(
+            normalizedEnrollments.filter((enrollment) =>
+                isOfficialSemesterRecord(enrollment, currentSemester, plannedLookup, cohortMeta),
             ),
         );
-    }, [currentSemester, normalizedEnrollments]);
+    }, [cohortMeta, currentSemester, curriculumProgress, normalizedEnrollments]);
 
     const dashboardCourseEnrollments = useMemo(() => {
         if (!selectedCourseSemester) return [];
-        const matchedEnrollments = normalizedEnrollments.filter((enrollment) =>
-            matchesSelectedSemester(
-                enrollment?.courseClass?.semester,
-                enrollment?.courseClass?.semesterId,
-                selectedCourseSemester,
+        const plannedSemester = getCurriculumSemesterPlan(curriculumProgress, selectedCourseSemester);
+        const plannedLookup = buildPlannedSubjectLookup(plannedSemester);
+        const matchedEnrollments = dedupeEnrollmentsBySubject(
+            normalizedEnrollments.filter((enrollment) =>
+                isOfficialSemesterRecord(enrollment, selectedCourseSemester, plannedLookup, cohortMeta),
             ),
         );
 
         const bySubject = new Map<string, any>();
         matchedEnrollments.forEach((enrollment) => {
-            const subjectKey =
-                enrollment?.courseClass?.subjectId ||
-                enrollment?.courseClass?.subject?.id ||
-                enrollment?.courseClassId ||
-                enrollment?.id;
+            const subjectKey = getSubjectId(enrollment) || getSubjectCode(enrollment);
             if (!subjectKey || bySubject.has(subjectKey)) return;
             bySubject.set(subjectKey, enrollment);
         });
 
-        // Add planned subjects from curriculum that are NOT yet enrolled
-        const conceptualNum = parseConceptualSemester(selectedCourseSemester);
-        if (conceptualNum && curriculumProgress?.semesters) {
-            const plannedSem = curriculumProgress.semesters.find(
-                (s: any) => Number(s.semester) === conceptualNum
-            );
-            if (plannedSem?.items) {
-                plannedSem.items.forEach((p: any) => {
-                    const subjectId = `${p.subjectId || p.id || ""}`.trim();
-                    if (subjectId && !bySubject.has(subjectId)) {
-                        bySubject.set(subjectId, {
-                            isPlanned: true,
-                            isPlaceholder: true,
-                            courseClass: {
-                                subject: p,
-                                code: p.code || "N/A"
-                            }
-                        });
-                    }
+        if (plannedSemester?.items) {
+            plannedSemester.items.forEach((item: any) => {
+                const subjectId = getSubjectId(item);
+                const subjectCode = getSubjectCode(item);
+                const subjectKey = subjectId || subjectCode;
+                const alreadyListed =
+                    (subjectId && bySubject.has(subjectId)) ||
+                    (subjectCode && bySubject.has(subjectCode));
+                if (!subjectKey || alreadyListed) return;
+
+                bySubject.set(subjectKey, {
+                    isPlanned: true,
+                    isPlaceholder: true,
+                    courseClass: {
+                        subject: item,
+                        code: item?.code || "N/A",
+                    },
                 });
-            }
+            });
         }
 
         return [...bySubject.values()].sort((a, b) => {
             if (a.isPlaceholder && !b.isPlaceholder) return 1;
             if (!a.isPlaceholder && b.isPlaceholder) return -1;
-            return 0;
+            return `${a?.courseClass?.code || ""}`.localeCompare(`${b?.courseClass?.code || ""}`, "vi");
         });
-    }, [curriculumProgress, normalizedEnrollments, selectedCourseSemester]);
+    }, [cohortMeta, curriculumProgress, normalizedEnrollments, selectedCourseSemester]);
 
     const weeklyScheduleSummary = useMemo(() => {
         const { start, end } = getWeekRange(new Date());
@@ -626,33 +846,23 @@ export default function StudentDashboard() {
     }, [currentSemesterEnrollments]);
 
     const earnedCredits = useMemo(() => {
-        // Source of Truth 1: The official totalEarnedCredits from the Student table
-        const officialCredits = Number(student?.totalEarnedCredits || 0);
+        const hasCurriculumStats = Boolean(curriculumProgress?.stats);
+        const requiredCreditsFromCurriculum = Number(curriculumProgress?.stats?.mandatory || 0);
+        const passedMandatoryCredits = Number(curriculumProgress?.stats?.passedMandatory || 0);
+        const passedCurriculumCredits = Number(curriculumProgress?.stats?.passed || 0);
 
-        // Source of Truth 2: The calculated mandatory credits from the curriculum
-        const requiredPassedCredits = Number(
-            curriculumProgress?.stats?.passedMandatory || 0,
-        );
-
-        // If official credits are significantly higher than calculated mandatory (e.g. including electives),
-        // we use the official number as the primary "Earned" count.
-        if (officialCredits > requiredPassedCredits) {
-            return officialCredits;
+        if (hasCurriculumStats) {
+            if (requiredCreditsFromCurriculum > 0) {
+                return passedMandatoryCredits;
+            }
+            return passedCurriculumCredits;
         }
 
-        if (requiredPassedCredits > 0) {
-            return requiredPassedCredits;
-        }
-
-        const curriculumPassedCredits = Number(curriculumProgress?.stats?.passed || 0);
-        if (curriculumPassedCredits > 0) {
-            return curriculumPassedCredits;
-        }
-
-        // Fallback: manual calculation from grades array
         const bestPassedBySubject = new Map<string, any>();
         for (const grade of grades || []) {
-            const subjectId = `${grade?.subjectId || grade?.subject?.id || ""}`.trim();
+            if (isRetakeOrImprovement(grade)) continue;
+
+            const subjectId = getSubjectId(grade) || getSubjectCode(grade);
             if (!subjectId) continue;
 
             const score = Number(grade?.totalScore10 || 0);
@@ -670,10 +880,12 @@ export default function StudentDashboard() {
             0,
         );
 
-        return calculated || officialCredits;
+        return calculated || Number(student?.totalEarnedCredits || 0);
     }, [
+        curriculumProgress?.stats,
         curriculumProgress?.stats?.passed,
         curriculumProgress?.stats?.passedMandatory,
+        curriculumProgress?.stats?.mandatory,
         grades,
         student?.totalEarnedCredits,
     ]);
@@ -885,8 +1097,8 @@ export default function StudentDashboard() {
                                     {chartData.map((entry, index) => (
                                         <Cell
                                             key={`cell-${index}`}
-                                            fill={entry.score >= 8.5 ? '#10b981' : entry.score >= 7.0 ? '#3b82f6' : entry.score >= 5.0 ? '#f59e0b' : '#ef4444'}
-                                            fillOpacity={0.6}
+                                            fill={!entry.hasScore ? '#cbd5e1' : entry.displayScore >= 8.5 ? '#10b981' : entry.displayScore >= 7.0 ? '#3b82f6' : entry.displayScore >= 5.0 ? '#f59e0b' : '#ef4444'}
+                                            fillOpacity={entry.hasScore ? 0.6 : 0.45}
                                         />
                                     ))}
                                 </Bar>
@@ -897,7 +1109,7 @@ export default function StudentDashboard() {
                                             return (
                                                 <div className="rounded bg-slate-900 px-3 py-2 text-[10px] font-bold text-white">
                                                     <p>{dataPoint?.fullName}</p>
-                                                    <p className="mt-1">Điểm: {payload[0].value}</p>
+                                                    <p className="mt-1">Điểm: {dataPoint?.hasScore ? dataPoint?.displayScore : "Chưa có"}</p>
                                                     <p>Tín chỉ: {dataPoint?.credits || 0}</p>
                                                 </div>
                                             );

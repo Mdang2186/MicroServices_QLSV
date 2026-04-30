@@ -2,7 +2,7 @@
     "name": "@repo/database",
     "version": "0.0.0",
     "private": true,
-    "main": "./src/index.ts",
+    "main": "./dist/src/index.js",
     "types": "./src/index.ts",
     "dependencies": {
         "@prisma/client": "^5.22.0",
@@ -16,6 +16,7 @@
         "typescript": "^5.3.3"
     },
     "scripts": {
+        "build": "tsc -p tsconfig.json",
         "db:generate": "prisma generate",
         "db:push": "prisma db push",
         "db:seed": "ts-node prisma/seed.ts"

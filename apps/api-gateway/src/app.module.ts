@@ -25,11 +25,20 @@ import { AuthGuard } from "./auth.guard";
 export class AppModule {
   configure(consumer: MiddlewareConsumer) {
     console.log("Configuring API Gateway Middlewares...");
+    const authTarget = process.env.AUTH_SERVICE_URL || "http://127.0.0.1:3001";
+    const studentTarget =
+      process.env.STUDENT_SERVICE_URL || "http://127.0.0.1:3002";
+    const courseTarget =
+      process.env.COURSE_SERVICE_URL || "http://127.0.0.1:3003";
+    const enrollmentTarget =
+      process.env.ENROLLMENT_SERVICE_URL || "http://127.0.0.1:3004";
+    const gradeTarget = process.env.GRADE_SERVICE_URL || "http://127.0.0.1:3005";
+
     // Proxy auth requests
     consumer
       .apply(
         createProxyMiddleware({
-          target: "http://127.0.0.1:3001", // Auth Service
+          target: authTarget,
           changeOrigin: true,
           pathRewrite: {
             "^/api/auth": "/auth",
@@ -48,7 +57,7 @@ export class AppModule {
     consumer
       .apply(
         createProxyMiddleware({
-          target: "http://127.0.0.1:3002", // Student Service
+          target: studentTarget,
           changeOrigin: true,
           proxyTimeout: 60000,
           timeout: 60000,
@@ -72,7 +81,7 @@ export class AppModule {
     consumer
       .apply(
         createProxyMiddleware({
-          target: "http://127.0.0.1:3004", // Enrollment Service
+          target: enrollmentTarget,
           changeOrigin: true,
           proxyTimeout: 60000,
           timeout: 60000,
@@ -90,7 +99,7 @@ export class AppModule {
     consumer
       .apply(
         createProxyMiddleware({
-          target: "http://127.0.0.1:3003", // Course Service
+          target: courseTarget,
           changeOrigin: true,
           proxyTimeout: 60000,
           timeout: 60000,
@@ -141,7 +150,7 @@ export class AppModule {
     consumer
       .apply(
         createProxyMiddleware({
-          target: "http://127.0.0.1:3005", // Grade Service
+          target: gradeTarget,
           changeOrigin: true,
           proxyTimeout: 60000,
           timeout: 60000,

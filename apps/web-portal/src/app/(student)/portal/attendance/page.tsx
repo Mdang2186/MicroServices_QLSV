@@ -55,6 +55,72 @@ export default function AttendancePage() {
         return match ? parseInt(match[1]) : null;
     };
 
+    const getSemesterStartYear = (semester: any) => {
+        if (!semester) return 0;
+        const startDate = semester.startDate ? new Date(semester.startDate) : null;
+        if (startDate && !Number.isNaN(startDate.getTime())) return startDate.getFullYear();
+        const codeMatch = `${semester.code || ""}`.match(/(20\d{2})/);
+        if (codeMatch) return Number(codeMatch[1]);
+        const nameMatch = `${semester.name || ""}`.match(/(20\d{2})\s*-\s*20\d{2}/);
+        if (nameMatch) return Number(nameMatch[1]);
+        return Number(semester.year || 0);
+    };
+
+    const expectedYearForSemester = (cohortStartYear: number, semesterNumber: number) =>
+        cohortStartYear + Math.floor(semesterNumber / 2);
+
+    const getEnrollmentSemesterNumber = (enrollment: any) => {
+        const semester = enrollment?.courseClass?.semester;
+        return getSemesterFromCode(semester?.code || semester?.name) || getSemesterFromCode(enrollment?.courseClass?.code);
+    };
+
+    const isEnrollmentInOfficialSemester = (
+        enrollment: any,
+        semesterNumber: number,
+        curriculumSubjectCodes: Set<string>,
+    ) => {
+        const subjectCode = enrollment?.courseClass?.subject?.code;
+        if (!subjectCode || !curriculumSubjectCodes.has(subjectCode)) return false;
+
+        const actualSemester = getEnrollmentSemesterNumber(enrollment);
+        if (actualSemester && actualSemester !== semesterNumber) return false;
+
+        const actualYear = getSemesterStartYear(enrollment?.courseClass?.semester);
+        const expectedYear = expectedYearForSemester(startYear, semesterNumber);
+        if (actualYear && actualYear !== expectedYear) return false;
+
+        return true;
+    };
+
+    const pickBestEnrollment = (items: any[]) => {
+        return [...items].sort((left, right) => {
+            const leftAttendance = left?.attendances?.length || 0;
+            const rightAttendance = right?.attendances?.length || 0;
+            if (leftAttendance !== rightAttendance) return rightAttendance - leftAttendance;
+
+            const leftIsMirror = `${left?.student?.adminClass?.code || ""}`.startsWith("K") ? 1 : 0;
+            const rightIsMirror = `${right?.student?.adminClass?.code || ""}`.startsWith("K") ? 1 : 0;
+            if (leftIsMirror !== rightIsMirror) return rightIsMirror - leftIsMirror;
+
+            return `${left?.courseClass?.code || ""}`.localeCompare(`${right?.courseClass?.code || ""}`);
+        })[0];
+    };
+
+    const dedupeBySubject = (items: any[]) => {
+        const buckets = new Map<string, any[]>();
+        items.forEach((item) => {
+            const key = `${item?.courseClass?.subject?.code || item?.courseClass?.subjectId || item?.courseClassId || item?.id}`;
+            buckets.set(key, [...(buckets.get(key) || []), item]);
+        });
+
+        return [...buckets.values()]
+            .map((bucket) => pickBestEnrollment(bucket))
+            .filter(Boolean)
+            .sort((left, right) =>
+                `${left?.courseClass?.code || ""}`.localeCompare(`${right?.courseClass?.code || ""}`),
+            );
+    };
+
     const normalizeAttendance = (attendance: any) => {
         if (!attendance) return attendance;
         const parsed = parseAttendanceNote(attendance.note);
@@ -98,35 +164,12 @@ export default function AttendancePage() {
                 }
                 setCurriculumMap(cMap);
 
-                // 2. Deduplicate Enrollments by Subject Code + Predicted Semester
-                // This ensures we don't show the same subject twice in the same semester slot
-                const uniqueEnrollmentsMap = new Map<string, any>();
-                (enrollmentData || []).forEach((enr: any) => {
-                    const subjectCode = enr.courseClass?.subject?.code;
-                    if (!subjectCode) return;
-                    
-                    const classCode = enr.courseClass?.code;
-                    const codeSem = getSemesterFromCode(classCode);
-                    const currSem = curriculumMap.get(subjectCode);
-                    const metaSem = enr.courseClass?.semester?.semesterNumber;
-                    
-                    // The "Target Slot" is what determines redundancy
-                    const targetSlot = codeSem || currSem || metaSem || "other";
-                    const key = `${subjectCode}_${targetSlot}`;
-                    
-                    const normalizedEnr = {
+                setEnrollments(
+                    (enrollmentData || []).map((enr: any) => ({
                         ...enr,
                         attendances: (enr.attendances || []).map(normalizeAttendance),
-                    };
-
-                    // Priority: keep the one with more attendances if duplicates exist
-                    const existing = uniqueEnrollmentsMap.get(key);
-                    if (!existing || normalizedEnr.attendances.length > existing.attendances.length) {
-                        uniqueEnrollmentsMap.set(key, normalizedEnr);
-                    }
-                });
-
-                setEnrollments(Array.from(uniqueEnrollmentsMap.values()));
+                    })),
+                );
             } catch (error) {
                 console.error("Failed to fetch attendance data:", error);
             } finally {
@@ -194,23 +237,24 @@ export default function AttendancePage() {
     const groupedEnrollments = academicSemesters.reduce((acc: any, sem: any) => {
         // 1. Get curriculum-defined subjects for this semester
         const curriculumItems = curriculum?.semesters?.find((s: any) => s.semester === sem.key)?.items || [];
-        const curriculumSubjectCodes = new Set(curriculumItems.map((item: any) => item.code || item.subjectCode));
+        const curriculumSubjectCodes = new Set<string>(
+            curriculumItems
+                .map((item: any) => `${item.code || item.subjectCode || ""}`.trim())
+                .filter(Boolean),
+        );
 
-        // 2. Find enrollments that match subjects in the curriculum for THIS semester
-        const curriculumEnrollments = enrollments.filter(enr => {
-            const subjectCode = enr.courseClass?.subject?.code;
-            return subjectCode && curriculumSubjectCodes.has(subjectCode);
-        });
+        const curriculumEnrollments = enrollments.filter(enr =>
+            isEnrollmentInOfficialSemester(enr, sem.key, curriculumSubjectCodes)
+        );
 
-        // 3. Find enrollments that are NOT in the curriculum for this semester, 
+        // 3. Find enrollments that are NOT in the curriculum, 
         // but are explicitly marked with this HK number in the class code
         const codeMatchedEnrollments = enrollments.filter(enr => {
             const classCode = enr.courseClass?.code;
             const subjectCode = enr.courseClass?.subject?.code;
             const codeSem = getSemesterFromCode(classCode);
             
-            // Avoid double counting if already caught by curriculum logic above
-            if (subjectCode && curriculumSubjectCodes.has(subjectCode)) return false;
+            if (subjectCode && curriculumMap.has(subjectCode)) return false;
             
             return codeSem === sem.key;
         });
@@ -232,7 +276,7 @@ export default function AttendancePage() {
 
         // Combine all, maintaining uniqueness
         const seenIds = new Set();
-        const combined = [...curriculumEnrollments, ...codeMatchedEnrollments, ...fallbackEnrollments].filter(e => {
+        const combined = dedupeBySubject([...curriculumEnrollments, ...codeMatchedEnrollments, ...fallbackEnrollments]).filter(e => {
             if (seenIds.has(e.id)) return false;
             seenIds.add(e.id);
             return true;
@@ -248,7 +292,9 @@ export default function AttendancePage() {
     // Catch-all for subjects that don't fit into the standard 8 slots (e.g., year 5+)
     const matchedIds = new Set();
     Object.values(groupedEnrollments).forEach((v: any) => v.enrollments.forEach((e: any) => matchedIds.add(e.id)));
-    const otherEnrollments = enrollments.filter(e => !matchedIds.has(e.id));
+    const otherEnrollments = curriculum?.semesters?.length
+        ? []
+        : enrollments.filter(e => !matchedIds.has(e.id));
 
     const sortedSemesterKeys = academicSemesters.map(s => s.key);
 
@@ -364,8 +410,12 @@ export default function AttendancePage() {
     };
 
     // Calculate Grand Totals
-    const grandTotalExcused = enrollments.reduce((acc, enr) => acc + calculateTermAbsences(enr, 'EXCUSED'), 0);
-    const grandTotalUnexcused = enrollments.reduce((acc, enr) => acc + calculateTermAbsences(enr, 'UNEXCUSED'), 0);
+    const visibleReportEnrollments = [
+        ...Object.values(groupedEnrollments).flatMap((v: any) => v.enrollments || []),
+        ...otherEnrollments,
+    ];
+    const grandTotalExcused = visibleReportEnrollments.reduce((acc, enr) => acc + calculateTermAbsences(enr, 'EXCUSED'), 0);
+    const grandTotalUnexcused = visibleReportEnrollments.reduce((acc, enr) => acc + calculateTermAbsences(enr, 'UNEXCUSED'), 0);
 
     if (loading) {
         return (
@@ -509,4 +559,3 @@ export default function AttendancePage() {
         </div>
     );
 }
-

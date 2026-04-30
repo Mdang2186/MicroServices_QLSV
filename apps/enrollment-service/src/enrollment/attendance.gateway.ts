@@ -236,20 +236,10 @@ export class AttendanceGateway {
                         });
 
                         if (mirrorAdminClass) {
-                            let mirrorStudent = await this.prisma.student.findFirst({
+                            const mirrorStudent = await this.prisma.student.findFirst({
                                 where: { adminClassId: mirrorAdminClass.id, fullName: primaryStudent.fullName, status: 'STUDYING' },
                                 select: { id: true },
                             });
-
-                            if (!mirrorStudent) {
-                                const codeSuffix = `${primaryStudent.studentCode || ''}`.match(/(\d{2})$/)?.[1];
-                                if (codeSuffix) {
-                                    mirrorStudent = await this.prisma.student.findFirst({
-                                        where: { adminClassId: mirrorAdminClass.id, studentCode: { endsWith: codeSuffix }, status: 'STUDYING' },
-                                        select: { id: true },
-                                    });
-                                }
-                            }
 
                             if (mirrorStudent) {
                                 enrollment = await this.prisma.enrollment.findUnique({

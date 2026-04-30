@@ -1844,7 +1844,97 @@ export class SemesterPlanService {
       select: { id: true },
     });
 
-    const studentIds = students.map((student: any) => student.id);
+    const studentIds: string[] = [
+      ...new Set<string>(
+        students
+          .map((student: any) => `${student.id || ''}`.trim())
+          .filter(Boolean),
+      ),
+    ];
+    const duplicateEnrollments = studentIds.length
+      ? await prisma.enrollment.findMany({
+          where: {
+            studentId: { in: studentIds },
+            courseClassId: { not: courseClassId },
+            isRetake: false,
+            courseClass: {
+              semesterId: item.semesterPlan.semesterId,
+              subjectId: item.subjectId,
+            },
+          },
+          include: {
+            attendances: { select: { id: true } },
+          },
+        })
+      : [];
+    const duplicateGrades =
+      duplicateEnrollments.length > 0
+        ? await prisma.grade.findMany({
+            where: {
+              OR: duplicateEnrollments.map((enrollment: any) => ({
+                studentId: enrollment.studentId,
+                courseClassId: enrollment.courseClassId,
+              })),
+            },
+          })
+        : [];
+    const duplicateGradesByEnrollment = new Map<string, any[]>();
+    for (const grade of duplicateGrades) {
+      const key = `${grade.studentId}::${grade.courseClassId}`;
+      duplicateGradesByEnrollment.set(key, [
+        ...(duplicateGradesByEnrollment.get(key) || []),
+        grade,
+      ]);
+    }
+
+    const protectedStudentIds = new Set<string>();
+    const removableEnrollmentIds: string[] = [];
+    const removableGradeIds: string[] = [];
+    const affectedDuplicateClassIds = new Set<string>();
+
+    for (const enrollment of duplicateEnrollments) {
+      const enrollmentGrades =
+        duplicateGradesByEnrollment.get(
+          `${enrollment.studentId}::${enrollment.courseClassId}`,
+        ) || [];
+      const hasProtectedGrade = enrollmentGrades.some((grade: any) =>
+        this.isProtectedGrade(grade),
+      );
+
+      if (hasProtectedGrade) {
+        protectedStudentIds.add(enrollment.studentId);
+        continue;
+      }
+
+      removableEnrollmentIds.push(enrollment.id);
+      affectedDuplicateClassIds.add(enrollment.courseClassId);
+      removableGradeIds.push(...enrollmentGrades.map((grade: any) => grade.id));
+    }
+
+    if (removableEnrollmentIds.length > 0) {
+      await prisma.attendance.deleteMany({
+        where: { enrollmentId: { in: removableEnrollmentIds } },
+      });
+      if (removableGradeIds.length > 0) {
+        await prisma.grade.deleteMany({
+          where: { id: { in: removableGradeIds } },
+        });
+      }
+      await prisma.enrollment.deleteMany({
+        where: { id: { in: removableEnrollmentIds } },
+      });
+
+      for (const affectedClassId of affectedDuplicateClassIds) {
+        const currentSlots = await prisma.enrollment.count({
+          where: { courseClassId: affectedClassId },
+        });
+        await prisma.courseClass.update({
+          where: { id: affectedClassId },
+          data: { currentSlots },
+        });
+      }
+    }
+
     const existingEnrollments = studentIds.length
       ? await prisma.enrollment.findMany({
           where: {
@@ -1854,11 +1944,12 @@ export class SemesterPlanService {
           select: { studentId: true },
         })
       : [];
-    const existingIds = new Set(
+    const existingIds = new Set<string>(
       existingEnrollments.map((enrollment: any) => enrollment.studentId),
     );
     const missingIds = studentIds.filter(
-      (studentId) => !existingIds.has(studentId),
+      (studentId) =>
+        !existingIds.has(studentId) && !protectedStudentIds.has(studentId),
     );
 
     if (missingIds.length > 0) {
@@ -1884,7 +1975,24 @@ export class SemesterPlanService {
       expectedStudentCount: studentIds.length,
       enrolledCount: currentSlots,
       addedCount: missingIds.length,
+      removedDuplicateCount: removableEnrollmentIds.length,
+      protectedDuplicateCount: protectedStudentIds.size,
     };
+  }
+
+  private isProtectedGrade(grade: any) {
+    const status = `${grade?.status || ''}`.trim().toUpperCase();
+    return (
+      grade?.isLocked === true ||
+      status === 'APPROVED' ||
+      status === 'PUBLISHED' ||
+      grade?.attendanceScore != null ||
+      grade?.totalScore10 != null ||
+      grade?.examScore1 != null ||
+      grade?.examScore2 != null ||
+      grade?.finalScore1 != null ||
+      grade?.finalScore2 != null
+    );
   }
 
   private async loadExecutionForMutation(id: string) {

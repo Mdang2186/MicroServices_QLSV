@@ -540,10 +540,10 @@ export default function TrainingResultsPage() {
 
         const intakeYear = parseIntakeYear(
             studentIdentity?.intake ||
-                studentIdentity?.adminClass?.cohort ||
-                studentIdentity?.adminClass?.code ||
-                studentIdentity?.studentCode ||
-                studentIdentity?.student?.studentCode,
+            studentIdentity?.adminClass?.cohort ||
+            studentIdentity?.adminClass?.code ||
+            studentIdentity?.studentCode ||
+            studentIdentity?.student?.studentCode,
         );
         if (intakeYear) return intakeYear;
 
@@ -722,8 +722,7 @@ export default function TrainingResultsPage() {
                             </th>
                             <th className="w-[110px] border border-slate-300 px-3 py-2 text-center font-bold leading-snug text-[#337ab7]">
                                 Điểm
-                                <br />
-                                Cộng/Trừ
+
                             </th>
                         </tr>
                     </thead>

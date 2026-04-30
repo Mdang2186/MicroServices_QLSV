@@ -1,42 +1,66 @@
-# Script quản lý hạ tầng Redis (Dự án MicroServices QLSV)
+# Script quan ly ha tang Docker: SQL Server + Redis
 
-$REDIS_CONTAINER = "sms_redis"
+Write-Host "`n--- He thong Quan ly Ha tang MicroServices ---" -ForegroundColor Cyan
 
-Write-Host "`n--- Hệ thống Quản lý Hạ tầng MicroServices ---" -ForegroundColor Cyan
-
-# 1. Kiểm tra Docker
 if (!(Get-Command docker -ErrorAction SilentlyContinue)) {
-    Write-Host ">>> [ERROR] Không tìm thấy Docker. Bạn cần cài đặt Docker Desktop để chạy Redis tự động." -ForegroundColor Red
-    Write-Host ">>> Truy cập: https://www.docker.com/products/docker-desktop/"
-    exit
+    Write-Host ">>> [ERROR] Khong tim thay Docker. Ban can cai Docker Desktop." -ForegroundColor Red
+    Write-Host ">>> Truy cap: https://www.docker.com/products/docker-desktop/"
+    exit 1
 }
 
-# 2. Khởi động Redis
-Write-Host ">>> Đang tối ưu hạ tầng (Redis)..." -ForegroundColor Cyan
-try {
-    # Thử chạy qua Docker Compose nếu có file
-    docker-compose up -d redis
-    
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host ">>> [WARNING] Docker Compose có lỗi. Thử khởi động container đơn lẻ..." -ForegroundColor Yellow
-        docker run --name $REDIS_CONTAINER -p 6379:6379 -d redis:7-alpine
+function Invoke-Compose {
+    param([string[]]$ComposeArgs)
+
+    docker compose @ComposeArgs
+    if ($LASTEXITCODE -eq 0) {
+        return
     }
-} catch {
-    Write-Host ">>> [ERROR] Lỗi không mong muốn khi khởi động Docker." -ForegroundColor Red
+
+    if (Get-Command docker-compose -ErrorAction SilentlyContinue) {
+        docker-compose @ComposeArgs
+    }
 }
 
-# 3. Kiểm tra trạng thái kết nối
-Write-Host ">>> Đang kiểm tra cổng 6379 (Redis)..." -ForegroundColor Cyan
-Start-Sleep -Seconds 2
-$socket = New-Object Net.Sockets.TcpClient
-$connect = $socket.BeginConnect("127.0.0.1", 6379, $null, $null)
-Start-Sleep -Seconds 1
+function Test-Port {
+    param(
+        [string]$HostName,
+        [int]$Port
+    )
 
-if ($connect.IsCompleted -and $socket.Connected) {
-    Write-Host ">>> [SUCCESS] Redis đã sẵn sàng phục vụ cho Microservices!" -ForegroundColor Green
+    $socket = New-Object Net.Sockets.TcpClient
+    try {
+        $connect = $socket.BeginConnect($HostName, $Port, $null, $null)
+        $ready = $connect.AsyncWaitHandle.WaitOne(1500, $false)
+        return ($ready -and $socket.Connected)
+    } finally {
+        $socket.Close()
+    }
+}
+
+Write-Host ">>> Dang khoi dong SQL Server, Redis va buoc tao database..." -ForegroundColor Cyan
+Invoke-Compose @("up", "-d", "mssql", "redis", "mssql-init")
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ">>> [ERROR] Docker Compose khoi dong that bai." -ForegroundColor Red
+    exit $LASTEXITCODE
+}
+
+Write-Host ">>> Dang cho SQL Server va Redis san sang..." -ForegroundColor Cyan
+Start-Sleep -Seconds 8
+
+$redisReady = Test-Port "127.0.0.1" 6379
+$mssqlReady = Test-Port "127.0.0.1" 1433
+
+if ($redisReady) {
+    Write-Host ">>> [SUCCESS] Redis san sang tai localhost:6379" -ForegroundColor Green
 } else {
-    Write-Host ">>> [FAIL] Không thể kết nối tới Redis trên cổng 6379. Hãy đảm bảo Docker đang chạy." -ForegroundColor Red
+    Write-Host ">>> [FAIL] Redis chua san sang tren cong 6379." -ForegroundColor Red
 }
-$socket.Close()
 
-Write-Host "`n--- HOÀN TẤT ---" -ForegroundColor Green
+if ($mssqlReady) {
+    Write-Host ">>> [SUCCESS] SQL Server san sang tai localhost:1433" -ForegroundColor Green
+} else {
+    Write-Host ">>> [FAIL] SQL Server chua san sang tren cong 1433." -ForegroundColor Red
+}
+
+Write-Host "`n--- HOAN TAT ---" -ForegroundColor Green

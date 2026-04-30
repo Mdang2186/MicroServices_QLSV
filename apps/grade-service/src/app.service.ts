@@ -76,7 +76,7 @@ export class AppService {
       return linkedStudentIds;
     }
 
-    let mirrorStudent = await this.prisma.student.findFirst({
+    const mirrorStudent = await this.prisma.student.findFirst({
       where: {
         adminClassId: mirrorAdminClass.id,
         fullName: student.fullName,
@@ -84,20 +84,6 @@ export class AppService {
       },
       select: { id: true },
     });
-
-    if (!mirrorStudent) {
-      const codeSuffix = `${student.studentCode || ''}`.match(/(\d{2})$/)?.[1];
-      if (codeSuffix) {
-        mirrorStudent = await this.prisma.student.findFirst({
-          where: {
-            adminClassId: mirrorAdminClass.id,
-            studentCode: { endsWith: codeSuffix },
-            status: 'STUDYING',
-          },
-          select: { id: true },
-        });
-      }
-    }
 
     if (mirrorStudent?.id) {
       linkedStudentIds.push(mirrorStudent.id);

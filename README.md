@@ -75,8 +75,8 @@ graph TD
 
 ### 1. Chuẩn bị môi trường
 - **Node.js**: Phiên bản >= 18.x
-- **Docker Desktop**: Chạy Redis container.
-- **SQL Server**: Cài đặt trực tiếp hoặc chạy trên Docker.
+- **Docker Desktop**: Chạy SQL Server, Redis hoặc toàn bộ hệ thống bằng Docker Compose.
+- **SQL Server**: Dự án dùng Microsoft SQL Server qua Prisma.
 
 ### 2. Thiết lập dự án
 
@@ -85,15 +85,21 @@ graph TD
    npm install
    ```
 
-2. **Khởi động Redis Container** (Quan trọng cho nghiệp vụ đăng ký học phần):
+2. **Khởi động hạ tầng SQL Server + Redis**:
    ```bash
-   docker-compose up -d
+   docker compose up -d mssql redis mssql-init
+   ```
+   Hoặc trên Windows PowerShell:
+   ```powershell
+   .\start-infra.ps1
    ```
 
 3. **Cấu hình biến môi trường (.env)**:
    Tạo file `.env` ở thư mục gốc (nếu chưa có) dựa trên `.env.example`:
    ```env
-   DATABASE_URL="sqlserver://localhost:1433;database=student_db;user=SA;password=YourPassword;trustServerCertificate=true"
+   MSSQL_DB=student_db
+   MSSQL_SA_PASSWORD=YourStrongPassword123
+   DATABASE_URL="sqlserver://localhost:1433;database=student_db;user=sa;password=YourStrongPassword123;encrypt=DANGER_PLAINTEXT;trustServerCertificate=true;"
    REDIS_URL="redis://localhost:6379"
    JWT_SECRET="sms_secret_key"
    ```
@@ -109,6 +115,26 @@ graph TD
    ```bash
    npm run dev
    ```
+
+### 2.1. Chạy toàn bộ hệ thống bằng Docker
+
+Docker Compose đã đóng gói SQL Server, Redis, Prisma `db push`, API Gateway, 5 backend service và 2 frontend:
+
+```bash
+docker compose up -d --build
+```
+
+Các cổng sau sẽ được publish ra máy host:
+- API Gateway/Swagger: `http://localhost:3000/api-docs`
+- Web Portal: `http://localhost:4000`
+- Web Admin: `http://localhost:4005`
+- SQL Server: `localhost:1433`
+- Redis: `localhost:6379`
+
+Nếu Docker Desktop còn giữ container Postgres cũ từ compose trước đó, chạy:
+```bash
+docker compose up -d --build --remove-orphans
+```
 
 ### 3. Cổng (Ports) trong Hệ thống khi Dev:
 - Cổng kết nối Sinh viên: `http://localhost:4000`
