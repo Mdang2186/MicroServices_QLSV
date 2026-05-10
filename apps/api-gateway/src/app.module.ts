@@ -32,7 +32,8 @@ export class AppModule {
       process.env.COURSE_SERVICE_URL || "http://127.0.0.1:3003";
     const enrollmentTarget =
       process.env.ENROLLMENT_SERVICE_URL || "http://127.0.0.1:3004";
-    const gradeTarget = process.env.GRADE_SERVICE_URL || "http://127.0.0.1:3005";
+    const gradeTarget =
+      process.env.GRADE_SERVICE_URL || "http://127.0.0.1:3005";
 
     // Proxy auth requests
     consumer
@@ -83,6 +84,7 @@ export class AppModule {
         createProxyMiddleware({
           target: enrollmentTarget,
           changeOrigin: true,
+          ws: true,
           proxyTimeout: 60000,
           timeout: 60000,
           pathRewrite: {
@@ -93,6 +95,22 @@ export class AppModule {
       .forRoutes(
         { path: "/api/enrollments", method: RequestMethod.ALL },
         { path: "/api/enrollments/*", method: RequestMethod.ALL },
+      );
+
+    // Proxy Socket.IO attendance traffic through the Gateway.
+    consumer
+      .apply(
+        createProxyMiddleware({
+          target: enrollmentTarget,
+          changeOrigin: true,
+          ws: true,
+          proxyTimeout: 60000,
+          timeout: 60000,
+        }),
+      )
+      .forRoutes(
+        { path: "/socket.io", method: RequestMethod.ALL },
+        { path: "/socket.io/*", method: RequestMethod.ALL },
       );
 
     // Proxy course requests
@@ -116,8 +134,10 @@ export class AppModule {
             "^/api/cohorts": "/cohorts",
             "^/api/semester-plan": "/semester-plan",
           },
-          onProxyReq: (proxyReq, req: any, res) => {
-            console.log(`[Proxy] ${req.method} ${req.url} -> ${proxyReq.protocol}//${proxyReq.host}${proxyReq.path}`);
+          onProxyReq: (proxyReq, req: any, _res) => {
+            console.log(
+              `[Proxy] ${req.method} ${req.url} -> ${proxyReq.protocol}//${proxyReq.host}${proxyReq.path}`,
+            );
           },
         }),
       )

@@ -16,7 +16,7 @@
     "support-data:apply": "node scripts/audit-support-data.js --apply",
     "db:generate": "prisma generate --schema=packages/database/prisma/schema.prisma",
     "db:push": "prisma db push --schema=packages/database/prisma/schema.prisma",
-    "db:seed": "prisma db seed",
+    "db:seed": "node scripts/audit-support-data.js --apply",
     "docker:config": "docker compose config",
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down",
@@ -46,7 +46,7 @@
   },
   "prisma": {
     "schema": "packages/database/prisma/schema.prisma",
-    "seed": "ts-node packages/database/prisma/seed.ts"
+    "seed": "node scripts/audit-support-data.js --apply"
   },
   "dependencies": {
     "@nestjs-modules/mailer": "^2.3.0",

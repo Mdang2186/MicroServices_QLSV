@@ -8,6 +8,7 @@ import { ArrowLeft, CheckCircle2, XCircle, Camera, Loader2, Info } from "lucide-
 import { Button } from "@/components/ui/button";
 import { io, Socket } from "socket.io-client";
 import { resolveCurrentStudentContext } from "@/lib/current-student";
+import { socketUrl } from "@/lib/runtime-config";
 
 export default function QRScannerPage() {
     const router = useRouter();
@@ -63,7 +64,7 @@ export default function QRScannerPage() {
                 }
 
                 // Connect to WS and send scan request
-                const socket = io("http://localhost:3004", {
+                const socket = io(socketUrl, {
                     transports: ['websocket'],
                     reconnectionAttempts: 3,
                 });

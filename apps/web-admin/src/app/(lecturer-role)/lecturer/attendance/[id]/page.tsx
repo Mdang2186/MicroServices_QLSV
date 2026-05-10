@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { QRCodeSVG } from "qrcode.react";
 import { io, Socket } from "socket.io-client";
+import { socketUrl } from "@/lib/runtime-config";
 
 export default function LecturerAttendancePage() {
     const { id: classId } = useParams();
@@ -135,7 +136,7 @@ export default function LecturerAttendancePage() {
         setQrLiveFeed([]);
 
         const connectSocket = (anchor?: { latitude?: number; longitude?: number; accuracyMeters?: number } | null) => {
-            newSocket = io("http://localhost:3004", {
+            newSocket = io(socketUrl, {
                 transports: ['websocket'],
                 reconnectionAttempts: 5,
                 reconnectionDelay: 1000,

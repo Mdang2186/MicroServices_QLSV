@@ -12,8 +12,7 @@ export default function MajorManagementPage() {
 
     const fetchMajors = async () => {
         try {
-            const apiUrl = 'https://microservicesqlsv-production.up.railway.app';
-            const res = await fetch(`${apiUrl}/api/majors`);
+            const res = await fetch("/api/majors");
             if (res.ok) {
                 const data = await res.json();
                 setMajors(data);

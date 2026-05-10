@@ -4,14 +4,14 @@ import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
-  const corsOrigins = (process.env.CORS_ORIGIN || "http://localhost:4000,http://localhost:4005")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  const corsOrigins =
+    process.env.CORS_ORIGIN?.split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean) ?? [];
 
   // Gateway runs on 3000
   app.enableCors({
-    origin: corsOrigins,
+    origin: corsOrigins.length > 0 ? corsOrigins : true,
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
     credentials: true,
   });
@@ -36,7 +36,13 @@ async function bootstrap() {
     },
   });
 
-  await app.listen(3000, "0.0.0.0");
+  const port = Number(
+    process.env.API_GATEWAY_PORT ||
+      process.env.SERVICE_PORT ||
+      process.env.PORT ||
+      3000,
+  );
+  await app.listen(port, "0.0.0.0");
   console.log(`API Gateway is running on: ${await app.getUrl()}`);
   console.log(`Swagger UI is available at: ${await app.getUrl()}/api-docs`);
 }

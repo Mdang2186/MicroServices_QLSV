@@ -6,6 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import Cookies from "js-cookie";
 import { getDashboardPath, isWebAdminRole, normalizeRole } from "@/lib/roles";
+import { webPortalUrl } from "@/lib/runtime-config";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -177,7 +178,7 @@ export default function LoginPage() {
         <p className="mt-6 text-center text-xs font-semibold text-slate-500">
           Trang dành riêng cho cán bộ & giảng viên UNETI<br className="sm:hidden" /> <span className="hidden sm:inline">•</span> Sinh viên sử dụng{" "}
           <a
-            href="http://localhost:4000/login"
+            href={`${webPortalUrl}/login`}
             className="text-blue-600 hover:text-blue-800 hover:underline transition-colors"
           >
             Web Portal

@@ -28,7 +28,7 @@ export default function CopyCurriculumModal({ isOpen, onClose, onSuccess, semest
     const fetchCurriculum = async () => {
         setFetching(true);
         try {
-            const res = await fetch(`http://localhost:3000/api/semester-plan/curriculum?majorId=${majorId}&cohort=${cohort}`);
+            const res = await fetch(`/api/semester-plan/curriculum?majorId=${majorId}&cohort=${cohort}`);
             const data = await res.json();
             setCurriculum(Array.isArray(data) ? data : []);
             // Auto-select everything by default
@@ -51,7 +51,7 @@ export default function CopyCurriculumModal({ isOpen, onClose, onSuccess, semest
         }
         setLoading(true);
         try {
-            const res = await fetch("http://localhost:3000/api/semester-plan/copy-curriculum", {
+            const res = await fetch("/api/semester-plan/copy-curriculum", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

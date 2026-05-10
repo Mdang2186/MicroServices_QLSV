@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { clearStudentSession, readStudentSessionUser } from "@/lib/student-session";
+import { webAdminUrl } from "@/lib/runtime-config";
 
 export default function StudentGuard({ children }: { children: React.ReactNode }) {
     const router = useRouter();
@@ -24,7 +25,7 @@ export default function StudentGuard({ children }: { children: React.ReactNode }
 
         if (user.role === "ADMIN" || user.role === "SUPER_ADMIN" || user.role === "ACADEMIC_STAFF" || user.role === "LECTURER") {
             clearStudentSession();
-            window.location.href = "http://localhost:4005/login";
+            window.location.href = `${webAdminUrl}/login`;
             return;
         }
 

@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+const webAdminPort = process.env.WEB_ADMIN_PORT || "4005";
+const webAdminUrl = (
+    process.env.WEB_ADMIN_URL ||
+    process.env.NEXT_PUBLIC_WEB_ADMIN_URL ||
+    `http://localhost:${webAdminPort}`
+).replace(/\/+$/, "");
+
 export function middleware(request: NextRequest) {
     const token = request.cookies.get('student_accessToken')?.value;
     // In a real app, verify the token signature/claims here.
@@ -39,7 +46,7 @@ export function middleware(request: NextRequest) {
     // This avoids confusion between web-portal admin pages and the real web-admin app
     if (pathname.startsWith('/admin')) {
         if (role === 'ACADEMIC_STAFF' || role === 'SUPER_ADMIN') {
-            return NextResponse.redirect("http://localhost:4005/dashboard");
+            return NextResponse.redirect(`${webAdminUrl}/dashboard`);
         } else {
             return NextResponse.redirect(new URL('/portal/dashboard', request.url));
         }
@@ -47,7 +54,7 @@ export function middleware(request: NextRequest) {
 
     if (pathname.startsWith('/portal') && role !== 'STUDENT') {
         if (role === 'ACADEMIC_STAFF' || role === 'SUPER_ADMIN' || role === 'LECTURER') {
-            return NextResponse.redirect("http://localhost:4005/dashboard");
+            return NextResponse.redirect(`${webAdminUrl}/dashboard`);
         }
     }
 

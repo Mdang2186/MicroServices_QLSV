@@ -6,6 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import api from "@/lib/api";
 import { clearStudentSession, persistStudentSession } from "@/lib/student-session";
+import { webAdminUrl } from "@/lib/runtime-config";
 
 function LoginForm() {
     const router = useRouter();
@@ -41,7 +42,7 @@ function LoginForm() {
                 router.push("/portal/dashboard");
             } else if (["SUPER_ADMIN", "ADMIN", "ACADEMIC_STAFF", "LECTURER"].includes(role)) {
                 clearStudentSession();
-                window.location.href = "http://localhost:4005/login";
+                window.location.href = `${webAdminUrl}/login`;
             } else {
                 throw new Error("Tài khoản này không được hỗ trợ trên cổng sinh viên.");
             }

@@ -25,7 +25,7 @@ export default function SessionEditorModal({ isOpen, onClose, courseClass, onSuc
 
     const fetchSessions = async () => {
         try {
-            const res = await fetch(`http://localhost:3000/api/course-service/courses/${courseClass.id}/sessions`);
+            const res = await fetch(`/api/courses/${courseClass.id}/sessions`);
             const data = await res.json();
             setSessions(data);
         } catch (error) {
@@ -35,7 +35,7 @@ export default function SessionEditorModal({ isOpen, onClose, courseClass, onSuc
 
     const fetchRooms = async () => {
         try {
-            const res = await fetch("http://localhost:3000/api/course-service/room");
+            const res = await fetch("/api/rooms");
             const data = await res.json();
             setRooms(data);
         } catch (error) {
@@ -45,7 +45,7 @@ export default function SessionEditorModal({ isOpen, onClose, courseClass, onSuc
 
     const handleUpdateSession = async (sessionId: string, updates: any) => {
         try {
-            await fetch(`http://localhost:3000/api/course-service/courses/sessions/${sessionId}/reschedule`, {
+            await fetch(`/api/courses/sessions/${sessionId}/reschedule`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(updates)
@@ -60,7 +60,7 @@ export default function SessionEditorModal({ isOpen, onClose, courseClass, onSuc
     const handleDeleteSession = async (sessionId: string) => {
         if (!window.confirm("Xóa buổi học này?")) return;
         try {
-            await fetch(`http://localhost:3000/api/course-service/courses/sessions/${sessionId}`, { method: "DELETE" });
+            await fetch(`/api/courses/sessions/${sessionId}`, { method: "DELETE" });
             toast.success("Đã xóa buổi học");
             fetchSessions();
         } catch (error) {
@@ -70,7 +70,7 @@ export default function SessionEditorModal({ isOpen, onClose, courseClass, onSuc
 
     const handleAddManualSession = async () => {
         try {
-            await fetch(`http://localhost:3000/api/course-service/courses/${courseClass.id}/manual-session`, {
+            await fetch(`/api/courses/${courseClass.id}/manual-session`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

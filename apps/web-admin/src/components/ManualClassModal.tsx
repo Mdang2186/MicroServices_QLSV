@@ -57,7 +57,7 @@ export default function ManualClassModal({ isOpen, onClose, onSuccess, semesterI
 
     const fetchAdminClasses = async () => {
         try {
-            const res = await fetch("http://localhost:3000/api/admin-classes");
+            const res = await fetch("/api/admin-classes");
             const data = await res.json();
             setAdminClasses(Array.isArray(data) ? data : []);
         } catch (error) {
@@ -67,7 +67,7 @@ export default function ManualClassModal({ isOpen, onClose, onSuccess, semesterI
 
     const fetchSubjects = async () => {
         try {
-            const res = await fetch("http://localhost:3000/api/subjects"); // Corrected Gateway Path
+            const res = await fetch("/api/subjects"); // Corrected Gateway Path
             const data = await res.json();
             setSubjects(Array.isArray(data) ? data : []);
         } catch (error) {
@@ -81,8 +81,8 @@ export default function ManualClassModal({ isOpen, onClose, onSuccess, semesterI
         setLoading(true);
         try {
             const url = course 
-                ? `http://localhost:3000/api/courses/${course.id}`
-                : "http://localhost:3000/api/courses";
+                ? `/api/courses/${course.id}`
+                : "/api/courses";
             const method = course ? "PUT" : "POST";
 
             const res = await fetch(url, { 

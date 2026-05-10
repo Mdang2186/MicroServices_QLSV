@@ -19,9 +19,9 @@
         "build": "tsc -p tsconfig.json",
         "db:generate": "prisma generate",
         "db:push": "prisma db push",
-        "db:seed": "ts-node prisma/seed.ts"
+        "db:seed": "node ../../scripts/audit-support-data.js --apply"
     },
     "prisma": {
-        "seed": "ts-node prisma/seed.ts"
+        "seed": "node ../../scripts/audit-support-data.js --apply"
     }
 }

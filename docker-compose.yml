@@ -208,6 +208,7 @@ services:
       COURSE_SERVICE_URL: http://course-service:3003
       ENROLLMENT_SERVICE_URL: http://enrollment-service:3004
       GRADE_SERVICE_URL: http://grade-service:3005
+      API_GATEWAY_PORT: 3000
       SERVICE_PORT: 3000
     ports:
       - "3000:3000"
@@ -232,9 +233,14 @@ services:
       <<: *next-build
       args:
         APP: web-portal
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000}
+        NEXT_PUBLIC_WEB_PORTAL_URL: ${NEXT_PUBLIC_WEB_PORTAL_URL:-http://localhost:4000}
+        NEXT_PUBLIC_WEB_ADMIN_URL: ${NEXT_PUBLIC_WEB_ADMIN_URL:-http://localhost:4005}
     environment:
       API_GATEWAY_INTERNAL_URL: http://api-gateway:3000
-      NEXT_PUBLIC_API_URL: http://localhost:3000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000}
+      NEXT_PUBLIC_WEB_PORTAL_URL: ${NEXT_PUBLIC_WEB_PORTAL_URL:-http://localhost:4000}
+      NEXT_PUBLIC_WEB_ADMIN_URL: ${NEXT_PUBLIC_WEB_ADMIN_URL:-http://localhost:4005}
       PORT: 3000
     ports:
       - "4000:3000"
@@ -250,9 +256,14 @@ services:
       <<: *next-build
       args:
         APP: web-admin
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000}
+        NEXT_PUBLIC_WEB_PORTAL_URL: ${NEXT_PUBLIC_WEB_PORTAL_URL:-http://localhost:4000}
+        NEXT_PUBLIC_WEB_ADMIN_URL: ${NEXT_PUBLIC_WEB_ADMIN_URL:-http://localhost:4005}
     environment:
       API_GATEWAY_INTERNAL_URL: http://api-gateway:3000
-      NEXT_PUBLIC_API_URL: http://localhost:3000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000}
+      NEXT_PUBLIC_WEB_PORTAL_URL: ${NEXT_PUBLIC_WEB_PORTAL_URL:-http://localhost:4000}
+      NEXT_PUBLIC_WEB_ADMIN_URL: ${NEXT_PUBLIC_WEB_ADMIN_URL:-http://localhost:4005}
       PORT: 3000
     ports:
       - "4005:3000"

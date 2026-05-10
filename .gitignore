@@ -1,5 +1,6 @@
 # ===== Dependencies =====
 node_modules/
+.npm-cache/
 .pnp
 .pnp.js
 
@@ -31,6 +32,7 @@ next-env.d.ts
 
 # ===== Logs =====
 *.log
+*.err
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -72,6 +74,7 @@ check_*.ts
 cleanup_*.js
 debug_*.js
 debug_*.ts
+debug-*.ts
 verify_*.js
 verify-*.js
 verify-*.ts
@@ -81,6 +84,7 @@ patch_*.js
 seed_*.js
 search_*.js
 test_*.js
+test-*.ts
 find_*.js
 merge_*.js
 fix_*.ts
@@ -111,11 +115,20 @@ sp.sql
 check-ports.js
 
 # ===== Output / Log files at root =====
+api-response.json
+build-log.txt
+output_analysis.txt
+*_analysis.txt
 *_out.txt
 *_err.txt
 *_log.txt
 *_output.txt
 *_error.log
+*_error.txt
+**/tsc-errors.txt
+**/dev_log*.txt
+**/data-output.txt
+**/debug-*.txt
 *.log
 out.txt
 output.txt
@@ -139,3 +152,6 @@ grade_backup.json
 *.local
 /main
 temp_*.txt
+packages/database/tmp/
+packages/shared-dto/src/*.js
+packages/shared-dto/src/*.d.ts

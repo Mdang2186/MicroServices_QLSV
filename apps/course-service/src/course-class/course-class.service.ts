@@ -4276,7 +4276,7 @@ export class CourseClassService {
       }
 
       const isPractice = courseClass.subject.examType === 'THUC_HANH';
-      let requiredRoomType = isPractice ? 'PRACTICE' : 'THEORY';
+      const requiredRoomType = isPractice ? 'PRACTICE' : 'THEORY';
 
       const studentsPerRoom = 30;
       const roomsNeeded = Math.ceil(eligibleGrades.length / studentsPerRoom);

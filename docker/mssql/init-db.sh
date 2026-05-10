@@ -23,7 +23,7 @@ DB_NAME="${MSSQL_DB:-student_db}"
 
 echo "Waiting for SQL Server to accept connections..."
 ready=0
-for _ in {1..60}; do
+for i in $(seq 1 60); do
   if "$SQLCMD" \
     -S mssql \
     -U sa \
@@ -33,7 +33,6 @@ for _ in {1..60}; do
     ready=1
     break
   fi
-
   sleep 2
 done
 
